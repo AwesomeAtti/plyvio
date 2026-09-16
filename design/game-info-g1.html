@@ -1,0 +1,317 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Game Info G1 &mdash; the row grid, the invariant, the anchored Timeline</title><style>  :root{
+    --paper:#f7f7f5; --ink:#1b1b19; --muted:#6b6b66; --faint:#94948e;
+    --rule:#d6d6d1; --rule-strong:#adada6;
+    --fill-0:#ffffff; --fill-1:#ececea; --fill-2:#dededa; --fill-3:#cfcfc9;
+    --accent:#8a5a1c; --accent-bg:#f6ecdc; --accent-rule:#d9b478;
+    --warn:#8a2c2c; --warn-bg:#f8e9e9; --ok:#3f6b3f;
+    --sel:#e7eef7; --sel-rule:#9db6d6; --scrim:rgba(20,20,18,.42);
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#141413; --ink:#eceae4; --muted:#a3a099; --faint:#7d7a73;
+      --rule:#333330; --rule-strong:#55554f;
+      --fill-0:#1e1e1c; --fill-1:#2a2a27; --fill-2:#353531; --fill-3:#43433d;
+      --accent:#d9a55f; --accent-bg:#2c2418; --accent-rule:#6b5326;
+      --warn:#e08a8a; --warn-bg:#2e1c1c; --ok:#8fb98f;
+      --sel:#243244; --sel-rule:#4a6482; --scrim:rgba(0,0,0,.55);
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans)}
+  .wrap{max-width:1120px;margin:0 auto;padding:56px 28px 120px}
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:34px}
+  .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  header.doc h1{font-size:30px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+  header.doc p{margin:0 0 10px;color:var(--muted);max-width:70ch}
+  header.doc p b{color:var(--ink)}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+  .chip.open{border-style:dashed;border-color:var(--accent);color:var(--accent)}
+  h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:56px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+  .lede{color:var(--muted);max-width:74ch;margin:16px 0 0}
+  .lede b{color:var(--ink)}
+  figure.wf{margin:30px 0 0;padding:0}
+  .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+  .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+  .wf-id.rec{background:var(--accent)}
+  .wf-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:76ch}
+  .wf-canvas{background:var(--fill-1);border:1px solid var(--rule);border-radius:4px;padding:24px 20px;overflow-x:auto}
+  .cols{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .cap{font:10px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+  .capn{font:11px/1.5 var(--mono);color:var(--muted);margin:8px 0 0;max-width:44ch}
+
+  /* ---------- the Section shell at its real 360px width ---------- */
+  .sec-blk{width:360px;border:1.5px solid var(--rule-strong);background:var(--fill-0);
+    display:flex;flex-direction:column;overflow:hidden;flex:none}
+  .sec-hd{flex:none;height:30px;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;
+    background:var(--fill-1);border-bottom:1px solid var(--rule);font:11px/1 var(--sans)}
+  .sec-hd .ttl{color:var(--ink);font-weight:600}
+  .sec-hd .sp{flex:1}
+  .sec-hd .st{font:11px/1 var(--mono);color:var(--muted);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:4px}
+  .sec-hd .st svg{color:var(--accent);fill:var(--accent)}
+  .sec-hd .ic{width:16px;height:16px;display:grid;place-items:center;color:var(--muted);font-size:10px}
+  .sec-hd .ic.menu-open{background:var(--fill-2);border-radius:3px;color:var(--ink)}
+
+  /* ---------- Game Info body ---------- */
+  .gi{padding:11px 13px 12px}
+  .gi-players{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+  .gi-p{display:flex;flex-direction:column;gap:3px;min-width:0}
+  .gi-name{font:600 13.5px/1.2 var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    display:flex;align-items:center;gap:5px;max-width:210px}
+  .gi-name .fav{flex:none;width:13px;height:13px;color:var(--faint)}
+  .gi-name .fav.on{color:var(--accent);fill:var(--accent)}
+  .gi-elo{font:11px/1 var(--mono);color:var(--muted)}
+  .gi-vs{font:9.5px/1 var(--mono);color:var(--faint);text-transform:uppercase;letter-spacing:.1em;margin:4px 0}
+  .gi-result{font:700 15px/1 var(--mono);color:var(--ink);flex:none;padding:5px 9px;
+    border:1px solid var(--rule-strong);border-radius:4px;background:var(--fill-1);margin-top:1px}
+  .gi-meta{display:flex;flex-wrap:wrap;gap:5px 16px;margin-top:11px;padding-top:10px;
+    border-top:1px solid var(--rule);font:11.5px/1 var(--sans);color:var(--ink)}
+  .gi-meta .mi{display:flex;align-items:center;gap:6px}
+  .gi-meta .mi .k{color:var(--muted)}
+  .gi-meta svg{color:var(--faint);flex:none}
+  .gi-chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:10px}
+  .chip-tag,.chip-col,.chip-cnt{display:inline-flex;align-items:center;gap:4px;font:10.5px/1 var(--sans);
+    padding:4px 8px;border-radius:10px;border:1px solid var(--rule-strong);color:var(--ink);background:var(--fill-1);white-space:nowrap}
+  .chip-tag svg,.chip-col svg,.chip-cnt svg{color:var(--muted);flex:none}
+  .chip-cnt{color:var(--muted)}
+  .gi-row{display:flex;gap:11px;padding:7px 0;align-items:flex-start}
+  .gi-row+.gi-row{border-top:1px solid var(--rule)}
+  .gi-row .k{flex:none;width:60px;font:9.5px/1.3 var(--mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);padding-top:2px}
+  .gi-row .v{font:12.5px/1.35 var(--sans);color:var(--ink);min-width:0}
+  .gi-row .v .fav{width:12px;height:12px;color:var(--faint);vertical-align:-1px;margin-right:3px}
+  .gi-row .v .fav.on{color:var(--accent);fill:var(--accent)}
+  .gi-score{display:flex;align-items:center;justify-content:center;gap:12px;padding:6px 0 4px}
+  .gi-score .side{display:flex;flex-direction:column;align-items:center;gap:2px;min-width:0;flex:1}
+  .gi-score .side .nm{font:600 12.5px/1.2 var(--sans);color:var(--ink);white-space:nowrap;overflow:hidden;
+    text-overflow:ellipsis;max-width:120px;display:flex;align-items:center;gap:4px}
+  .gi-score .side .r{font:10px/1 var(--mono);color:var(--muted)}
+  .gi-score .mark{font:700 20px/1 var(--mono);color:var(--ink);flex:none;padding:0 4px}
+  .gi-fav-btn{width:13px;height:13px;flex:none;color:var(--faint)}
+  .gi-fav-btn.on{color:var(--accent);fill:var(--accent)}
+
+  ul.leg{list-style:none;margin:0;padding:0;font-size:13px;min-width:300px;flex:1}
+  ul.leg li{display:flex;gap:10px;margin:0 0 12px;align-items:flex-start}
+  .tagno{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+    font:10px/1 var(--mono);background:var(--accent);color:#fff}
+  ul.leg b{color:var(--ink)} ul.leg span{color:var(--muted)}
+
+  table.rules{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+  table.rules th,table.rules td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  table.rules th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  table.rules td.n{font-family:var(--mono);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  table.rules tr.yes td{background:var(--accent-bg)}
+  table.rules tr.warn td{background:var(--warn-bg)}
+
+  .box{border:1px solid var(--rule-strong);border-left:3px solid var(--accent);
+    background:var(--accent-bg);border-radius:3px;padding:14px 16px;margin-top:18px}
+  .box.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .box.ok{border-left-color:var(--ok);background:transparent}
+  .box h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .box.warn h4{color:var(--warn)} .box.ok h4{color:var(--ok)}
+  .box p{margin:0 0 8px;font-size:13px;color:var(--ink);max-width:76ch}
+  .box p:last-child{margin-bottom:0}
+  code{font:11.5px/1 var(--mono);background:var(--fill-1);padding:2px 4px;border-radius:2px;color:var(--ink)}
+  .mono{font-family:var(--mono);font-size:12px}
+  .q{font-weight:600;color:var(--ink)}
+
+  /* ---------- Edit dialog mockup (illustrative) ---------- */
+  .stage{position:relative;background:#0000;min-height:420px}
+  .scrim{position:absolute;inset:0;background:var(--scrim);border-radius:3px}
+  .modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--fill-0);
+    border:1px solid var(--rule-strong);border-radius:9px;box-shadow:0 18px 44px rgba(0,0,0,.28);
+    display:flex;flex-direction:column;overflow:hidden;width:420px}
+  .mhead{height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--rule);font-size:13px;font-weight:600}
+  .mhead .x{margin-left:auto;color:var(--faint);width:14px;height:14px}
+  .mbody{padding:14px 14px 4px;display:flex;flex-direction:column;gap:10px}
+  .frow{display:flex;align-items:center;gap:10px}
+  .frow .lbl{flex:none;width:64px;font:9.5px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .field{flex:1;height:28px;display:flex;align-items:center;gap:6px;padding:0 8px;background:var(--fill-0);
+    border:1px solid var(--rule-strong);border-radius:5px;font-size:12px;color:var(--ink);min-width:0}
+  .field.short{flex:none;width:88px}
+  .field .ph{color:var(--faint)}
+  .field.tokwrap{flex-wrap:wrap;height:auto;min-height:28px;padding:4px 6px;gap:5px}
+  .tok{display:inline-flex;align-items:center;gap:5px;height:19px;padding:0 6px;border-radius:3px;
+    background:var(--sel);border:1px solid var(--sel-rule);font-size:11px;color:var(--ink);white-space:nowrap}
+  .tok svg{color:var(--muted);flex:none;width:9px;height:9px}
+  .frow.pair{gap:10px}
+  .pairwrap{display:flex;gap:8px;flex:1}
+  .sec-div{border-top:1px solid var(--rule);margin:2px 0 0}
+  .frow.toggle{justify-content:space-between}
+  .sw{width:30px;height:17px;border-radius:9px;background:var(--rule-strong);position:relative;flex:none}
+  .sw.on{background:var(--accent)}
+  .sw i{position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .sw.on i{left:15px}
+  .mfoot{height:44px;flex:none;display:flex;align-items:center;gap:8px;padding:0 14px;border-top:1px solid var(--rule-strong);
+    background:var(--fill-1);margin-top:12px}
+  .mfoot .spacer{margin-left:auto}
+  .btn{font:12px/1 var(--sans);padding:8px 13px;border-radius:5px;border:1px solid var(--rule-strong);background:var(--fill-0);color:var(--ink)}
+  .btn.pri{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+  :root:not([data-theme="light"]) .btn.pri{background:var(--ink);color:var(--paper)}
+
+  /* menu popover */
+  .pop{position:absolute;background:var(--fill-0);border:1px solid var(--rule-strong);border-radius:6px;
+    box-shadow:0 8px 22px rgba(0,0,0,.18);min-width:168px;padding:4px;font-size:12.5px;z-index:5}
+  .pop .mi2{display:flex;align-items:center;gap:8px;padding:7px 9px;border-radius:4px;color:var(--ink)}
+  .pop .mi2:hover, .pop .mi2.hi{background:var(--sel)}
+  .pop .mi2 svg{width:13px;height:13px;color:var(--muted)}
+  .pop .div{height:1px;background:var(--rule);margin:4px 2px}
+  .callout{position:absolute;pointer-events:none}
+  .cline{position:absolute;border-top:1px dashed var(--accent);transform-origin:left center}
+  .cdot{position:absolute;width:6px;height:6px;border-radius:50%;background:var(--accent);transform:translate(-3px,-3px)}
+
+/* ===== G1 round additions ===== */
+  body.g1{padding:30px 22px 80px}
+  .wrapx{max-width:1180px;margin:0 auto}
+  h1.g1{font-size:22px;font-weight:600;letter-spacing:-.015em;margin:0 0 8px}
+  .rowx{display:flex;gap:34px;flex-wrap:wrap;align-items:flex-start;margin-top:24px}
+  .colx{flex:none}
+  .colx .hd{font:11px/1.45 var(--mono);color:var(--muted);margin:0 0 10px;max-width:360px}
+  .colx .hd b{color:var(--ink);font-weight:600;display:block;font-size:12.5px;
+              letter-spacing:0;text-transform:none;margin-bottom:2px}
+  .panel{position:relative;width:360px;background:var(--fill-1);box-sizing:content-box;
+         border:1.5px solid var(--rule-strong);display:flex;flex-direction:column}
+  .stackarea{flex:1;min-height:0;display:flex;flex-direction:column}
+  .sec{position:relative;background:var(--fill-0);box-shadow:0 1px 0 var(--rule);flex:none}
+  .sec.abs{flex:1;min-height:0;overflow:hidden}
+  .phold{display:flex;align-items:center;justify-content:center;color:var(--faint);
+      font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+      background:repeating-linear-gradient(135deg,transparent 0 8px,rgba(128,128,128,.055) 8px 16px)}
+  .hgt{position:absolute;right:50px;top:8px;font:9.5px/14px var(--mono);color:var(--muted);
+       background:var(--fill-0);padding:0 4px;border-radius:2px;
+       font-variant-numeric:tabular-nums;z-index:4;border:1px solid var(--rule)}
+  .hgt.hi{color:var(--accent);border-color:var(--accent-rule);background:var(--accent-bg)}
+  .anch{box-shadow:0 -1.5px 0 var(--rule-strong)}
+  .tb{height:40px;display:flex;align-items:center;gap:8px;padding:0 16px 0 8px;flex:none;
+      background:var(--fill-1);border-top:1.5px solid var(--rule-strong);position:relative}
+  .tb i{width:26px;height:26px;border:1px solid var(--rule-strong);border-radius:3px;
+        background:var(--fill-0);display:grid;place-items:center;font-size:10px;color:var(--muted);
+        font-style:normal}
+  .tb .sp{flex:1}
+  .tb .more.on{background:var(--fill-3);border-color:var(--ink);color:var(--ink)}
+  .winlab{font:10px/1 var(--mono);color:var(--paper);background:var(--ink);
+          padding:5px 8px;border-radius:3px;letter-spacing:.06em;display:inline-block;margin-bottom:9px}
+  .winlab.acc{background:var(--accent)}
+  .tot{font:11px/1.65 var(--mono);color:var(--muted);margin:11px 0 0;max-width:360px;
+       font-variant-numeric:tabular-nums}
+  .tot b{color:var(--ink)}
+  .tot .acc{color:var(--accent);font-weight:600}
+  .tl-body{padding:3px 0 3px;background:var(--fill-0)}
+  .tl-chart{position:relative;height:72px;margin:0 10px;background:var(--fill-1);
+            border:1px solid var(--rule);overflow:hidden}
+  .tl-chart svg{display:block;width:100%;height:100%}
+  .tl-head{position:absolute;top:0;bottom:0;width:1.5px;background:var(--accent);left:58%}
+  .tl-head::after{content:"";position:absolute;left:-3px;top:-1px;width:7.5px;height:7.5px;
+                  background:var(--accent);border-radius:50%}
+  .tl-rg{position:absolute;top:2px;font:8.5px/1 var(--mono);color:var(--faint);
+         letter-spacing:.09em;text-transform:uppercase}
+  .gi.g{padding:3px 13px}
+  .gi.g .r{height:24px;margin:0;padding:0;display:flex;align-items:center}
+  .gi.g .r.names{justify-content:space-between;gap:10px}
+  .gi.g .nm{font-size:13px;font-weight:700;min-width:0;flex:1;white-space:nowrap;
+            overflow:hidden;text-overflow:ellipsis}
+  .gi.g .score{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;gap:8px}
+  .gi.g .mark{font:700 15px/1 var(--mono)}
+  .gi.g .meta{justify-content:center;gap:16px;border-top:1px solid var(--rule);
+              font:11.5px/1 var(--sans);color:var(--muted)}
+  .gi.g .meta .mi{display:flex;align-items:center;gap:6px}
+  .gi.g .rail{border-top:1px solid var(--rule);overflow:hidden;position:relative}
+  .gi.g .rail .inner{display:flex;gap:8px;flex-wrap:nowrap;width:max-content;align-items:center}
+  .gi.g .chip-tag,.gi.g .chip-col{padding:4px 11px;gap:5px}
+  .gi.g2 .rail{height:48px}
+  .gi.g2 .chip-tag,.gi.g2 .chip-col{padding:6px 11px;gap:5px}
+  .ml{padding:3px 0}
+  .mlr{height:24px;display:grid;grid-template-columns:36px 1fr 1fr 36px;align-items:center;
+       padding:0 12px;font:12px/1 var(--mono);color:var(--ink)}
+  .mlr .n{color:var(--muted)}
+  .mlr.cur{background:var(--fill-2)}
+  .mnu{position:absolute;right:-1px;bottom:41px;width:252px;background:var(--fill-0);
+       border:1px solid var(--rule-strong);box-shadow:0 8px 24px rgba(0,0,0,.14);
+       padding:5px 0;z-index:30;font:12px/1 var(--sans)}
+  .secitem{display:flex;align-items:center;gap:9px;padding:7px 11px;color:var(--ink);white-space:nowrap}
+  .secitem .kb{margin-left:auto;font:10px/1 var(--mono);color:var(--faint)}
+  .secitem .bx{width:13px;height:13px;border:1px solid var(--rule-strong);border-radius:2px;
+           flex:none;display:grid;place-items:center;font-size:9px;color:var(--fill-0)}
+  .secitem .bx.on{background:var(--ink);border-color:var(--ink);color:var(--fill-0)}
+  .secitem .bx.lock{background:var(--fill-2);border-color:var(--rule-strong);color:var(--muted)}
+  .secitem.dim{color:var(--muted)}
+  .secitem.dim .bx.on{background:var(--muted);border-color:var(--muted)}
+  .secitem .why{margin-left:auto;font:9.5px/1 var(--mono);color:var(--accent);letter-spacing:.02em}
+  .mgrp{padding:9px 11px 4px;font:9.5px/1 var(--mono);letter-spacing:.11em;
+        text-transform:uppercase;color:var(--faint)}
+  .msep{height:1px;background:var(--rule);margin:5px 0}
+  .secfoot{padding:8px 11px 4px;font:10px/1.5 var(--mono);color:var(--muted);
+         border-top:1px solid var(--rule);margin-top:5px;white-space:normal}
+  .secfoot b{color:var(--ink)}
+  .struct{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .stbox{width:300px;border:1.5px solid var(--rule-strong);background:var(--fill-0)}
+  .stbox .z{padding:9px 11px;font:11px/1.45 var(--mono);border-bottom:1px solid var(--rule)}
+  .stbox .z:last-child{border-bottom:none}
+  .stbox .z.sc{background:var(--fill-1)}
+  .stbox .z.an{background:var(--accent-bg);color:var(--accent);font-weight:600}
+  .stbox .z .t{font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--faint);
+               display:block;margin-bottom:4px;font-weight:400}
+  table.g1{border-collapse:collapse;width:100%;font-size:12.5px;margin:16px 0 0}
+  table.g1 th,table.g1 td{text-align:left;padding:7px 10px;border-bottom:1px solid var(--rule);
+                          vertical-align:top}
+  table.g1 th{font:11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+  .rule-box{border:1.5px solid var(--ink);background:var(--fill-0);padding:16px 18px;margin:18px 0 0}
+  .rule-box p{margin:0;font-size:15px;line-height:1.5}
+  .rule-box p+p{margin-top:9px;font-size:12.5px;color:var(--muted)}
+</style></head><body class="g1"><div class="wrapx"><svg width="0" height="0" style="position:absolute">
+<defs>
+<symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="m12 3 2.9 5.9 6.1.9-4.5 4.4 1.1 6.1-5.6-3-5.6 3 1.1-6.1L3 9.8l6.1-.9z"/></symbol>
+<symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.6a2 2 0 0 0-1.4-.6H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.6 8.6a2 2 0 0 0 2.8 0l7.2-7.2a2 2 0 0 0 0-2.8z"/><path d="M6.5 6.5h.01"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+<symbol id="i-calendar" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></symbol>
+<symbol id="i-pin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 4.99-5.54 10.19-7.4 11.8a1 1 0 0 1-1.2 0C9.54 20.19 4 14.99 4 10a8 8 0 0 1 16 0"/><circle cx="12" cy="10" r="3"/></symbol>
+<symbol id="i-users" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></symbol>
+<symbol id="i-pencil" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M21.17 6.81a1 1 0 0 0-3.99-3.99L3.84 16.17a2 2 0 0 0-.5.83l-1.32 4.35a.5.5 0 0 0 .62.62l4.35-1.32a2 2 0 0 0 .83-.5z"/><path d="m15 5 4 4"/></symbol>
+<symbol id="i-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></symbol>
+</defs>
+</svg>
+<header class="doc"><p class="kicker">Game Workspace &middot; &sect;5.4.2 &middot; G1 round</p><h1 class="g1">The row grid, the Move List invariant, and the anchored Timeline</h1><p>Three changes put to you together, because they only work as one: Game Info composed on the panel's existing <b>row grid</b>; a stated <b>Move List minimum of three moves</b>; and the <b>Evaluation Timeline moved to the bottom of the panel, anchored above the Game Controls Toolbar</b>, displayed only where there is room for it.</p><p>Every panel is drawn at <b>true scale</b> at the window height named on it. <b>Every number in this document is measured from the drawing at load</b> &mdash; none is typed.</p></header><h2 class="sec">&sect;1 &middot; The rule</h2><div class="rule-box"><p><b>The Move List never renders fewer than three moves.</b> The Evaluation Timeline is displayed only where the composition can honour that, and displaced where it cannot.</p><p>The Timeline&rsquo;s behaviour is a consequence of a guarantee about the Move List rather than a rule of its own. Engine and Move Explorer are sized to content and cannot be asked to yield, so the Timeline is the only lever &mdash; which makes this one conditional on one Section, with no priority list and no cascade.</p></div><h2 class="sec">&sect;2 &middot; The shell, recomposed</h2><p class="lede">The Timeline leaves the scrolling stack and joins the toolbar as anchored furniture. &sect;5.6.2 calls it <b>&ldquo;a transport control that is also a chart&rdquo;</b> &mdash; this puts the scrubber directly above the transport it drives, and the two navigation controls read as one group.</p><div class="struct" style="margin-top:20px"><div><p class="cap">Before</p><div class="stbox"><div class="z sc"><span class="t">Stack &middot; scrolls when floors cannot be honoured</span>Game Info<br>Evaluation Timeline<br>Engine<br>Explorer<br>Move List <i>(absorbing)</i></div><div class="z"><span class="t">Anchored</span>Game Controls Toolbar</div></div></div><div><p class="cap">After</p><div class="stbox"><div class="z sc"><span class="t">Stack &middot; never scrolls</span>Game Info<br>Engine<br>Explorer<br>Move List <i>(absorbing, floor 3 moves)</i></div><div class="z an"><span class="t">Anchored &middot; shown only where there is room</span>Evaluation Timeline</div><div class="z"><span class="t">Anchored</span>Game Controls Toolbar</div></div></div></div><h2 class="sec">&sect;3 &middot; The two sides of the threshold</h2><p class="lede">Game Info is drawn at its <b>four-row maximum</b> (favourited and tagged) in all three, and Engine and Move Explorer at their 108px ceilings &mdash; the worst case the composition has to survive. The threshold is computed against that maximum deliberately: keying it off current content would make the Timeline vanish the moment a tag is added to a game.</p><div class="rowx"><div class="colx"><span class="winlab">800 &times; 600 &mdash; the enforced minimum</span><p class="hd"><b>Timeline displaced</b>The full composition needs 564px and there are 520. The Timeline yields, and the Move List keeps well more than its three.</p><div class="panel" data-win="600" style="height:560px"><div class="stackarea"><div class="sec" data-name="Game Info"><div class="sec-hd"><span class="ttl">Game Info</span><span class="sp"></span><span class="st"><svg width="12" height="12"><use href="#i-star"/></svg></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="gi g"><div class="r names"><span class="nm">Hikaru</span><span class="nm" style="text-align:right">poohineedyou</span></div><div class="r score"><span class="gi-elo">3370</span><span class="mark">1&#8209;0</span><span class="gi-elo" style="text-align:right">2997</span></div><div class="r meta"><svg width="12" height="12"><use href="#i-star"/></svg><span class="mi"><svg width="13" height="13"><use href="#i-calendar"/></svg>30 Aug 2026</span><span class="mi"><svg width="13" height="13"><use href="#i-pin"/></svg>Chess.com</span></div><div class="r rail"><div class="inner"><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Attacking chess</span><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Blunder</span><span class="chip-col"><svg width="10" height="10"><use href="#i-folder"/></svg>Best games</span></div></div></div></div><div class="sec" data-name="Engine" style="height:108px"><div class="sec-hd"><span class="ttl">Engine</span><span class="sp"></span><span class="st">d24</span><span class="ic">&#732;</span></div><div class="phold" style="height:78px">Engine</div></div><div class="sec" data-name="Explorer" style="height:108px"><div class="sec-hd"><span class="ttl">Explorer</span><span class="sp"></span><span class="ic">&#732;</span></div><div class="phold" style="height:78px">Explorer</div></div><div class="sec abs" data-name="Move List"><div class="sec-hd"><span class="ttl">Move List</span><span class="sp"></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="ml" style="overflow:hidden"><div class="mlr"><span class="n">1.</span><span>e4</span><span>c5</span><span></span></div><div class="mlr"><span class="n">2.</span><span>Nf3</span><span>d6</span><span></span></div><div class="mlr"><span class="n">3.</span><span>d4</span><span>cxd4</span><span></span></div><div class="mlr"><span class="n">4.</span><span>Nxd4</span><span>Nf6</span><span></span></div><div class="mlr cur"><span class="n">5.</span><span>Nc3</span><span>a6</span><span></span></div><div class="mlr"><span class="n">6.</span><span>Be3</span><span>e5</span><span></span></div><div class="mlr"><span class="n">7.</span><span>Nb3</span><span>Be6</span><span></span></div><div class="mlr"><span class="n">8.</span><span>f3</span><span>Be7</span><span></span></div><div class="mlr"><span class="n">9.</span><span>Qd2</span><span>O-O</span><span></span></div><div class="mlr"><span class="n">10.</span><span>O-O-O</span><span>Nbd7</span><span></span></div><div class="mlr"><span class="n">11.</span><span>g4</span><span>b5</span><span></span></div><div class="mlr"><span class="n">12.</span><span>g5</span><span>b4</span><span></span></div></div></div></div><div class="tb"><i>&#9198;</i><i>&#9664;</i><i>&#9654;</i><i>&#9654;</i><i>&#9197;</i><span class="sp"></span><i>&#8645;</i><i class="more">&#8943;</i></div></div><p class="tot"></p></div><div class="colx"><span class="winlab acc">800 &times; 644 &mdash; the threshold</span><p class="hd"><b>Timeline shown, Move List exactly at its floor</b>The first height at which everything fits. One pixel shorter and the Move List would render two moves &mdash; so the Timeline goes.</p><div class="panel" data-win="644" style="height:604px"><div class="stackarea"><div class="sec" data-name="Game Info"><div class="sec-hd"><span class="ttl">Game Info</span><span class="sp"></span><span class="st"><svg width="12" height="12"><use href="#i-star"/></svg></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="gi g"><div class="r names"><span class="nm">Hikaru</span><span class="nm" style="text-align:right">poohineedyou</span></div><div class="r score"><span class="gi-elo">3370</span><span class="mark">1&#8209;0</span><span class="gi-elo" style="text-align:right">2997</span></div><div class="r meta"><svg width="12" height="12"><use href="#i-star"/></svg><span class="mi"><svg width="13" height="13"><use href="#i-calendar"/></svg>30 Aug 2026</span><span class="mi"><svg width="13" height="13"><use href="#i-pin"/></svg>Chess.com</span></div><div class="r rail"><div class="inner"><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Attacking chess</span><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Blunder</span><span class="chip-col"><svg width="10" height="10"><use href="#i-folder"/></svg>Best games</span></div></div></div></div><div class="sec" data-name="Engine" style="height:108px"><div class="sec-hd"><span class="ttl">Engine</span><span class="sp"></span><span class="st">d24</span><span class="ic">&#732;</span></div><div class="phold" style="height:78px">Engine</div></div><div class="sec" data-name="Explorer" style="height:108px"><div class="sec-hd"><span class="ttl">Explorer</span><span class="sp"></span><span class="ic">&#732;</span></div><div class="phold" style="height:78px">Explorer</div></div><div class="sec abs" data-name="Move List"><div class="sec-hd"><span class="ttl">Move List</span><span class="sp"></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="ml" style="overflow:hidden"><div class="mlr"><span class="n">1.</span><span>e4</span><span>c5</span><span></span></div><div class="mlr"><span class="n">2.</span><span>Nf3</span><span>d6</span><span></span></div><div class="mlr"><span class="n">3.</span><span>d4</span><span>cxd4</span><span></span></div><div class="mlr"><span class="n">4.</span><span>Nxd4</span><span>Nf6</span><span></span></div><div class="mlr cur"><span class="n">5.</span><span>Nc3</span><span>a6</span><span></span></div><div class="mlr"><span class="n">6.</span><span>Be3</span><span>e5</span><span></span></div><div class="mlr"><span class="n">7.</span><span>Nb3</span><span>Be6</span><span></span></div><div class="mlr"><span class="n">8.</span><span>f3</span><span>Be7</span><span></span></div><div class="mlr"><span class="n">9.</span><span>Qd2</span><span>O-O</span><span></span></div><div class="mlr"><span class="n">10.</span><span>O-O-O</span><span>Nbd7</span><span></span></div><div class="mlr"><span class="n">11.</span><span>g4</span><span>b5</span><span></span></div><div class="mlr"><span class="n">12.</span><span>g5</span><span>b4</span><span></span></div></div></div></div><div class="sec anch" data-name="Evaluation Timeline"><div class="sec-hd"><span class="ttl">Evaluation Timeline</span><span class="sp"></span><span class="st">+0.4</span><span class="ic">&#732;</span></div><div class="tl-body"><div class="tl-chart"><svg viewBox="0 0 338 72" preserveAspectRatio="none"><rect x="0" y="0" width="338" height="36" fill="var(--fill-0)"/><rect x="0" y="36" width="338" height="36" fill="var(--fill-3)"/><path d="M0,36 L22,36 L22,32 L48,32 L48,38 L74,38 L74,28 L104,28 L104,24 L138,24 L138,30 L168,30 L168,18 L198,18 L198,14 L232,14 L232,8 L268,8 L268,5 L338,5 L338,0 L0,0 Z" fill="var(--fill-0)"/><path d="M0,36 L22,36 L22,32 L48,32 L48,38 L74,38 L74,28 L104,28 L104,24 L138,24 L138,30 L168,30 L168,18 L198,18 L198,14 L232,14 L232,8 L268,8 L268,5 L338,5" fill="none" stroke="var(--ink)" stroke-width="1.4"/><line x1="0" y1="36" x2="338" y2="36" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/></svg><span class="tl-rg" style="left:6px">Opening</span><span class="tl-rg" style="right:6px">End</span><div class="tl-head"></div></div></div></div><div class="tb"><i>&#9198;</i><i>&#9664;</i><i>&#9654;</i><i>&#9654;</i><i>&#9197;</i><span class="sp"></span><i>&#8645;</i><i class="more">&#8943;</i></div></div><p class="tot"></p></div><div class="colx"><span class="winlab">800 &times; 768 &mdash; a normal laptop</span><p class="hd"><b>Timeline shown, Move List absorbing</b>Everything above the threshold goes to the absorber. This is what almost every user sees, almost always.</p><div class="panel" data-win="768" style="height:728px"><div class="stackarea"><div class="sec" data-name="Game Info"><div class="sec-hd"><span class="ttl">Game Info</span><span class="sp"></span><span class="st"><svg width="12" height="12"><use href="#i-star"/></svg></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="gi g"><div class="r names"><span class="nm">Hikaru</span><span class="nm" style="text-align:right">poohineedyou</span></div><div class="r score"><span class="gi-elo">3370</span><span class="mark">1&#8209;0</span><span class="gi-elo" style="text-align:right">2997</span></div><div class="r meta"><svg width="12" height="12"><use href="#i-star"/></svg><span class="mi"><svg width="13" height="13"><use href="#i-calendar"/></svg>30 Aug 2026</span><span class="mi"><svg width="13" height="13"><use href="#i-pin"/></svg>Chess.com</span></div><div class="r rail"><div class="inner"><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Attacking chess</span><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Blunder</span><span class="chip-col"><svg width="10" height="10"><use href="#i-folder"/></svg>Best games</span></div></div></div></div><div class="sec" data-name="Engine" style="height:108px"><div class="sec-hd"><span class="ttl">Engine</span><span class="sp"></span><span class="st">d24</span><span class="ic">&#732;</span></div><div class="phold" style="height:78px">Engine</div></div><div class="sec" data-name="Explorer" style="height:108px"><div class="sec-hd"><span class="ttl">Explorer</span><span class="sp"></span><span class="ic">&#732;</span></div><div class="phold" style="height:78px">Explorer</div></div><div class="sec abs" data-name="Move List"><div class="sec-hd"><span class="ttl">Move List</span><span class="sp"></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="ml" style="overflow:hidden"><div class="mlr"><span class="n">1.</span><span>e4</span><span>c5</span><span></span></div><div class="mlr"><span class="n">2.</span><span>Nf3</span><span>d6</span><span></span></div><div class="mlr"><span class="n">3.</span><span>d4</span><span>cxd4</span><span></span></div><div class="mlr"><span class="n">4.</span><span>Nxd4</span><span>Nf6</span><span></span></div><div class="mlr cur"><span class="n">5.</span><span>Nc3</span><span>a6</span><span></span></div><div class="mlr"><span class="n">6.</span><span>Be3</span><span>e5</span><span></span></div><div class="mlr"><span class="n">7.</span><span>Nb3</span><span>Be6</span><span></span></div><div class="mlr"><span class="n">8.</span><span>f3</span><span>Be7</span><span></span></div><div class="mlr"><span class="n">9.</span><span>Qd2</span><span>O-O</span><span></span></div><div class="mlr"><span class="n">10.</span><span>O-O-O</span><span>Nbd7</span><span></span></div><div class="mlr"><span class="n">11.</span><span>g4</span><span>b5</span><span></span></div><div class="mlr"><span class="n">12.</span><span>g5</span><span>b4</span><span></span></div></div></div></div><div class="sec anch" data-name="Evaluation Timeline"><div class="sec-hd"><span class="ttl">Evaluation Timeline</span><span class="sp"></span><span class="st">+0.4</span><span class="ic">&#732;</span></div><div class="tl-body"><div class="tl-chart"><svg viewBox="0 0 338 72" preserveAspectRatio="none"><rect x="0" y="0" width="338" height="36" fill="var(--fill-0)"/><rect x="0" y="36" width="338" height="36" fill="var(--fill-3)"/><path d="M0,36 L22,36 L22,32 L48,32 L48,38 L74,38 L74,28 L104,28 L104,24 L138,24 L138,30 L168,30 L168,18 L198,18 L198,14 L232,14 L232,8 L268,8 L268,5 L338,5 L338,0 L0,0 Z" fill="var(--fill-0)"/><path d="M0,36 L22,36 L22,32 L48,32 L48,38 L74,38 L74,28 L104,28 L104,24 L138,24 L138,30 L168,30 L168,18 L198,18 L198,14 L232,14 L232,8 L268,8 L268,5 L338,5" fill="none" stroke="var(--ink)" stroke-width="1.4"/><line x1="0" y1="36" x2="338" y2="36" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/></svg><span class="tl-rg" style="left:6px">Opening</span><span class="tl-rg" style="right:6px">End</span><div class="tl-head"></div></div></div></div><div class="tb"><i>&#9198;</i><i>&#9664;</i><i>&#9654;</i><i>&#9654;</i><i>&#9197;</i><span class="sp"></span><i>&#8645;</i><i class="more">&#8943;</i></div></div><p class="tot"></p></div></div><h2 class="sec">&sect;3.1 &middot; The chip rail &mdash; how much air it can have</h2><p class="lede">The rail was reading crowded. Chips were <span class="mono">4px 8px</span> with a 6px gap; they are now <span class="mono">4px 11px</span> with an 8px gap and a wider icon-to-text gap. <b>All of that is horizontal, so it costs the grid nothing</b> &mdash; the rail is still one 24px row and Game Info is still 132px. Chips go from 105.5px wide to 112.5px, so slightly fewer sit in view before the rail scrolls, which is what the rail is for.</p><p class="lede">Vertical air is the part that is not free. The chip is 20.5px in a 24px row, leaving 1.75px above and below it. Growing it further eats that clearance and the rail begins to look jammed against the meta row above; the only real alternative is to give the rail <b>two grid units</b> instead of one.</p><div class="rowx"><div class="colx"><p class="hd"><b>A &middot; One unit &mdash; as drawn</b>Game Info stays 4 rows. Threshold stays at 644px, and the Timeline is absent across a 44px band.</p><div class="panel" data-card="A"><div class="stackarea"><div class="sec" data-name="Game Info"><div class="sec-hd"><span class="ttl">Game Info</span><span class="sp"></span><span class="st"><svg width="12" height="12"><use href="#i-star"/></svg></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="gi g"><div class="r names"><span class="nm">Hikaru</span><span class="nm" style="text-align:right">poohineedyou</span></div><div class="r score"><span class="gi-elo">3370</span><span class="mark">1&#8209;0</span><span class="gi-elo" style="text-align:right">2997</span></div><div class="r meta"><svg width="12" height="12"><use href="#i-star"/></svg><span class="mi"><svg width="13" height="13"><use href="#i-calendar"/></svg>30 Aug 2026</span><span class="mi"><svg width="13" height="13"><use href="#i-pin"/></svg>Chess.com</span></div><div class="r rail"><div class="inner"><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Attacking chess</span><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Blunder</span><span class="chip-col"><svg width="10" height="10"><use href="#i-folder"/></svg>Best games</span></div></div></div></div></div></div><p class="tot" data-card="A"></p></div><div class="colx"><p class="hd"><b>B &middot; Two units &mdash; a taller rail</b>Game Info becomes 5 rows. Generous, but paid for at the threshold rather than at the minimum.</p><div class="panel" data-card="B"><div class="stackarea"><div class="sec" data-name="Game Info"><div class="sec-hd"><span class="ttl">Game Info</span><span class="sp"></span><span class="st"><svg width="12" height="12"><use href="#i-star"/></svg></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="gi g g2"><div class="r names"><span class="nm">Hikaru</span><span class="nm" style="text-align:right">poohineedyou</span></div><div class="r score"><span class="gi-elo">3370</span><span class="mark">1&#8209;0</span><span class="gi-elo" style="text-align:right">2997</span></div><div class="r meta"><svg width="12" height="12"><use href="#i-star"/></svg><span class="mi"><svg width="13" height="13"><use href="#i-calendar"/></svg>30 Aug 2026</span><span class="mi"><svg width="13" height="13"><use href="#i-pin"/></svg>Chess.com</span></div><div class="r rail"><div class="inner"><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Attacking chess</span><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Blunder</span><span class="chip-col"><svg width="10" height="10"><use href="#i-folder"/></svg>Best games</span></div></div></div></div></div></div><p class="tot" data-card="B"></p></div><div class="colx" style="width:330px"><p class="hd"><b>What B costs</b></p><table class="g1"><tr><th></th><th style="text-align:right">A</th><th style="text-align:right">B</th></tr><tr><td>Game Info, tagged</td><td class="n">132</td><td class="n">156</td></tr><tr><td>Full composition</td><td class="n">564</td><td class="n">588</td></tr><tr><td>Timeline threshold</td><td class="n">644</td><td class="n">668</td></tr><tr><td>Band with no Timeline</td><td class="n">44px</td><td class="n">68px</td></tr><tr><td>Move List at 800&nbsp;&times;&nbsp;600</td><td class="n">172</td><td class="n">148</td></tr></table><p class="capn" style="max-width:44ch;margin-top:12px">B never breaks the invariant &mdash; the Move List still holds four moves at the minimum window. What it spends is the <b>threshold</b>: the Timeline stays away over a band half again as wide.</p></div></div><h2 class="sec">&sect;4 &middot; The toolbar menu, and the third state</h2><p class="lede">Section visibility moves into the Game Controls Toolbar&rsquo;s <b>More</b> menu &mdash; &sect;5.4.2 gives the toolbar &ldquo;secondary game and analysis commands&rdquo; but never said where the one composition control lives. The displaced Timeline needs a <b>third presentation</b>: ticked would claim it is on screen, unticked would misreport the user&rsquo;s own choice.</p><div class="rowx"><div class="colx"><span class="winlab">800 &times; 600 &mdash; Sections menu open</span><p class="hd"></p><div class="panel" data-win="600" style="height:560px"><div class="stackarea"><div class="sec" data-name="Game Info"><div class="sec-hd"><span class="ttl">Game Info</span><span class="sp"></span><span class="st"><svg width="12" height="12"><use href="#i-star"/></svg></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="gi g"><div class="r names"><span class="nm">Hikaru</span><span class="nm" style="text-align:right">poohineedyou</span></div><div class="r score"><span class="gi-elo">3370</span><span class="mark">1&#8209;0</span><span class="gi-elo" style="text-align:right">2997</span></div><div class="r meta"><svg width="12" height="12"><use href="#i-star"/></svg><span class="mi"><svg width="13" height="13"><use href="#i-calendar"/></svg>30 Aug 2026</span><span class="mi"><svg width="13" height="13"><use href="#i-pin"/></svg>Chess.com</span></div><div class="r rail"><div class="inner"><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Attacking chess</span><span class="chip-tag"><svg width="10" height="10"><use href="#i-tag"/></svg>Blunder</span><span class="chip-col"><svg width="10" height="10"><use href="#i-folder"/></svg>Best games</span></div></div></div></div><div class="sec" data-name="Engine" style="height:108px"><div class="sec-hd"><span class="ttl">Engine</span><span class="sp"></span><span class="st">d24</span><span class="ic">&#732;</span></div><div class="phold" style="height:78px">Engine</div></div><div class="sec" data-name="Explorer" style="height:108px"><div class="sec-hd"><span class="ttl">Explorer</span><span class="sp"></span><span class="ic">&#732;</span></div><div class="phold" style="height:78px">Explorer</div></div><div class="sec abs" data-name="Move List"><div class="sec-hd"><span class="ttl">Move List</span><span class="sp"></span><span class="ic">&#8943;</span><span class="ic">&#732;</span></div><div class="ml" style="overflow:hidden"><div class="mlr"><span class="n">1.</span><span>e4</span><span>c5</span><span></span></div><div class="mlr"><span class="n">2.</span><span>Nf3</span><span>d6</span><span></span></div><div class="mlr"><span class="n">3.</span><span>d4</span><span>cxd4</span><span></span></div><div class="mlr"><span class="n">4.</span><span>Nxd4</span><span>Nf6</span><span></span></div><div class="mlr cur"><span class="n">5.</span><span>Nc3</span><span>a6</span><span></span></div><div class="mlr"><span class="n">6.</span><span>Be3</span><span>e5</span><span></span></div><div class="mlr"><span class="n">7.</span><span>Nb3</span><span>Be6</span><span></span></div><div class="mlr"><span class="n">8.</span><span>f3</span><span>Be7</span><span></span></div><div class="mlr"><span class="n">9.</span><span>Qd2</span><span>O-O</span><span></span></div><div class="mlr"><span class="n">10.</span><span>O-O-O</span><span>Nbd7</span><span></span></div><div class="mlr"><span class="n">11.</span><span>g4</span><span>b5</span><span></span></div><div class="mlr"><span class="n">12.</span><span>g5</span><span>b4</span><span></span></div></div></div></div><div class="tb"><i>&#9198;</i><i>&#9664;</i><i>&#9654;</i><i>&#9654;</i><i>&#9197;</i><span class="sp"></span><i>&#8645;</i><i class="more on">&#8943;</i><div class="mnu"><div class="secitem"><span style="width:13px"></span><span>Flip board</span><span class="kb">F</span></div><div class="secitem"><span style="width:13px"></span><span>Copy PGN</span></div><div class="secitem"><span style="width:13px"></span><span>Analyse game&hellip;</span></div><div class="msep"></div><div class="mgrp">Sections</div><div class="secitem"><span class="bx lock">&#10003;</span><span>Game Info</span></div><div class="secitem"><span class="bx on">&#10003;</span><span>Engine</span></div><div class="secitem"><span class="bx on">&#10003;</span><span>Explorer</span></div><div class="secitem"><span class="bx lock">&#10003;</span><span>Move List</span></div><div class="secitem dim"><span class="bx on">&#10003;</span><span>Evaluation Timeline</span><span class="why">no room at this size</span></div><div class="secfoot">The Evaluation Timeline needs a window <b>644px</b> tall or more. Below that, the <b>Move List</b> keeps its three moves.</div></div></div></div><p class="tot"></p></div><div class="colx" style="width:340px"><p class="hd"><b>What the four states say</b></p><table class="g1"><tr><th>State</th><th>Means</th></tr><tr><td><b>Ticked</b></td><td>The user wants it, and it is on screen.</td></tr><tr><td><b>Unticked</b></td><td>The user removed it. Persists across sessions <i>and</i> window sizes.</td></tr><tr><td><b>Ticked, dimmed,<br>with a reason</b></td><td>The user wants it; the layout has displaced it. <b>Never written to the user's stored state</b> &mdash; grow the window and it returns on its own.</td></tr><tr><td><b>Ticked, locked</b></td><td>Not hideable. Move List is the absorber; Game Info is the game's identity &mdash; though its <span class="mono">Hideable</span> is still undeclared.</td></tr></table><p class="capn" style="max-width:46ch;margin-top:14px">The footer follows &sect;5.4.2&rsquo;s own source-selector pattern &mdash; a footer stating what the list cannot say for itself &mdash; rather than inventing a second way to explain a menu.</p></div></div><h2 class="sec">&sect;5 &middot; Alternative &mdash; the Timeline as transport furniture</h2><p class="lede">If the Timeline is anchored to the toolbar, a case can be made that it stops being a Section at all and becomes part of the transport, the way the Evaluation Bar is board furniture. It would lose its 30px Section header &mdash; and with it the collapse control and the status slot carrying the evaluation at the playhead. <b>This is a separate decision and is not claimed by this round.</b></p><div class="rowx"><div class="colx"><p class="hd"><b>A &middot; Anchored, still a Section</b>Keeps its header, its collapse control, and the playhead evaluation in the status slot. This is what &sect;3 draws.</p><div class="panel"><div class="stackarea"></div><div class="sec anch" data-name="Evaluation Timeline"><div class="sec-hd"><span class="ttl">Evaluation Timeline</span><span class="sp"></span><span class="st">+0.4</span><span class="ic">&#732;</span></div><div class="tl-body"><div class="tl-chart"><svg viewBox="0 0 338 72" preserveAspectRatio="none"><rect x="0" y="0" width="338" height="36" fill="var(--fill-0)"/><rect x="0" y="36" width="338" height="36" fill="var(--fill-3)"/><path d="M0,36 L22,36 L22,32 L48,32 L48,38 L74,38 L74,28 L104,28 L104,24 L138,24 L138,30 L168,30 L168,18 L198,18 L198,14 L232,14 L232,8 L268,8 L268,5 L338,5 L338,0 L0,0 Z" fill="var(--fill-0)"/><path d="M0,36 L22,36 L22,32 L48,32 L48,38 L74,38 L74,28 L104,28 L104,24 L138,24 L138,30 L168,30 L168,18 L198,18 L198,14 L232,14 L232,8 L268,8 L268,5 L338,5" fill="none" stroke="var(--ink)" stroke-width="1.4"/><line x1="0" y1="36" x2="338" y2="36" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/></svg><span class="tl-rg" style="left:6px">Opening</span><span class="tl-rg" style="right:6px">End</span><div class="tl-head"></div></div></div></div><div class="tb"><i>&#9198;</i><i>&#9664;</i><i>&#9654;</i><i>&#9654;</i><i>&#9197;</i><span class="sp"></span><i>&#8645;</i><i>&#8943;</i></div></div><p class="tot" data-alt="A"></p></div><div class="colx"><p class="hd"><b>B &middot; Anchored as furniture</b>No header. 30px cheaper, which drops the threshold to about 614px and narrows the displaced band to roughly 14px &mdash; but the playhead evaluation and the collapse control both need new homes.</p><div class="panel"><div class="stackarea"></div><div class="sec anch" data-name="Evaluation Timeline"><div class="tl-body"><div class="tl-chart"><svg viewBox="0 0 338 72" preserveAspectRatio="none"><rect x="0" y="0" width="338" height="36" fill="var(--fill-0)"/><rect x="0" y="36" width="338" height="36" fill="var(--fill-3)"/><path d="M0,36 L22,36 L22,32 L48,32 L48,38 L74,38 L74,28 L104,28 L104,24 L138,24 L138,30 L168,30 L168,18 L198,18 L198,14 L232,14 L232,8 L268,8 L268,5 L338,5 L338,0 L0,0 Z" fill="var(--fill-0)"/><path d="M0,36 L22,36 L22,32 L48,32 L48,38 L74,38 L74,28 L104,28 L104,24 L138,24 L138,30 L168,30 L168,18 L198,18 L198,14 L232,14 L232,8 L268,8 L268,5 L338,5" fill="none" stroke="var(--ink)" stroke-width="1.4"/><line x1="0" y1="36" x2="338" y2="36" stroke="var(--muted)" stroke-width="1" stroke-dasharray="3 3" opacity=".7"/></svg><span class="tl-rg" style="left:6px">Opening</span><span class="tl-rg" style="right:6px">End</span><div class="tl-head"></div></div></div></div><div class="tb"><i>&#9198;</i><i>&#9664;</i><i>&#9654;</i><i>&#9654;</i><i>&#9197;</i><span class="sp"></span><i>&#8645;</i><i>&#8943;</i></div></div><p class="tot" data-alt="B"></p></div></div><h2 class="sec">&sect;6 &middot; What this round asks, and what it does not</h2><table class="g1"><tr><th>#</th><th>Item</th><th>Status</th></tr><tr><td>1</td><td>Game Info on the row grid &mdash; <span class="mono">30 + 6 + n &times; 24</span>, three rows untagged and four tagged</td><td><b>For G1.</b> Replaces open item #4&rsquo;s &ldquo;sized-to-content with a ceiling&rdquo;. The card has two heights, not a range &mdash; the chip rail scrolls sideways, so nothing between them is reachable.</td></tr><tr><td>2</td><td>Move List floor stated as <b>three moves</b>; its row height stated as <b>24px</b>, the grid &sect;5.6.3 and &sect;5.6.4 already share</td><td><b>For G1.</b> &sect;5.6.1 specifies the row&rsquo;s widths in detail but has never stated a row height. Three rows is 108px &mdash; the current 110 floor, tidied onto the grid.</td></tr><tr><td>3</td><td>Evaluation Timeline anchored below the stack, above the toolbar</td><td><b>For G1.</b></td></tr><tr><td>4</td><td>Timeline displayed only where the Move List keeps three moves</td><td><b>For G1.</b> Resolves open item #9 by removing the case rather than accepting it &mdash; <b>Game Details never scrolls</b>, so &sect;5.5&rsquo;s three-tier model loses a state rather than gaining a behaviour.</td></tr><tr><td>5</td><td>Section visibility in the toolbar&rsquo;s More menu, with the displaced third state</td><td><b>For G1.</b></td></tr><tr><td>6</td><td>Timeline as furniture rather than a Section (&sect;5)</td><td><b>Not claimed.</b> Needs a decision on where the playhead evaluation goes.</td></tr><tr><td>7</td><td>Hysteresis on the threshold</td><td><b>Not drawn.</b> A single threshold pops a 108px Section in and out mid-resize. Displace below 644, restore around 660 &mdash; the dead band is needed, the number is yours.</td></tr><tr><td>8</td><td>Whether the absorber snaps to whole rows</td><td><b>Not claimed.</b> Drawn taking the remainder, so a part-row shows at the bottom as a scroll hint. Snapping would leave an unallocated gap above the Timeline instead.</td></tr><tr><td>9</td><td>Game Info <span class="mono">Hideable</span></td><td><b>Still open</b> from the previous round. Drawn as locked.</td></tr><tr><td>10</td><td>Composition order</td><td><b>Flagged, not proposed.</b> &sect;5.4.2&rsquo;s table lists Game Info, Timeline, Engine, <b>Move List, Move Explorer</b>; the approved GI-WORST figure drew Move Explorer <i>above</i> Move List. One of the two is wrong. Drawn here as the figure had it.</td></tr></table></div>
+<script>
+document.querySelectorAll('.panel[data-win]').forEach(function(p){
+  var secs=[].slice.call(p.querySelectorAll('.sec'));
+  var ml=null, tl=null;
+  secs.forEach(function(s){
+    var h=Math.round(s.getBoundingClientRect().height);
+    var key=(s.dataset.name==='Move List'||s.dataset.name==='Evaluation Timeline');
+    var b=document.createElement('span');
+    b.className='hgt'+(key?' hi':''); b.textContent=h+'px'; s.appendChild(b);
+    if(s.dataset.name==='Move List') ml=h;
+    if(s.dataset.name==='Evaluation Timeline') tl=h;
+  });
+  var win=+p.dataset.win, area=win-40, budget=area-40;
+  var rows=Math.floor((ml-36)/24), rem=(ml-36)%24;
+  var line='<b>'+win+'px window</b> &rarr; '+area+'px workspace area &rarr; <b>'+budget+'px</b> for Sections + Timeline<br>';
+  line += (tl? 'Timeline <b>shown</b>, anchored at '+tl+'px. ' : '<span class="acc">Timeline displaced.</span> ');
+  line += 'Move List <b>'+ml+'px</b> = <b>'+rows+' rows</b>'+(rem?' + '+rem+'px':'')+'.';
+  if(rows<3) line+=' <span class="acc">&larr; INVARIANT BROKEN</span>';
+  else if(rows===3) line+=' <span class="acc">&larr; exactly at its floor</span>';
+  p.parentNode.querySelector('.tot').innerHTML=line;
+});
+document.querySelectorAll('.panel[data-card]').forEach(function(p){
+  var sec=p.querySelector('.sec'), rail=p.querySelector('.rail'), c=p.querySelector('.chip-tag');
+  var h=Math.round(sec.getBoundingClientRect().height);
+  var b=document.createElement('span'); b.className='hgt hi'; b.textContent=h+'px'; sec.appendChild(b);
+  var rh=Math.round(rail.getBoundingClientRect().height);
+  var ch=Math.round(c.getBoundingClientRect().height*10)/10;
+  var cw=Math.round(c.getBoundingClientRect().width*10)/10;
+  p.parentNode.querySelector('.tot[data-card]').innerHTML=
+    'Game Info <b>'+h+'px</b> = <b>'+Math.round((h-36)/24)+' rows</b>. Rail <b>'+rh+'px</b>, '+
+    'chip '+ch+' &times; '+cw+', clearance '+Math.round((rh-ch)*10)/10+'px.';
+});
+document.querySelectorAll('.tot[data-alt]').forEach(function(t){
+  var p=t.parentNode.querySelector('.panel');
+  var s=p.querySelector('.sec');
+  t.innerHTML='Timeline block measures <b>'+Math.round(s.getBoundingClientRect().height)+'px</b>.';
+});
+</script></body></html>

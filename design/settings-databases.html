@@ -1,0 +1,300 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessgui — Settings — Databases</title>
+<style>
+ :root{--paper:#f7f7f5;--ink:#1b1b19;--muted:#6b6b66;--faint:#94948e;--rule:#d6d6d1;--rule-strong:#adada6;
+  --fill-0:#fff;--fill-1:#ececea;--fill-2:#dededa;--fill-3:#cfcfc9;--accent:#8a5a1c;--accent-bg:#f6ecdc;
+  --accent-rule:#d9b478;--warn:#8a2c2c;--warn-bg:#f8e9e9;--ok:#2f5d3a;--ok-bg:#e9f2ec;
+  --sel:#dfe7f2;--sel-rule:#93a9c8;
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+ @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#141413;--ink:#eceae4;--muted:#a3a099;--faint:#7d7a73;--rule:#333330;--rule-strong:#55554f;
+  --fill-0:#1e1e1c;--fill-1:#2a2a27;--fill-2:#353531;--fill-3:#43433d;--accent:#d9a55f;--accent-bg:#2c2418;
+  --accent-rule:#6b5326;--warn:#e08a8a;--warn-bg:#2e1c1c;--ok:#8fbf9c;--ok-bg:#1b2a20;
+  --sel:#25303f;--sel-rule:#42597a}}
+ *{box-sizing:border-box} svg{display:block}
+ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans)}
+ .wrap{max-width:1060px;margin:0 auto;padding:56px 28px 120px}
+ header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:8px}
+ .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+ header.doc h1{font-size:29px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+ header.doc p{margin:0 0 8px;color:var(--muted);max-width:72ch}
+ .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+ .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+ .chip b{color:var(--ink);font-weight:600}
+ .gate{border:1px solid var(--warn);background:var(--warn-bg);border-radius:4px;padding:14px 16px;margin:22px 0 0}
+ .gate h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+ .gate p{margin:0;color:var(--ink);font-size:13px;max-width:74ch}
+ h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+   margin:52px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+ figure.wf{margin:26px 0 0;padding:0}
+ .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+ .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+ .wf-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+ .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:76ch}
+ .wf-canvas{background:var(--fill-1);border:1px solid var(--rule);border-radius:4px;padding:22px 20px;overflow-x:auto}
+ p.note{color:var(--muted);font-size:13px;max-width:76ch;margin:14px 0 0}
+ p.note b{color:var(--ink)}
+ table{border-collapse:collapse;width:100%;font-size:13px;margin-top:14px}
+ th,td{text-align:left;padding:8px 12px 8px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+ th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding-bottom:9px}
+ td.m{font-family:var(--mono);font-size:11.5px}
+ ul.pts{margin:14px 0 0;padding-left:19px;color:var(--muted);font-size:13px;max-width:76ch}
+ ul.pts li{margin-bottom:7px} ul.pts b{color:var(--ink)}
+ .ptitle{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+ .stack{display:flex;flex-direction:column;gap:24px}
+
+ .win{width:1000px;background:var(--fill-0);border:1px solid var(--rule-strong);border-radius:7px;overflow:hidden}
+ .tabbar{height:40px;display:flex;align-items:flex-end;padding:0 8px;background:var(--fill-2);
+   border-bottom:1px solid var(--rule-strong)}
+ .tab{height:31px;display:flex;align-items:center;padding:0 13px;font-size:12.5px;color:var(--muted);
+   border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0}
+ .tab.on{background:var(--fill-0);color:var(--ink);font-weight:600;border-color:var(--rule-strong)}
+ .body{display:flex;height:576px}
+ .sside{width:220px;flex:none;background:var(--fill-1);border-right:1px solid var(--rule-strong);
+   padding:8px;display:flex;flex-direction:column;gap:2px}
+ .srow{height:44px;display:flex;align-items:center;gap:11px;padding:0 10px;border-radius:6px;font-size:13.5px}
+ .srow.on{background:var(--sel);box-shadow:inset 0 0 0 1px var(--sel-rule);font-weight:600}
+ .srow .g{width:18px;height:18px;flex:none;display:grid;place-items:center;color:var(--muted)}
+ .srow.on .g{color:var(--ink)}
+ .cont{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--fill-0)}
+ .chead{height:44px;flex:none;display:flex;align-items:center;gap:12px;padding:0 20px;border-bottom:1px solid var(--rule)}
+ .chead h4{margin:0;font-size:15px;flex:none}
+ .chead .sp{flex:1}
+ .field{display:flex;align-items:center;gap:8px;height:28px;padding:0 9px;background:var(--fill-1);
+   border:1px solid var(--rule-strong);border-radius:5px;color:var(--faint);font-size:12px;width:180px}
+ .field.sel{padding-right:7px} .field .gr{flex:1}
+ .field svg{flex:none;color:var(--faint)}
+ .b{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 11px;border:1px solid var(--rule-strong);
+   border-radius:5px;background:var(--fill-0);font-size:12px;font-weight:600;color:var(--ink);white-space:nowrap}
+ .b.pri{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+ .scroll{flex:1;min-height:0;overflow:hidden;padding:18px 20px 20px}
+ .glab{font:10px/1 var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin:0 0 7px;padding-left:2px}
+ .glab.two{margin-top:20px}
+ .box{border:1px solid var(--rule-strong);border-radius:9px;background:var(--fill-0);overflow:hidden}
+ .box .r + .r{border-top:1px solid var(--rule)}
+
+ .r{height:44px;display:flex;align-items:center;gap:12px;padding:0 14px}
+ .r .ic,.r .mk{width:18px;height:18px;flex:none;display:grid;place-items:center}
+ .r .ic{color:var(--muted)} .r .mk{color:var(--ink)}
+ .r .nm{font-size:13.5px;font-weight:600;flex:none;white-space:nowrap}
+ .r .dt{flex:1;min-width:0;font-size:12px;color:var(--muted);text-align:right;overflow:hidden;
+   text-overflow:ellipsis;white-space:nowrap}
+ .r .cv{width:20px;height:20px;flex:none;color:var(--faint);display:grid;place-items:center}
+ .r.dim .nm,.r.dim .dt{color:var(--faint)}
+ .r.hov{background:var(--fill-1)}
+ .tg{width:34px;height:20px;flex:none;border-radius:10px;background:var(--fill-3);position:relative}
+ .tg::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;
+   box-shadow:0 1px 2px rgba(0,0,0,.3)}
+ .tg.on{background:var(--ok)} .tg.on::after{left:16px}
+ .inst{width:78px;height:26px;flex:none;border:1px solid var(--rule-strong);border-radius:5px;background:var(--fill-0);
+   display:grid;place-items:center;font-size:11.5px;font-weight:600;color:var(--ink);position:relative;overflow:hidden}
+ .inst .bar{position:absolute;inset:0;width:var(--p,0%);background:var(--sel)}
+ .inst .tx{position:relative;z-index:1}
+ .inst.done{border-color:var(--ok);color:var(--ok)}
+ .exp{border-top:1px solid var(--rule);background:var(--fill-1);padding:4px 14px 8px 44px}
+ .er{height:36px;display:flex;align-items:center;gap:12px;font-size:12.5px}
+ .er .k{flex:1;min-width:0}
+ .er .v{font:11px/1 var(--mono);color:var(--muted)}
+ .panel{border:1px solid var(--rule-strong);border-radius:7px;background:var(--fill-0);overflow:hidden}
+</style></head>
+<body><div class="wrap">
+
+<header class="doc">
+  <div class="kicker">Chessgui · Settings Workspace · Databases</div>
+  <h1>Databases</h1>
+  <p>The row pattern established in <code>settings-consolidated</code> Rev A: Installed and Available in boxed groups, 44px rows, the Add button in
+     the section heading, the Install button doubling as the progress indicator, expander rows. Only the
+     detail line and the labels differ.</p>
+  <div class="meta">
+    <span class="chip"><b>Rev</b> E</span>
+    <span class="chip"><b>Date</b> 4 Sep 2026</span>
+    <span class="chip"><b>Basis</b> settings-consolidated Rev A</span>
+    <span class="chip"><b>Gates</b> G1 G2 G3</span>
+    <span class="chip"><b>Spec</b> §3.4.8</span>
+  </div>
+</header>
+
+  <div class="gate" style="border-color:var(--accent-rule);background:var(--accent-bg)">
+    <h4 style="color:var(--accent)">Rev E — consistency pass, 10 Sep 2026</h4>
+    <p style="color:var(--ink)">Presentation only; no clause changed. Lucide glyphs in the Settings
+       Sidebar (§3.4.4 already required a leading icon, and none was drawn); every icon a real Lucide
+       path at stroke 1.5; the Unicode <code>›</code> <code>⌄</code> <code>＋</code> replaced
+       with bundled SVG per §7.4; an 18px leading slot declared so the name column starts at 44px in
+       every section; the chevron on a 20px target. <b>Row height, grouping, disclosure and section
+       content are untouched.</b></p>
+  </div>
+
+<div class="gate" style="border-color:var(--ok);background:var(--ok-bg)">
+  <h4 style="color:var(--ok)">Rev D accepted — G1, G2, G3</h4>
+  <p><b>All three gates passed 4 Sep 2026.</b> This is the approved reference, built into the
+     prototype and specified as <b>§3.4.8.1</b>. Game and player counts are the figures supplied; download sizes are placeholders.</p>
+</div>
+
+<h2 class="sec">What changes from Engines</h2>
+
+<table>
+  <thead><tr><th style="width:20%">Element</th><th style="width:36%">Engines</th><th>Databases</th></tr></thead>
+  <tbody>
+    <tr><td>Heading button</td><td class="m">Add engine</td><td class="m">Add database</td></tr>
+    <tr><td>Installed detail line</td><td class="m">UCI · 4 threads · 512 MB</td><td class="m">9.57M games · 526k players · 4.1 GB</td></tr>
+    <tr><td>Available detail line</td><td class="m">UCI · 42 MB download</td><td class="m">9.57M games · 526k players · 4.1 GB</td></tr>
+    <tr><td>Expander fields</td><td class="m">Threads · Hash · Location</td><td class="m">Name · Version</td></tr>
+    <tr><td>Everything else</td><td colspan="2">Identical — 44px rows, boxed groups, alphabetical order, toggle then chevron, Install pill at 5px radius, disappears from Available after a brief “Installed”.</td></tr>
+  </tbody>
+</table>
+
+<h2 class="sec">DB‑01 — the section</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">DB‑01</span><h3>Settings → Databases, 1000×616</h3></div>
+  <div class="wf-canvas">
+    <div class="win">
+      <div class="tabbar"><div class="tab">Library</div><div class="tab on">Settings</div></div>
+      <div class="body">
+        <div class="sside">
+          <div class="srow"><span class="g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 4h-7M10 4H3M21 12h-9M8 12H3M21 20h-5M12 20H3M14 2v4M8 10v4M16 18v4"/></svg></span>General</div>
+          <div class="srow"><span class="g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13.5" cy="6.5" r=".5" fill="currentColor"/><circle cx="17.5" cy="10.5" r=".5" fill="currentColor"/><circle cx="8.5" cy="7.5" r=".5" fill="currentColor"/><circle cx="6.5" cy="12.5" r=".5" fill="currentColor"/><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10c.926 0 1.648-.746 1.648-1.688 0-.437-.18-.835-.437-1.125-.29-.289-.438-.652-.438-1.125a1.64 1.64 0 0 1 1.668-1.668h1.996c3.051 0 5.555-2.503 5.555-5.554C21.965 6.012 17.461 2 12 2z"/></svg></span>Appearance</div>
+          <div class="srow"><span class="g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="16" x="4" y="4" rx="2"/><rect width="6" height="6" x="9" y="9" rx="1"/><path d="M15 2v2M15 20v2M2 15h2M2 9h2M20 15h2M20 9h2M9 2v2M9 20v2"/></svg></span>Engines</div>
+          <div class="srow"><span class="g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg></span>Subscriptions</div>
+          <div class="srow on"><span class="g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>Databases</div>
+          <div class="srow"><span class="g"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg></span>About</div>
+        </div>
+
+        <div class="cont">
+          <div class="chead">
+            <h4>Databases</h4><span class="sp"></span>
+            <span class="field"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>Search databases</span>
+            <span class="b pri"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M12 5v14"/></svg>Add database</span>
+          </div>
+          <div class="scroll">
+            <p class="glab">Installed</p>
+            <div class="box">
+              <div class="r">
+                <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+                <span class="nm">Master Games</span>
+                <span class="dt">2.4M games · 198k players · 1.0 GB</span>
+                <span class="tg on"></span><span class="cv"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+              </div>
+              <div class="r">
+                <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+                <span class="nm">MillionBase</span>
+                <span class="dt">3.45M games · 284k players · 1.5 GB</span>
+                <span class="tg on"></span><span class="cv"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+              </div>
+              <div class="r">
+                <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+                <span class="nm">My Games</span>
+                <span class="dt">812 games · 24 players · 2.4 MB</span>
+                <span class="tg"></span><span class="cv"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+              </div>
+            </div>
+
+            <p class="glab two">Available</p>
+            <div class="box">
+              <div class="r">
+                <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+                <span class="nm">Ajedrez Data — Correspondence</span>
+                <span class="dt">1.52M games · 40k players · 0.6 GB</span>
+                <span class="inst"><span class="tx">Install</span></span>
+              </div>
+              <div class="r">
+                <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+                <span class="nm">Ajedrez Data — OTB</span>
+                <span class="dt">4.27M games · 144k players · 1.8 GB</span>
+                <span class="inst" style="--p:62%"><span class="bar"></span><span class="tx">62%</span></span>
+              </div>
+              <div class="r">
+                <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+                <span class="nm">Caissabase 2024</span>
+                <span class="dt">5.40M games · 321k players · 2.3 GB</span>
+                <span class="inst"><span class="tx">Install</span></span>
+              </div>
+              <div class="r">
+                <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+                <span class="nm">Lumbra's Gigabase</span>
+                <span class="dt">9.57M games · 526k players · 4.1 GB</span>
+                <span class="inst"><span class="tx">Install</span></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <p class="note">Alphabetical in both groups, as in Engines. The longest detail line —
+     <code>9.57M games · 526k players · 4.1 GB</code> — is about 240px against the 418px a 44px boxed row
+     leaves at the 800px window floor.</p>
+</figure>
+
+<h2 class="sec">DB‑02 — the row</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">DB‑02</span><h3>Same anatomy, same states</h3></div>
+  <div class="wf-canvas">
+    <div class="stack">
+      <div>
+        <p class="ptitle">Installed — icon · name · detail · toggle · chevron</p>
+        <div class="panel"><div class="r">
+          <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+          <span class="nm">Lumbra's Gigabase</span>
+          <span class="dt">9.57M games · 526k players · 4.1 GB</span>
+          <span class="tg on"></span><span class="cv"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+        </div></div>
+      </div>
+      <div>
+        <p class="ptitle">Available — the Install button is the progress indicator</p>
+        <div class="panel">
+          <div class="r">
+            <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+            <span class="nm">Caissabase 2024</span>
+            <span class="dt">5.40M games · 321k players · 2.3 GB</span>
+            <span class="inst"><span class="tx">Install</span></span>
+          </div>
+          <div class="r">
+            <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+            <span class="nm">Ajedrez Data — OTB</span>
+            <span class="dt">Downloading · 1.1 GB of 1.8 GB</span>
+            <span class="inst" style="--p:62%"><span class="bar"></span><span class="tx">62%</span></span>
+          </div>
+          <div class="r dim">
+            <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+            <span class="nm">MillionBase</span>
+            <span class="dt">Moved to Installed</span>
+            <span class="inst done"><span class="tx">Installed</span></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<h2 class="sec">DB‑03 — the expander</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">DB‑03</span><h3>Name and version</h3></div>
+  <p class="wf-sub">Name is editable, committing on blur per §3.4.9. Version is reported, not set.</p>
+  <div class="wf-canvas">
+    <div class="panel">
+      <div class="r hov">
+        <span class="ic"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+        <span class="nm">Lumbra's Gigabase</span>
+        <span class="dt">9.57M games · 526k players · 4.1 GB</span>
+        <span class="tg on"></span><span class="cv"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+      </div>
+      <div class="exp">
+        <div class="er"><span class="k">Name</span>
+          <span class="field" style="width:260px;color:var(--ink)">Lumbra's Gigabase</span></div>
+        <div class="er"><span class="k">Version</span><span class="v">1.4</span></div>
+        <div class="er"><span class="k"></span><span class="b" style="color:var(--warn);border-color:var(--warn)">Remove database</span></div>
+      </div>
+    </div>
+  </div>
+  <ul class="pts">
+    <li><b>Name is what the Library switcher shows</b> (§3.2.3.10), so renaming here renames the library
+        throughout, and it is the string that middle-truncates in the switcher.</li>
+  </ul>
+</figure>
+
+</div></body></html>

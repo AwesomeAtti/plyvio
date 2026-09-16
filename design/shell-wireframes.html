@@ -1,0 +1,714 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessgui — Application Shell Wireframes</title>
+<style>
+  :root{
+    --paper:#f7f7f5; --ink:#1b1b19; --muted:#6b6b66; --faint:#94948e;
+    --rule:#d6d6d1; --rule-strong:#adada6;
+    --fill-0:#ffffff; --fill-1:#ececea; --fill-2:#dedeDA; --fill-3:#cfcfc9;
+    --accent:#8a5a1c; --accent-bg:#f6ecdc; --accent-rule:#d9b478;
+    --warn:#8a2c2c; --warn-bg:#f8e9e9;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#141413; --ink:#eceae4; --muted:#a3a099; --faint:#7d7a73;
+      --rule:#333330; --rule-strong:#55554f;
+      --fill-0:#1e1e1c; --fill-1:#2a2a27; --fill-2:#353531; --fill-3:#43433d;
+      --accent:#d9a55f; --accent-bg:#2c2418; --accent-rule:#6b5326;
+      --warn:#e08a8a; --warn-bg:#2e1c1c;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans);}
+  .wrap{max-width:1000px;margin:0 auto;padding:56px 28px 120px;}
+
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:34px}
+  header.doc .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  header.doc h1{font-size:30px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+  header.doc p{margin:0;color:var(--muted);max-width:60ch}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:52px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+
+  figure.wf{margin:30px 0 0;padding:0}
+  .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px}
+  .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+  .wf-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:66ch}
+  .wf-canvas{background:var(--fill-0);border:1px solid var(--rule);border-radius:4px;padding:26px 22px;overflow-x:auto}
+  .wf-canvas.tight{padding:18px}
+
+  /* ---- wireframe primitives ---- */
+  .shell{border:1.5px solid var(--rule-strong);background:var(--fill-0);position:relative}
+  .tabbar{display:flex;align-items:stretch;height:40px;background:var(--fill-1);
+    border-bottom:1.5px solid var(--rule-strong)}
+  .pinned{width:132px;flex:none;display:flex;align-items:center;gap:7px;padding:0 12px;
+    background:var(--fill-0);border-right:1.5px solid var(--rule-strong);
+    font:12px/1 var(--mono);position:relative}
+  .strip{flex:1;min-width:0;display:flex;align-items:stretch;overflow:hidden;position:relative}
+  .tab{flex:none;display:flex;align-items:center;gap:8px;padding:0 10px;
+    border-right:1px solid var(--rule);background:var(--fill-1);font:12px/1 var(--mono);
+    color:var(--muted);overflow:hidden;white-space:nowrap}
+  .tab .lbl{overflow:hidden;text-overflow:ellipsis;flex:1;min-width:0}
+  .tab .x{flex:none;width:16px;height:16px;border:1px solid var(--rule-strong);border-radius:2px;
+    display:grid;place-items:center;font-size:9px;color:var(--muted)}
+  .tab.active{background:var(--fill-0);color:var(--ink);box-shadow:inset 0 -2px 0 var(--ink)}
+  .tab .dot{flex:none;width:9px;height:9px;border:1px solid var(--rule-strong);border-radius:50%}
+  .controls{flex:none;display:flex;align-items:stretch;border-left:1.5px solid var(--rule-strong);background:var(--fill-1)}
+  .btn svg,.newtab svg,.tab .x svg{display:block}
+  .btn{width:36px;display:grid;place-items:center;font:13px/1 var(--mono);color:var(--muted);
+    border-right:1px solid var(--rule)}
+  .btn:last-child{border-right:0}
+  .btn.menu{width:40px;color:var(--ink)}
+  .btn.dead{color:var(--faint)}
+  .newtab{width:36px;flex:none;display:grid;place-items:center;font:14px/1 var(--mono);color:var(--muted)}
+  .wsarea{height:120px;display:grid;place-items:center;color:var(--faint);
+    font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+    background:repeating-linear-gradient(135deg,transparent,transparent 9px,var(--rule) 9px,var(--rule) 10px)}
+  .wsarea span{background:var(--fill-0);padding:6px 10px;border:1px solid var(--rule)}
+
+  /* ---- dimension annotation ---- */
+  .dim{position:relative;height:26px;margin-top:6px}
+  .dim .bar{position:absolute;top:9px;height:1px;background:var(--accent)}
+  .dim .bar::before,.dim .bar::after{content:"";position:absolute;top:-3px;width:1px;height:7px;background:var(--accent)}
+  .dim .bar::before{left:0}.dim .bar::after{right:0}
+  .dim .txt{position:absolute;top:14px;font:10px/1 var(--mono);color:var(--accent);transform:translateX(-50%);white-space:nowrap}
+
+  .callouts{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .co{font:10px/1.4 var(--mono);color:var(--accent);background:var(--accent-bg);
+    border:1px solid var(--accent-rule);border-radius:3px;padding:5px 8px}
+
+  .wf-notes{margin:14px 0 0;padding:0 0 0 18px}
+  .wf-notes li{margin:5px 0;color:var(--muted)}
+  .wf-notes li b{color:var(--ink);font-weight:600}
+  .wf-notes code,.wf-sub code{font:12px/1 var(--mono);background:var(--fill-1);padding:2px 4px;border-radius:2px;color:var(--ink)}
+  .ref{font:10px/1 var(--mono);color:var(--faint)}
+
+  /* ---- menu ---- */
+  .menu-pop{width:250px;background:var(--fill-0);border:1.5px solid var(--rule-strong);
+    box-shadow:4px 4px 0 rgba(0,0,0,.07);font:12px var(--mono)}
+  .mi{display:flex;align-items:center;justify-content:space-between;gap:10px;
+    padding:10px 12px;border-bottom:1px solid var(--rule);color:var(--ink)}
+  .mi:last-child{border-bottom:0}
+  .mi .val{color:var(--muted);font-size:11px}
+  .mi.sep{border-top:1.5px solid var(--rule-strong)}
+  .sub{width:200px;background:var(--fill-0);border:1.5px solid var(--rule-strong);
+    box-shadow:4px 4px 0 rgba(0,0,0,.07);font:12px var(--mono)}
+  .sub .mi.on{background:var(--fill-2);font-weight:700}
+  .menu-row{display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap}
+
+  /* ---- interactive demo ---- */
+  .demo-ctl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:16px;
+    font:11px/1 var(--mono);color:var(--muted)}
+  .demo-ctl input[type=range]{flex:1;min-width:200px;accent-color:var(--accent)}
+  .demo-ctl button{font:11px/1 var(--mono);padding:7px 10px;background:var(--fill-1);
+    border:1px solid var(--rule-strong);border-radius:3px;color:var(--ink);cursor:pointer}
+  .demo-ctl button:hover{background:var(--fill-2)}
+  .readout{font:11px/1 var(--mono);color:var(--accent);background:var(--accent-bg);
+    border:1px solid var(--accent-rule);border-radius:3px;padding:7px 9px;white-space:nowrap}
+  #demoShell{transition:width .12s linear}
+  #demoStrip .tab{transition:width .12s linear}
+
+  /* ---- flow / state notation ---- */
+  .flow{font:11px/1.7 var(--mono);color:var(--muted);white-space:pre;overflow-x:auto;
+    background:var(--fill-1);border:1px solid var(--rule);border-radius:3px;padding:14px 16px;margin:0}
+
+  table.rules{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  table.rules th,table.rules td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  table.rules th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  table.rules td:first-child{font-family:var(--mono);font-size:12px;white-space:nowrap}
+
+  .box{border:1px solid var(--rule-strong);border-left:3px solid var(--accent);
+    background:var(--accent-bg);border-radius:3px;padding:14px 16px;margin-top:16px}
+  .box.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .box h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .box.warn h4{color:var(--warn)}
+  .box p{margin:0 0 8px;color:var(--ink);font-size:13px}
+  .box p:last-child{margin-bottom:0}
+  .box ol{margin:8px 0 0;padding-left:20px;font-size:13px}
+  .box li{margin:6px 0}
+
+  .legend{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:12px;
+    border:1px solid var(--rule);border-radius:4px;padding:16px;background:var(--fill-0)}
+  .lg{display:flex;gap:10px;align-items:flex-start;font-size:12px;color:var(--muted)}
+  .sw{flex:none;width:26px;height:16px;border:1px solid var(--rule-strong);border-radius:2px;margin-top:1px}
+  .menu-pop .nm2{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .menu-pop .val{display:inline-flex;align-items:center;gap:6px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">Chessgui · Wireframes · Rev C · 3 Sep, revised 4 Sep 2026 · icons: Lucide 1.41.0</div>
+  <h1>Application Shell</h1>
+  <p>Low-fidelity wireframes for the Application Shell only — tab bar, tab strip, tab overflow,
+     and application menu. Workspace interiors (Library, Game, Settings) are intentionally shown
+     as empty regions and are out of scope for this review.</p>
+  <div class="meta">
+    <span class="chip">Spec <b>§1.3, §2</b></span>
+    <span class="chip">Min window <b>800 × 600</b></span>
+    <span class="chip">Min tab width <b>220 px</b></span>
+    <span class="chip">Target <b>SvelteKit PWA</b></span>
+  </div>
+</header>
+
+<h2 class="sec">How to read these</h2>
+<figure class="wf">
+  <div class="wf-canvas tight">
+    <div class="legend">
+      <div class="lg"><span class="sw" style="background:var(--fill-0)"></span>
+        <span><b style="color:var(--ink)">White fill</b> — active / foreground surface</span></div>
+      <div class="lg"><span class="sw" style="background:var(--fill-1)"></span>
+        <span><b style="color:var(--ink)">Grey fill</b> — inactive or chrome surface</span></div>
+      <div class="lg"><span class="sw" style="background:repeating-linear-gradient(135deg,transparent,transparent 5px,var(--rule) 5px,var(--rule) 6px)"></span>
+        <span><b style="color:var(--ink)">Hatched</b> — region out of scope for this review</span></div>
+      <div class="lg"><span class="sw" style="background:var(--accent-bg);border-color:var(--accent-rule)"></span>
+        <span><b style="color:var(--accent)">Amber</b> — dimensions, callouts, and behavior notes</span></div>
+    </div>
+    <p style="margin:14px 0 0;font-size:12px;color:var(--muted)">
+      Drawings are at <b style="color:var(--ink)">1:1 pixel scale</b> unless labelled otherwise, so the
+      220&nbsp;px tab floor and the 800&nbsp;px window minimum are literally measurable on screen.
+      Wide figures scroll horizontally inside their frame.
+    </p>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">1 · Shell anatomy</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-01</span><h3>Application Window → Shell → Regions</h3></div>
+  <p class="wf-sub">The window contains exactly one shell. The shell has two regions and nothing else.
+     The active tab determines what is presented in the Workspace Area. <span class="ref">§1.3, §2</span></p>
+  <div class="wf-canvas">
+    <div class="shell" style="width:760px">
+      <div class="tabbar">
+        <div class="pinned"><span class="dot"></span><span>Library</span></div>
+        <div class="strip">
+          <div class="tab active" style="width:220px"><span class="dot"></span><span class="lbl">Carlsen–Nepo 2021</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:220px"><span class="dot"></span><span class="lbl">Fischer–Spassky 6</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        </div>
+        <div class="controls"><div class="btn menu"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></div></div>
+      </div>
+      <div class="wsarea"><span>Workspace Area — active workspace</span></div>
+    </div>
+    <div class="callouts">
+      <span class="co">① Pinned Tab — fixed left, outside the scrolling strip</span>
+      <span class="co">② Tab Strip — the only scrollable part of the bar</span>
+      <span class="co">③ Tab Bar Controls — fixed right</span>
+      <span class="co">④ Workspace Area — begins directly below the bar</span>
+    </div>
+  </div>
+  <ul class="wf-notes">
+    <li>The Tab Bar is <b>persistent for the lifetime of the window</b>. Workspace content never alters shell structure.</li>
+    <li>Tab bar height is a single fixed row. Workspaces do not contribute chrome to it.</li>
+    <li>The shell owns navigation <b>between</b> workspaces only; navigation <b>within</b> a workspace belongs to that workspace.</li>
+  </ul>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">2 · Tabs</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-02</span><h3>Tab anatomy and the 220 px floor</h3></div>
+  <p class="wf-sub">Three widths of the same tab. The minimum must preserve the close control and enough
+     label to distinguish tabs from one another. <span class="ref">§2.1.3 — minimum resolved to 220 px per requirement 3</span></p>
+  <div class="wf-canvas">
+    <div style="display:flex;flex-direction:column;gap:22px">
+
+      <div>
+        <div style="display:flex;height:40px;background:var(--fill-1);border:1.5px solid var(--rule-strong);width:300px">
+          <div class="tab active" style="width:298px;border-right:0"><span class="dot"></span><span class="lbl">Carlsen–Nepomniachtchi, WCh 2021 R6</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        </div>
+        <div class="dim" style="width:300px"><div class="bar" style="left:0;right:0"></div><div class="txt" style="left:50%">300 px — preferred width</div></div>
+      </div>
+
+      <div>
+        <div style="display:flex;height:40px;background:var(--fill-1);border:1.5px solid var(--rule-strong);width:258px">
+          <div class="tab active" style="width:256px;border-right:0"><span class="dot"></span><span class="lbl">Carlsen–Nepomniachtchi, WCh…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        </div>
+        <div class="dim" style="width:258px"><div class="bar" style="left:0;right:0"></div><div class="txt" style="left:50%">258 px — shrinking, label truncates</div></div>
+      </div>
+
+      <div>
+        <div style="display:flex;height:40px;background:var(--fill-1);border:1.5px solid var(--rule-strong);width:222px">
+          <div class="tab active" style="width:220px;border-right:0"><span class="dot"></span><span class="lbl">Carlsen–Nepomnia…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        </div>
+        <div class="dim" style="width:222px"><div class="bar" style="left:0;right:0"></div><div class="txt" style="left:50%">220 px — HARD FLOOR, shrinking stops here</div></div>
+      </div>
+
+    </div>
+    <div class="callouts">
+      <span class="co">Close control <code style="background:none;padding:0;color:inherit">×</code> never truncates or hides — it is reserved space at every width</span>
+      <span class="co">Type/state dot never truncates</span>
+      <span class="co">Only the label region absorbs the shrink</span>
+    </div>
+  </div>
+  <ul class="wf-notes">
+    <li><b>Tab internal budget at 220 px:</b> 10 pad + 9 dot + 8 gap + <b>159 label</b> + 8 gap + 16 close + 10 pad = 220.</li>
+    <li>Label truncation is tail ellipsis. Chess game titles front-load the distinguishing information (player names), so tail truncation preserves identity better than middle truncation.</li>
+    <li>The Library pinned tab has <b>no close control</b> and a fixed width — it does not participate in shrinking.</li>
+  </ul>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-03</span><h3>Tab types and their rules</h3></div>
+  <p class="wf-sub">The Settings tab is a singleton and always occupies the rightmost position in the strip,
+     after every Game tab. <span class="ref">§2.1.1</span></p>
+  <div class="wf-canvas">
+    <div class="shell" style="width:900px">
+      <div class="tabbar">
+        <div class="pinned"><span class="dot"></span><span>Library</span></div>
+        <div class="strip">
+          <div class="tab" style="width:220px"><span class="dot"></span><span class="lbl">Game 1</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:220px"><span class="dot"></span><span class="lbl">Game 2</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab active" style="width:220px"><span class="dot"></span><span class="lbl">Settings</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        </div>
+        <div class="controls"><div class="btn menu"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></div></div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">Pinned · not closable · always index 0 · never scrolls</span>
+      <span class="co">Game tabs append after the last Game tab</span>
+      <span class="co">Settings pushed rightmost — a new Game tab inserts BEFORE it</span>
+    </div>
+  </div>
+  <table class="rules">
+    <tr><th>Tab</th><th>Pinned</th><th>Closable</th><th>Instances</th><th>Position rule</th></tr>
+    <tr><td>Library</td><td>Yes</td><td>No</td><td>Exactly 1</td><td>Always first, outside the strip</td></tr>
+    <tr><td>Game</td><td>No</td><td>Yes</td><td>0…n</td><td>Appended after the last Game tab</td></tr>
+    <tr><td>Settings</td><td>No</td><td>Yes</td><td>0 or 1</td><td>Always last in the strip</td></tr>
+  </table>
+  <ul class="wf-notes">
+    <li><b>Closing a tab</b> activates the right neighbour; if none, the left neighbour; ultimately the Library tab.</li>
+    <li>Opening Settings when it already exists <b>activates</b> the existing tab rather than creating a second one.</li>
+    <li>Opening a workspace never replaces another — state in every open workspace is preserved. <span class="ref">§2.3</span></li>
+  </ul>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">3 · Overflow</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-04</span><h3>Two-stage overflow: shrink, then scroll</h3></div>
+  <p class="wf-sub">Stage 1 — tabs shrink from preferred toward 220 px. Stage 2 — at 220 px shrinking stops
+     and the strip becomes horizontally scrollable, which moves the New Tab Button into the controls.
+     <span class="ref">§2.1.2, §2.1.3</span></p>
+  <div class="wf-canvas">
+
+    <p style="font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 8px">Stage 0 — preferred width, space to spare</p>
+    <div class="shell" style="width:900px">
+      <div class="tabbar">
+        <div class="pinned"><span class="dot"></span><span>Library</span></div>
+        <div class="strip">
+          <div class="tab active" style="width:300px"><span class="dot"></span><span class="lbl">Carlsen–Nepomniachtchi R6</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:300px"><span class="dot"></span><span class="lbl">Fischer–Spassky 1972 G6</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        </div>
+        <div class="controls"><div class="btn menu"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></div></div>
+      </div>
+    </div>
+
+    <p style="font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:24px 0 8px">Stage 1 — shrinking, still no scroll</p>
+    <div class="shell" style="width:900px">
+      <div class="tabbar">
+        <div class="pinned"><span class="dot"></span><span>Library</span></div>
+        <div class="strip">
+          <div class="tab active" style="width:242px"><span class="dot"></span><span class="lbl">Carlsen–Nepomniac…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:242px"><span class="dot"></span><span class="lbl">Fischer–Spassky 19…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:242px"><span class="dot"></span><span class="lbl">Settings</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        </div>
+        <div class="controls"><div class="btn menu"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></div></div>
+      </div>
+    </div>
+    <div class="dim" style="width:900px"><div class="bar" style="left:132px;right:40px"></div><div class="txt" style="left:calc(132px + (100% - 172px)/2)">strip 728 px ÷ 3 tabs = 242 px each — above the floor</div></div>
+
+    <p style="font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:24px 0 8px">Stage 2 — floor reached → scrolling state, controls reflow</p>
+    <div class="shell" style="width:900px">
+      <div class="tabbar">
+        <div class="pinned"><span class="dot"></span><span>Library</span></div>
+        <div class="strip">
+          <div class="tab active" style="width:220px"><span class="dot"></span><span class="lbl">Carlsen–Nepomnia…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:220px"><span class="dot"></span><span class="lbl">Fischer–Spassky 1…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:144px;border-right:0"><span class="dot"></span><span class="lbl">Kasparov–Top…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        </div>
+        <div class="controls">
+          <div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></div><div class="btn menu"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></div>
+        </div>
+      </div>
+    </div>
+    <div class="dim" style="width:900px"><div class="bar" style="left:132px;right:148px"></div><div class="txt" style="left:calc(132px + (100% - 280px)/2)">strip 620 px — clips mid-tab; 4th &amp; 5th tabs are scrolled out</div></div>
+    <div class="callouts">
+      <span class="co">New Tab Button is HIDDEN — its 36px stays with the strip in both states</span>
+      <span class="co">Scroll controls and tab list appear on overflow</span>
+      <span class="co">Menu stays anchored far right in every state</span>
+      <span class="co">Control order is always: scroll · list · menu</span>
+    </div>
+  </div>
+  <ul class="wf-notes">
+    <li><b>Accepted reflow:</b> entering overflow widens the controls by 108 px (three buttons), which narrows the strip and can push one more tab out of view. The spec accepts this rather than permanently reserving the space. <span class="ref">§2.1.3</span></li>
+    <li>The New Tab Button is <b>hidden</b> (4 Sep). Both of its positions and the geometry that reserves space for it remain implemented and tested, so restoring it is a one-line change.</li>
+    <li>Tabs are clipped at the strip edge, not hidden whole. A partially visible tab signals that more exist.</li>
+  </ul>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-05</span><h3>Live geometry check — drag to resize</h3></div>
+  <p class="wf-sub">Not the prototype; a geometry model of the overflow rule so the thresholds can be
+     verified before implementation. Drag the width, add and remove tabs.</p>
+  <div class="wf-canvas">
+    <div class="demo-ctl">
+      <label for="w">window width</label>
+      <input id="w" type="range" min="800" max="1600" value="1000" step="1">
+      <button id="add" type="button">+ add tab</button>
+      <button id="rem" type="button">− remove tab</button>
+      <span class="readout" id="ro">—</span>
+    </div>
+    <div class="shell" id="demoShell" style="width:1000px">
+      <div class="tabbar">
+        <div class="pinned"><span class="dot"></span><span>Library</span></div>
+        <div class="strip" id="demoStrip"></div>
+        <div class="controls" id="demoControls"></div>
+      </div>
+      <div class="wsarea"><span>Workspace Area</span></div>
+    </div>
+  </div>
+  <div class="box">
+    <h4>Resolved — approved 3 Sep</h4>
+    <p>At the <b>800 × 600 minimum window</b>, a 220 px floor leaves a 520 px strip in the scrolling state —
+       <b>2.36 tabs visible</b>. This is accepted: 800 × 600 is the floor, not the working size, and the
+       window is freely resizable above it.</p>
+    <p><b>Revised 4 Sep.</b> These were 484 px and 2.2 tabs while the New Tab Button was shown; hiding it
+       returns its 36 px to the strip. The same finding, marginally less severe — the decision it
+       prompted is unchanged.</p>
+    <p>The <b>tab-list dropdown</b> (WF-06b), which §2.1.4 defers to a future release, is pulled into the
+       initial build so that scrolling is not the only way to reach a hidden tab at small window sizes.
+       The 220 px floor stands as specified.</p>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-06</span><h3>What scrolls, and what never does</h3></div>
+  <p class="wf-sub">Only the Tab Strip scrolls. Everything else in the bar is anchored. <span class="ref">§2.1.4</span></p>
+  <div class="wf-canvas">
+    <div class="shell" style="width:900px">
+      <div class="tabbar">
+        <div class="pinned" style="background:var(--fill-3)"><span class="dot"></span><span>Library</span></div>
+        <div class="strip" style="background:var(--fill-0)">
+          <div class="tab" style="width:120px;opacity:.4;border-right:1px solid var(--rule)"><span class="lbl">…Game 1</span></div>
+          <div class="tab active" style="width:220px"><span class="dot"></span><span class="lbl">Game 2</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:220px"><span class="dot"></span><span class="lbl">Game 3</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:24px;opacity:.4"><span class="lbl">G…</span></div>
+        </div>
+        <div class="controls">
+          <div class="btn" style="background:var(--fill-3)">+</div>
+          <div class="btn" style="background:var(--fill-3)"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div>
+          <div class="btn" style="background:var(--fill-3)"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+          <div class="btn" style="background:var(--fill-3)"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></div>
+          <div class="btn menu" style="background:var(--fill-3)"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></div>
+        </div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">Darker fill = anchored, never scrolls out of view</span>
+      <span class="co">White region = scroll viewport, clips both edges</span>
+      <span class="co">Wheel / trackpad scrolls the strip whenever the pointer is over it</span>
+    </div>
+  </div>
+  <ul class="wf-notes">
+    <li>Scroll controls are <b>grouped at the right</b>, not split to either end of the strip — this avoids a back-chevron sitting next to the Library tab where it could be read as belonging to it. <span class="ref">§2.1.4 rationale</span></li>
+    <li><b>Scroll controls disable</b> (not hide) at the respective scroll extents, so the control group's width stays stable.</li>
+    <li>The <b>tab list</b> sits with the scroll controls because it is tab navigation, not an application command. Keeping it left of the menu preserves its far-right anchor. See WF-06b.</li>
+    <li>Selecting a tab by keyboard or by opening a game <b>scrolls that tab into view</b> automatically.</li>
+    <li>A vertical wheel gesture over the strip maps to horizontal scroll; this is the browser-tab convention.</li>
+  </ul>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-06b</span><h3>Tab-list dropdown</h3></div>
+  <p class="wf-sub">Pulled forward from §2.1.4's "future release" note, so that reaching a scrolled-out tab
+     does not depend on scrolling. Appears <b>only in the scrolling state</b>, alongside the scroll controls.</p>
+  <div class="wf-canvas">
+    <div class="shell" style="width:820px">
+      <div class="tabbar">
+        <div class="pinned"><span class="dot"></span><span>Library</span></div>
+        <div class="strip">
+          <div class="tab" style="width:80px;opacity:.4"><span class="lbl">…nomniachtchi</span></div>
+          <div class="tab active" style="width:220px"><span class="dot"></span><span class="lbl">Fischer–Spassky…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:204px;border-right:0"><span class="dot"></span><span class="lbl">Kasparov–Topa…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        </div>
+        <div class="controls">
+          <div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg></div><div class="btn dead"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div>
+          <div class="btn" style="background:var(--fill-3);color:var(--ink)"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></div>
+          <div class="btn menu"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></div>
+        </div>
+      </div>
+      <div class="wsarea" style="height:60px"></div>
+    </div>
+    <div style="margin-left:530px;margin-top:-142px;position:relative;z-index:2">
+      <div class="menu-pop" style="width:290px">
+        <div class="mi" style="background:var(--fill-2);font-size:10px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding:7px 12px">Open tabs · 5</div>
+        <div class="mi"><span class="nm2">Carlsen–Nepomniachtchi</span><span class="val"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        <div class="mi on"><span class="nm2">Fischer–Spassky 1972</span><span class="val"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg> <svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        <div class="mi"><span class="nm2">Kasparov–Topalov 1999</span><span class="val"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        <div class="mi"><span class="nm2">Byrne–Fischer 1956 — Game of the Cen…</span><span class="val"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+        <div class="mi sep"><span class="nm2">Settings</span><span class="val"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+      </div>
+    </div>
+    <div class="callouts" style="margin-top:56px">
+      <span class="co">Lists the STRIP only — the pinned Library tab is never here</span>
+      <span class="co">Tab name only; it truncates when it must, with the full name on hover</span>
+      <span class="co">A tick marks the active tab — state, not a label</span>
+      <span class="co">Every row closes without activating — the strip holds no pinned tab</span>
+    </div>
+  </div>
+  <ul class="wf-notes">
+    <li><b>Visibility:</b> shown only while the strip is overflowing. In the normal state every tab is already
+        visible, so a permanent tab-list control would consume strip width to no purpose — the same reasoning §2.1.3 uses
+        to justify reflowing the controls rather than reserving their space.</li>
+    <li><b>Selecting a row</b> activates that workspace and scrolls its tab into view. The dropdown closes.</li>
+    <li><b>Closing a row</b> leaves the dropdown open so several tabs can be closed in one pass; the list
+        re-renders, and the dropdown dismisses itself if the strip stops overflowing.</li>
+    <li><b>Revised 4 Sep.</b> The list was every open tab with off-screen and pinned labels.
+        It is now the strip only, name only. The Library tab is pinned outside the scrolling strip
+        and is visible in every state this dropdown can appear in, so listing it named something the
+        user could already see and could not lose. The off-screen markers went with it: once the list
+        is only the strip, a row's position already matches its position in the strip, and the marker
+        was a second answer to a question the order had answered.</li>
+    <li>Keyboard: the tab list opens with focus on the active row; ↑ ↓ move, Enter activates, Delete closes a row, Esc dismisses.</li>
+  </ul>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">4 · Application menu</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-07</span><h3>Menu, and the Language submenu</h3></div>
+  <p class="wf-sub">Four items. Theme toggles in place; Language opens a submenu; Settings and About both
+     route to the single Settings tab. <span class="ref">§2.2 + requirement 4</span></p>
+  <div class="wf-canvas">
+    <div class="shell" style="width:640px;margin-bottom:0">
+      <div class="tabbar">
+        <div class="pinned"><span class="dot"></span><span>Library</span></div>
+        <div class="strip"><div class="tab active" style="width:220px"><span class="dot"></span><span class="lbl">Game 1</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div></div>
+        <div class="controls"><div class="btn menu" style="background:var(--fill-3)"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></div></div>
+      </div>
+    </div>
+    <div class="menu-row" style="margin-left:390px;margin-top:-2px">
+      <div class="menu-pop">
+        <div class="mi"><span>Language</span><span class="val">English ▸</span></div>
+        <div class="mi"><span>Theme</span><span class="val">Light ⇄ Dark</span></div>
+        <div class="mi sep"><span>Settings</span><span class="val"></span></div>
+        <div class="mi"><span>About</span><span class="val"></span></div>
+      </div>
+      <div class="sub">
+        <div class="mi on"><span>English</span><span class="val">✓</span></div>
+        <div class="mi"><span>Deutsch</span><span class="val"></span></div>
+        <div class="mi"><span>Español</span><span class="val"></span></div>
+        <div class="mi"><span>Français</span><span class="val"></span></div>
+        <div class="mi"><span>Русский</span><span class="val"></span></div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">Menu anchors to the button's right edge and opens downward</span>
+      <span class="co">Language shows the current locale inline, submenu marks it ✓</span>
+      <span class="co">Theme applies immediately — no submenu, no confirmation</span>
+      <span class="co">Esc closes; click-outside closes; menu is application-level, not workspace-level</span>
+    </div>
+  </div>
+  <table class="rules">
+    <tr><th>Item</th><th>Behavior</th></tr>
+    <tr><td>Language</td><td>Submenu of bundled locales. Selection applies immediately to all shell and workspace strings and persists. Locale files ship with the app — no network.</td></tr>
+    <tr><td>Theme</td><td>Toggles Light ⇄ Dark directly. No submenu.</td></tr>
+    <tr><td>Settings</td><td>Opens the Settings tab, or activates it if it already exists.</td></tr>
+    <tr><td>About</td><td>Opens or activates the Settings tab <b>and</b> scrolls to its About section.</td></tr>
+  </table>
+  <ul class="wf-notes">
+    <li>The menu carries <b>no workspace-specific commands</b>. It is identical regardless of which tab is active.</li>
+    <li>Language list is illustrative. The shipped set is a content decision, not a shell decision.</li>
+    <li>RTL locales are not in the initial list; if one is added later the whole shell must mirror, which is a layout change worth scoping separately.</li>
+  </ul>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">5 · Interactions</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-08</span><h3>New Tab Button creates a Game workspace</h3>
+    <span class="chip" style="border-style:dashed;color:var(--warn);border-color:var(--warn)">Hidden 4 Sep</span></div>
+  <p class="wf-sub"><b>The button is currently hidden.</b> This figure documents behaviour that is built
+     and tested but not shown; it is here so restoring the button does not mean redesigning it.
+     Requirement 5 overrides §2.1.2, which specifies the button as visible but inactive.</p>
+  <div class="wf-canvas">
+<pre class="flow">  press [ + ]
+      │
+      ├─► create Game Workspace (empty / new game)
+      ├─► insert tab AFTER the last Game tab
+      │     └─ if a Settings tab exists it stays rightmost
+      ├─► activate the new tab
+      ├─► recompute strip layout
+      │     ├─ still fits ────────► stay in normal state
+      │     └─ floor reached ────► enter scrolling state
+      │                             └─ move [ + ] into controls, show the scroll controls
+      └─► scroll the new tab into view</pre>
+  </div>
+  <div class="box">
+    <h4>Spec deviation — recorded</h4>
+    <p>§2.1.2 states the New Tab Button is “visible but inactive” in the initial release. Requirement 5
+       makes it active and creates a Game workspace. The two cannot both hold.</p>
+    <p><b>Moot while the button is hidden.</b> Nothing renders, so neither reading is contradicted on
+       screen. The conflict returns the moment the button does, so it is recorded rather than closed.
+       A later note in this session settled the intended behaviour anyway: the button should create an
+       <b>empty workspace</b>, not a Game Workspace — see the Application Shell spec.</p>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-09</span><h3>Minimum window — 800 × 600</h3></div>
+  <p class="wf-sub">Shown at 1:1. The shell must remain coherent at this size; no workspace needs to define
+     behavior below it. <span class="ref">§2.4</span></p>
+  <div class="wf-canvas">
+    <div class="shell" style="width:800px;height:300px">
+      <div class="tabbar">
+        <div class="pinned"><span class="dot"></span><span>Library</span></div>
+        <div class="strip">
+          <div class="tab active" style="width:220px"><span class="dot"></span><span class="lbl">Carlsen–Nepomnia…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:220px"><span class="dot"></span><span class="lbl">Fischer–Spassky…</span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span></div>
+          <div class="tab" style="width:44px;border-right:0"><span class="dot"></span><span class="lbl">Kas…</span></div>
+        </div>
+        <div class="controls"><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></div><div class="btn menu"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg></div></div>
+      </div>
+      <div class="wsarea" style="height:258px"><span>Workspace Area — 800 × 258 visible in this crop</span></div>
+    </div>
+    <div class="dim" style="width:800px"><div class="bar" style="left:0;right:0"></div><div class="txt" style="left:50%">800 px — hard minimum width</div></div>
+    <div class="callouts">
+      <span class="co">132 px pinned + 520 px strip + 148 px controls = 800</span>
+      <span class="co">520 ÷ 220 = 2.36 tabs visible — the tightest case the shell must stay coherent in</span>
+      <span class="co">Accepted: 800 × 600 is the floor, not the working size; the tab list reaches the rest</span>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">WF-10</span><h3>Keyboard and pointer map</h3></div>
+  <p class="wf-sub">Not specified in §2; proposed for approval so the prototype has a defined interaction surface.</p>
+  <div class="wf-canvas tight">
+    <table class="rules">
+      <tr><th>Input</th><th>Result</th></tr>
+      <tr><td>Click tab</td><td>Activate that workspace</td></tr>
+      <tr><td>Click ×  /  Middle-click tab</td><td>Close the tab (Library tab exempt)</td></tr>
+      <tr><td>Wheel over strip</td><td>Scroll the strip horizontally when overflowing</td></tr>
+      <tr><td>Ctrl/⌘ + T</td><td>New Game tab — same as [ + ]</td></tr>
+      <tr><td>Ctrl/⌘ + W</td><td>Close active tab (no-op on Library)</td></tr>
+      <tr><td>Ctrl/⌘ + Tab  /  + ⇧Tab</td><td>Next / previous tab, wrapping, including Library</td></tr>
+      <tr><td>Ctrl/⌘ + 1…8</td><td>Activate the nth tab; 1 is always Library</td></tr>
+      <tr><td>Ctrl/⌘ + 9</td><td>Activate the last tab</td></tr>
+      <tr><td>Esc</td><td>Close the application menu or the tab-list dropdown</td></tr>
+      <tr><td>← → in strip</td><td>Move roving focus between tabs; Enter activates</td></tr>
+    </table>
+  </div>
+  <ul class="wf-notes">
+    <li>Tab reordering by drag is <b>not</b> proposed for the initial release — the spec's ordering rules (Settings always rightmost, Games appended) would need reconciling with free reordering first.</li>
+    <li>Accessibility: the strip is a <code>tablist</code> with roving <code>tabindex</code>; each tab is a <code>tab</code> controlling its workspace <code>tabpanel</code>.</li>
+  </ul>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">6 · Decisions needed before I build</h2>
+<figure class="wf">
+  <div class="wf-canvas tight">
+    <table class="rules">
+      <tr><th>#</th><th>Question</th><th>My default if you don't object</th></tr>
+      <tr><td>1 ✓</td><td>220 px floor leaves only 2.36 tabs at the minimum window (WF-05)</td><td><b>Resolved 3 Sep</b> — keep 220 px; the floor is not the working size</td></tr>
+      <tr><td>2 ✓</td><td>New Tab Button active vs. §2.1.2 “inactive” (WF-08)</td><td><b>Superseded 4 Sep</b> — the button is hidden; the deviation is moot while it stays hidden</td></tr>
+      <tr><td>3 ✓</td><td>Tab-list dropdown, deferred by §2.1.4</td><td><b>Resolved 3 Sep</b> — include it (WF-06b)</td></tr>
+      <tr><td>4</td><td>Which locales to include in the toggle (WF-07)</td><td>English + 2 stubs, to prove the mechanism</td></tr>
+      <tr><td>5</td><td>Keyboard map (WF-10) is proposed, not specified</td><td>Implement as listed</td></tr>
+    </table>
+  </div>
+</figure>
+
+</div>
+
+<script>
+(function(){
+  var TITLES = ["Carlsen–Nepomniachtchi","Fischer–Spassky 1972","Kasparov–Topalov 1999",
+                "Byrne–Fischer 1956","Anand–Gelfand 2012","Ding–Nepo 2023","Tal–Botvinnik 1960",
+                "Morphy–Duke 1858","Kramnik–Kasparov 2000","Karpov–Korchnoi 1978"];
+  var MIN = 220, PREF = 300, PINNED = 132, MENU = 40, SCROLL = 72, TABLIST = 36;
+  var NEWTAB = 0;   // hidden 4 Sep — set to 36 to restore the button
+  // Lucide 1.41.0 paths, inlined so the demo matches the prototype exactly.
+  var I = {
+    left:  '<svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>',
+    right: '<svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg>',
+    list:  '<svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>',
+    menu:  '<svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 5h16"/><path d="M4 12h16"/><path d="M4 19h16"/></svg>'
+  };
+  var NEWTAB_SVG = '<svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>';
+  var shell = document.getElementById('demoShell');
+  var strip = document.getElementById('demoStrip');
+  var ctl   = document.getElementById('demoControls');
+  var ro    = document.getElementById('ro');
+  var w     = document.getElementById('w');
+  var n = 3, active = 0;
+
+  function render(){
+    var W = +w.value;
+    shell.style.width = W + 'px';
+
+    // Stage 1: assume normal state, try to fit n tabs + new-tab button
+    var stripNormal = W - PINNED - MENU;
+    var each = Math.min(PREF, Math.floor((stripNormal - NEWTAB) / n));
+    var overflow = each < MIN;
+    if (overflow) each = MIN;
+
+    var stripW = overflow ? (W - PINNED - MENU - NEWTAB - SCROLL - TABLIST) : stripNormal;   // NEWTAB is 0 while hidden
+
+    strip.innerHTML = '';
+    for (var i = 0; i < n; i++){
+      var t = document.createElement('div');
+      t.className = 'tab' + (i === active ? ' active' : '');
+      t.style.width = each + 'px';
+      t.innerHTML = '<span class="dot"></span><span class="lbl"></span><span class="x"><svg class="i" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg></span>';
+      t.querySelector('.lbl').textContent = TITLES[i % TITLES.length];
+      (function(idx){ t.onclick = function(){ active = idx; render(); }; })(i);
+      strip.appendChild(t);
+    }
+    if (!overflow && NEWTAB){
+      var nt = document.createElement('div');
+      nt.className = 'newtab'; nt.innerHTML = NEWTAB_SVG;
+      nt.onclick = function(){ if(n < 12){ n++; active = n - 1; sync(); } };
+      strip.appendChild(nt);
+    }
+    strip.scrollLeft = 0;
+
+    ctl.innerHTML = overflow
+      ? (NEWTAB ? '<div class="btn" id="dNew">' + NEWTAB_SVG + '</div>' : '')
+        + '<div class="btn">' + I.left + '</div><div class="btn">' + I.right + '</div>'
+        + '<div class="btn">' + I.list + '</div><div class="btn menu">' + I.menu + '</div>'
+      : '<div class="btn menu">' + I.menu + '</div>';
+    var dn = document.getElementById('dNew');
+    if (dn) dn.onclick = function(){ if(n < 12){ n++; active = n - 1; sync(); } };
+
+    var visible = stripW / each;
+    ro.textContent = W + '×600  ·  ' + n + ' tabs @ ' + each + 'px  ·  '
+      + (overflow ? 'SCROLLING — ' + visible.toFixed(1) + ' visible' : 'normal');
+  }
+  function sync(){ render(); }
+
+  w.oninput = render;
+  document.getElementById('add').onclick = function(){ if(n < 12){ n++; active = n - 1; render(); } };
+  document.getElementById('rem').onclick = function(){ if(n > 1){ n--; if(active >= n) active = n - 1; render(); } };
+  render();
+})();
+</script>
+</body>
+</html>

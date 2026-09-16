@@ -1,0 +1,1259 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessgui — Explorer · candidate moves from the current position</title>
+<style>
+  :root{
+    --paper:#f7f7f5; --ink:#1b1b19; --muted:#6b6b66; --faint:#94948e;
+    --rule:#d6d6d1; --rule-strong:#adada6;
+    --fill-0:#ffffff; --fill-1:#ececea; --fill-2:#dededa; --fill-3:#cfcfc9;
+    --accent:#8a5a1c; --accent-bg:#f6ecdc; --accent-rule:#d9b478;
+    --warn:#8a2c2c; --warn-bg:#f8e9e9; --ok:#3f6b3f; --ok-bg:#eef3ee;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+
+    /* Result-bar colours are SEMANTIC, not thematic. White means White.
+       They do not invert with the theme — see MX-05. */
+    --bar-w:#f0efec; --bar-w-ink:#2b2b28; --bar-w-edge:#b9b8b2;
+    --bar-d:#9a9a94; --bar-d-ink:#ffffff;
+    --bar-b:#2b2b28; --bar-b-ink:#f0efec;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#141413; --ink:#eceae4; --muted:#a3a099; --faint:#7d7a73;
+      --rule:#333330; --rule-strong:#55554f;
+      --fill-0:#1e1e1c; --fill-1:#2a2a27; --fill-2:#353531; --fill-3:#43433d;
+      --accent:#d9a55f; --accent-bg:#2c2418; --accent-rule:#6b5326;
+      --warn:#e08a8a; --warn-bg:#2e1c1c; --ok:#8fb98f; --ok-bg:#1c241c;
+      --bar-w:#e4e2dc; --bar-w-ink:#262623; --bar-w-edge:#6e6c66;
+      --bar-d:#7e7c76; --bar-d-ink:#ffffff;
+      --bar-b:#242421; --bar-b-ink:#ddd9d1;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans)}
+  .wrap{max-width:1120px;margin:0 auto;padding:56px 28px 120px}
+
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:34px}
+  .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  header.doc h1{font-size:30px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+  header.doc p{margin:0 0 10px;color:var(--muted);max-width:66ch}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+  .chip.open{border-style:dashed;border-color:var(--accent);color:var(--accent)}
+  .chip.set{border-color:var(--ok);color:var(--ok)}
+
+  h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:52px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+
+  figure.wf{margin:30px 0 0;padding:0}
+  .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+  .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+  .wf-id.rec{background:var(--accent)}
+  .wf-id.set{background:var(--ok)}
+  .wf-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .verdict{font:10px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:5px 7px;border-radius:3px}
+  .verdict.yes{color:var(--ok);border:1px solid var(--ok)}
+  .verdict.no{color:var(--muted);border:1px solid var(--rule-strong)}
+  .verdict.ask{color:var(--accent);border:1px dashed var(--accent)}
+  .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:72ch}
+  .wf-canvas{background:var(--fill-0);border:1px solid var(--rule);border-radius:4px;padding:24px 20px;overflow-x:auto}
+  .wf-canvas.done{border-color:var(--ok)}
+
+  /* ---------- the Section at its real width ---------- */
+  .sec-blk{width:360px;border:1.5px solid var(--rule-strong);background:var(--fill-0);
+    display:flex;flex-direction:column;overflow:hidden;flex:none}
+  .sec-hd{flex:none;height:30px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;
+    background:var(--fill-1);border-bottom:1px solid var(--rule);font:11px/1 var(--sans)}
+  .sec-hd .ttl{color:var(--ink);font-weight:600;white-space:nowrap}
+  .sec-hd .src{color:var(--muted);font:11px/1 var(--sans);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0}
+  .sec-hd .src b{font-weight:500;color:var(--ink)}
+  .sec-hd .sp{flex:1;min-width:6px}
+  .sec-hd .st{font:10px/1 var(--mono);color:var(--muted);white-space:nowrap;flex:none}
+  .sec-hd .ic{width:16px;height:16px;display:grid;place-items:center;color:var(--muted);font-size:10px;flex:none}
+  .sec-hd .dot{color:var(--faint);flex:none}
+
+  .xp{padding:3px 0}
+  .xp.scroll{overflow-y:auto;flex:1}
+
+  /* ---------- the candidate row — MX-03a ---------- */
+  .xr{display:grid;align-items:center;height:24px;padding:0 10px;column-gap:8px;
+    grid-template-columns:84px 34px 1fr}
+  .xr:hover,.xr.hov{background:var(--fill-1)}
+  .xr .mv{font:12px/1 var(--mono);color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .xr .mv i{font-style:normal;color:var(--faint)}
+  .xr .pc{font:11px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--ink);text-align:right;white-space:nowrap}
+  .xr .ct{font:11px/1 var(--mono);font-variant-numeric:tabular-nums;color:var(--faint);text-align:right;white-space:nowrap}
+
+  /* the results bar — one track, three segments, labels sitting inside them */
+  .bar{height:16px;display:flex;border-radius:2px;overflow:hidden;border:1px solid var(--bar-w-edge)}
+  .seg{display:flex;align-items:center;justify-content:center;font:10px/1 var(--mono);
+    font-variant-numeric:tabular-nums;overflow:hidden;min-width:0}
+  .seg.w{background:var(--bar-w);color:var(--bar-w-ink)}
+  .seg.d{background:var(--bar-d);color:var(--bar-d-ink)}
+  .seg.b{background:var(--bar-b);color:var(--bar-b-ink)}
+
+  /* the row tooltip — MX-13. One line, one number. */
+  .tip{display:inline-flex;align-items:center;background:var(--ink);color:var(--fill-0);
+    border-radius:3px;padding:4px 7px;box-shadow:0 3px 10px rgba(0,0,0,.26);
+    font:10px/1 var(--mono);font-variant-numeric:tabular-nums;white-space:nowrap}
+
+  /* share gauge — % played drawn as a fill behind the move (option C, not chosen) */
+  .gauge{position:relative;display:flex;align-items:center;height:18px;border-radius:2px;
+    background:var(--fill-1);overflow:hidden;padding:0 6px}
+  .gauge .fillbar{position:absolute;left:0;top:0;bottom:0;background:var(--fill-3)}
+  .gauge .mv{position:relative;font:12px/1 var(--mono);color:var(--ink)}
+
+  /* two-line row (option D, not chosen) */
+  .xr2{padding:4px 10px 5px}
+  .xr2 .l1{display:flex;align-items:baseline;gap:8px;margin-bottom:3px}
+  .xr2 .l1 .mv{font:12px/1 var(--mono);color:var(--ink)}
+  .xr2 .l1 .mv i{font-style:normal;color:var(--faint)}
+  .xr2 .l1 .sp{flex:1}
+  .xr2 .l1 .ct,.xr2 .l1 .pc{font:11px/1 var(--mono);color:var(--faint)}
+
+  /* totals strip — retired, drawn once in MX-07 for the record */
+  .tot{display:flex;align-items:center;gap:8px;height:22px;padding:0 10px;
+    border-top:1px solid var(--rule);font:10px/1 var(--mono);color:var(--muted)}
+  .tot .sp{flex:1}
+
+  /* empty / loading bodies */
+  /* message bodies — one centred block, grid so the box is the text and nothing else */
+  .state{display:grid;place-content:center;justify-items:center;row-gap:2px;
+    padding:8px 12px;text-align:center;flex:1}
+  .state .t{font:12px/16px var(--sans);color:var(--ink)}
+  .state .s{font:11px/16px var(--sans);color:var(--muted);max-width:30ch}
+  .skel{height:10px;border-radius:2px;background:var(--fill-2)}
+
+  /* the open source menu */
+  .menu{width:214px;border:1px solid var(--rule-strong);background:var(--fill-0);
+    border-radius:4px;box-shadow:0 6px 18px rgba(0,0,0,.14);overflow:hidden}
+  .menu .mi{display:flex;align-items:center;gap:8px;padding:7px 10px;font:12px/1 var(--sans);color:var(--ink)}
+  .menu .mi .tick{width:12px;color:var(--accent);font-size:11px;flex:none}
+  .menu .mi .cnt{margin-left:auto;font:10px/1 var(--mono);color:var(--faint)}
+  .menu .mi.on{background:var(--fill-1)}
+  .menu .cut{display:flex;align-items:center;gap:8px;padding:7px 10px;font:12px/1 var(--sans);
+    color:var(--ink);border-top:1px solid var(--rule)}
+  .menu .cut .tick{width:12px;flex:none}
+  .menu .cut .arw{margin-left:auto;color:var(--faint);font:11px/1 var(--mono)}
+  .menu .cut.hov{background:var(--fill-1)}
+
+  .anat{display:flex;gap:22px;align-items:flex-start;flex-wrap:wrap}
+  .leg{list-style:none;margin:0;padding:0;font-size:13px;min-width:320px;flex:1}
+  .leg li{display:flex;gap:10px;margin:0 0 12px;align-items:flex-start}
+  .tagno{flex:none;width:20px;height:20px;border-radius:50%;display:grid;place-items:center;
+    font:10px/1 var(--mono);background:var(--ink);color:var(--paper)}
+  .leg b{color:var(--ink)} .leg span{color:var(--muted)}
+
+  .callouts{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .co{font:10px/1.4 var(--mono);color:var(--accent);background:var(--accent-bg);
+    border:1px solid var(--accent-rule);border-radius:3px;padding:5px 8px}
+  .co.good{color:var(--ok);background:transparent;border-color:var(--ok)}
+  .co.bad{color:var(--warn);background:var(--warn-bg);border-color:var(--warn)}
+
+  .cols{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .caption{font:10px/1.4 var(--mono);color:var(--muted);margin:0 0 8px}
+  .caption b{color:var(--ink)}
+
+  table.rules{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  table.rules th,table.rules td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  table.rules th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  table.rules td.n{font-family:var(--mono);font-size:12px;white-space:nowrap}
+  table.rules tr.yes td.v{color:var(--ink);font-weight:600}
+  table.rules tr.dim td{color:var(--faint)}
+  table.rules td.c{text-align:center;font-family:var(--mono);font-size:12px}
+
+  .box{border:1px solid var(--rule-strong);border-left:3px solid var(--accent);
+    background:var(--accent-bg);border-radius:3px;padding:14px 16px;margin-top:16px}
+  .box.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .box.plain{border-left-color:var(--rule-strong);background:var(--fill-1)}
+  .box.ok{border-left-color:var(--ok);background:var(--ok-bg)}
+  .box h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .box.warn h4{color:var(--warn)}
+  .box.plain h4{color:var(--muted)}
+  .box.ok h4{color:var(--ok)}
+  .box p{margin:0 0 8px;font-size:13px;color:var(--ink)}
+  .box p:last-child{margin-bottom:0}
+  .box ol,.box ul{margin:8px 0 0;padding-left:20px;font-size:13px}
+  .box li{margin:6px 0;color:var(--ink)}
+  .q{margin:0 0 4px;font-weight:600}
+  code{font:11.5px/1 var(--mono);background:var(--fill-1);padding:2px 4px;border-radius:2px;color:var(--ink)}
+  .mono{font-family:var(--mono);font-size:12px}
+
+  /* measuring strip */
+  .ruler{width:360px;display:flex;font:9px/1 var(--mono);color:var(--muted);margin-top:6px}
+  .ruler div{border-left:1px solid var(--rule-strong);padding:3px 0 0 3px;height:20px;overflow:hidden}
+  .ruler div:last-child{border-right:1px solid var(--rule-strong)}
+
+  .hr{height:1px;background:var(--rule);margin:22px 0}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">Chessgui · Game Workspace · Game Details · Rev B</div>
+  <h1>Explorer — candidate moves from the current position</h1>
+  <p>The Section answers one question: <i>from the position on the board, what has been played
+  before, and how did those games end?</i> Each row is a legal move that occurs in the selected
+  library, carrying how often it was chosen and a bar of the results that followed it.</p>
+  <p><b>Rev B, 13 Sep.</b> Layout, height, source, tooltip and interaction are all settled and drawn
+  as decided. <b>The rows are read-only</b> — this release replays an existing game, and playing a move
+  from the Explorer waits for interactive analysis. <b>A bar is drawn the same way at every sample
+  size</b> — the Section states the number of games and leaves the judgement to the reader. What
+  remains open is the colour key, the value of a label too small to draw, and reaching the game count
+  without a mouse.</p>
+  <div class="meta">
+    <span class="chip set"><b>Row</b> MX-03a · move · % · bar</span>
+    <span class="chip set"><b>Share</b> percentage only</span>
+    <span class="chip set"><b>Status</b> games in this position</span>
+    <span class="chip set"><b>Tooltip</b> game count, one line</span>
+    <span class="chip set"><b>Height</b> 1–3 moves, then scrolls</span>
+    <span class="chip set"><b>Source</b> installed libraries, or None</span>
+    <span class="chip set"><b>Rows</b> read-only</span>
+    <span class="chip set"><b>Bars</b> identical at every sample size</span>
+    <span class="chip open">G1 &middot; G2 granted 14 Sep</span>
+  </div>
+</header>
+
+<div class="box plain" style="margin-top:0">
+  <h4>What "settled" means in this document</h4>
+  <p>Rev A's questions were answered on 13 Sep, which settled the questions without passing a gate.
+      <b>G1 and G2 were both granted on 14 Sep</b>, and the Section is built. The six questions in
+      §10 were carried rather than answered: they are open against the Section now, not against
+      this document. The green marks record which alternatives are closed, so a later reading
+  does not reopen them by accident.</p>
+</div>
+
+<!-- ============================================================ 1 -->
+<h2 class="sec">1 · The Section, read precisely</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-01</span><h3>Anatomy at 360px</h3><span class="verdict yes">Rev B</span></div>
+  <p class="wf-sub">Three candidate rows — the Section's full height — in the composition's existing
+  header idiom. The figure uses the sample library <i>Master Games</i> at a position after
+  <span class="mono">1.e4 e5 2.Nf3 Nc6 3.Bb5 a6 4.Ba4 Nf6 5.O-O Be7</span>, where nine moves have
+  been played and six are below the fold.</p>
+  <div class="wf-canvas done">
+    <div class="anat">
+      <div class="sec-blk" style="height:108px">
+        <div class="sec-hd">
+          <span class="ttl">Explorer</span>
+          <span class="dot">·</span>
+          <span class="src"><b>Master Games</b> ˅</span>
+          <span class="sp"></span>
+          <span class="st">1,284 games</span>
+          <span class="ic">⋯</span><span class="ic">˄</span>
+        </div>
+        <div class="xp scroll">
+          <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">54%</span>
+            <div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+          <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">18%</span>
+            <div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+          <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">14%</span>
+            <div class="bar"><div class="seg w" style="width:31%">31</div><div class="seg d" style="width:45%">45</div><div class="seg b" style="width:24%">24</div></div></div>
+          <div class="xr"><span class="mv"><i>6.</i> Qe2</span><span class="pc">9%</span>
+            <div class="bar"><div class="seg w" style="width:42%">42</div><div class="seg d" style="width:33%">33</div><div class="seg b" style="width:25%">25</div></div></div>
+          <div class="xr"><span class="mv"><i>6.</i> Nc3</span><span class="pc">3%</span>
+            <div class="bar"><div class="seg w" style="width:29%">29</div><div class="seg d" style="width:38%">38</div><div class="seg b" style="width:33%">33</div></div></div>
+        </div>
+      </div>
+
+      <ul class="leg">
+        <li><span class="tagno">1</span><div><b>Title, then source.</b> <span>The source slot carries the
+        library being explored, with a disclosure indicator. It is the one thing in this Section the
+        user changes, so it sits where the shell puts changeable sources — beside the title, absorbing
+        truncation. MX-06.</span></div></li>
+        <li><span class="tagno">2</span><div><b>Status: games that contain this position.</b>
+        <span><span class="mono">1,284 games</span> — the size of the sample every row below is drawn
+        from, and the number that says whether the Section is worth reading at all. It is a live value
+        describing the query, so it belongs in the right cluster where it can never be truncated away.
+        Units drop first, leaving <span class="mono">1,284</span>.</span></div></li>
+        <li><span class="tagno">3</span><div><b>The move, with its number greyed.</b> <span>The ply number
+        is context, the move is the content — the same relationship the Move List draws in its number
+        gutter. Black's moves render <span class="mono">6…</span>.</span></div></li>
+        <li><span class="tagno">4</span><div><b>Share of the position, as a percentage.</b> <span>How often
+        this move was chosen here. Rows are ordered by it, descending, so the column reads as a
+        decreasing list and the ordering needs no explanation. <b>Percentage only</b> — the game count
+        behind it is one hover away, and that is all the tooltip carries. MX-13.</span></div></li>
+        <li><span class="tagno">5</span><div><b>The results bar, labelled in place.</b> <span>One track,
+        three segments, each carrying its own percentage inside it. White light, draw grey, Black dark —
+        the segment's colour <i>is</i> its label, so the three numbers need no key. Fit rule MX-04;
+        colours MX-05.</span></div></li>
+        <li><span class="tagno">6</span><div><b>Six moves below the fold.</b> <span>The body scrolls past
+        three; MX-07. Nothing in the header counts the moves — the scrollbar is the cue, and the one
+        move that matters most is scrolled to on arrival. MX-09.</span></div></li>
+      </ul>
+    </div>
+
+    <div class="callouts">
+      <span class="co good">Every number in a row is a percentage of something different — share of the position, then share of that move's games</span>
+      <span class="co good">Rows are moves, not plies: the Section reports on a position, so there is exactly one row per distinct legal move played</span>
+      <span class="co good">Exactly one absolute number is on screen, in the header. Everything inside the body is relative to it</span>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ 2 -->
+<h2 class="sec">2 · The width budget</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MX-02</span><h3>What 360px leaves for the bar</h3><span class="verdict yes">Holds for MX-03a</span></div>
+  <p class="wf-sub">The bar is the only elastic thing in the row, so every other cell is spent
+  directly out of its width.</p>
+  <div class="wf-canvas">
+    <div class="ruler">
+      <div style="width:1.5px"></div>
+      <div style="width:10px"></div>
+      <div style="width:84px">move</div>
+      <div style="width:8px"></div>
+      <div style="width:34px">%</div>
+      <div style="width:8px"></div>
+      <div style="width:201px">results bar</div>
+      <div style="width:10px"></div>
+      <div style="width:1.5px"></div>
+    </div>
+    <table class="rules">
+      <tr><th>Part</th><th>Width</th><th>Why that value</th></tr>
+      <tr><td class="n">Section</td><td class="n">360</td><td>Fixed by §5.2. Never changes with the window.</td></tr>
+      <tr><td class="n">Borders</td><td class="n">−3</td><td>1.5px each side, as every other Section draws.</td></tr>
+      <tr><td class="n">Row padding</td><td class="n">−20</td><td>10px each side. The Move List's 12px left gutter is not copied: it exists there to align a number column this Section does not have.</td></tr>
+      <tr class="yes"><td class="n">Available</td><td class="n v">337</td><td>What a row has to spend.</td></tr>
+      <tr><td class="n">Move cell</td><td class="n">84</td><td>Binding case <span class="mono">12… Qxf7+</span> — 10 mono characters at 12px ≈ 72px, plus 12px of slack for a promotion or a disambiguated move. Truncates with an ellipsis rather than wrapping.</td></tr>
+      <tr><td class="n">Share cell</td><td class="n">34</td><td>Binding case <span class="mono">100%</span> at 11px mono, tabular — 26px, with 8px of clearance. Right-aligned, so the digits form a column.</td></tr>
+      <tr><td class="n">Gaps</td><td class="n">−16</td><td>8px between cells, twice.</td></tr>
+      <tr class="yes"><td class="n">Results bar</td><td class="n v">201</td><td>Everything left.</td></tr>
+    </table>
+    <div class="box ok">
+      <h4>Why MX-03a is the affordable one</h4>
+      <p>A third numeric cell — a share <i>and</i> a game count, as option B drew — costs the bar a
+      further <b>46px</b>, or 23% of it. At 155px the smallest labelled segment needs 13.5% of a move's
+      games rather than 10.4%. With MX-03a chosen and the count moved to the tooltip, the bar keeps its
+      201px and the fit rule in §4 is computed against that width for good.</p>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ 3 -->
+<h2 class="sec">3 · Row anatomy — chosen, and the alternatives</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-03a</span><h3>A · Move, share, bar</h3><span class="verdict yes">Chosen 13 Sep</span></div>
+  <p class="wf-sub">Three cells, one line, 24px. Every segment above 10.4% carries its number inside
+  it.</p>
+  <div class="wf-canvas done">
+    <div class="cols">
+      <div>
+        <p class="caption"><b>A</b> · 24px rows · bar 201px · the row the Section is built from</p>
+        <div class="sec-blk">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">54%</span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">18%</span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">14%</span><div class="bar"><div class="seg w" style="width:31%">31</div><div class="seg d" style="width:45%">45</div><div class="seg b" style="width:24%">24</div></div></div>
+          </div>
+        </div>
+      </div>
+      <ul class="leg" style="min-width:300px">
+        <li><span class="tagno">+</span><div><b>The two scales are physically separated.</b> <span>Share is
+        a value in a column; results are a picture. Nothing invites the eye to compare 54% with 39%.</span></div></li>
+        <li><span class="tagno">+</span><div><b>Widest bar of any single-line option.</b> <span>201px, which
+        is what makes the overlaid labels viable at all.</span></div></li>
+        <li><span class="tagno">+</span><div><b>One number format in the body.</b> <span>Every value the
+        user reads inside the Section is a whole percent. The one absolute figure lives in the
+        header.</span></div></li>
+        <li><span class="tagno">−</span><div><b>Sample size is not in the row.</b> <span>Paid for by the
+        header's game count and by a one-line tooltip — and that is deliberately all it is paid for.
+        The bar itself never changes with sample size; MX-15.</span></div></li>
+      </ul>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-13</span><h3>The row tooltip — one number</h3><span class="verdict yes">Rev B · compact</span></div>
+  <p class="wf-sub">The one thing the row gave up when the share cell became a percentage: how many
+  games this move was played in. Nothing else. The row is already showing the move, the share and the
+  results — a tooltip that repeated them would be a second copy of the row.
+  <b>Updated 15 Sep to what was built:</b> centred over the row's share, above the row, and flipped
+  below it where the list's top edge would clip it.</p>
+  <div class="wf-canvas done">
+    <div class="cols">
+      <div>
+        <p class="caption">hovering the third row — above, over the share</p>
+        <div class="sec-blk" style="height:108px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc" style="position:relative">54%</span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc" style="position:relative">18%</span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr hov"><span class="mv"><i>6.</i> d3</span><span class="pc" style="position:relative">14%<span class="tip" style="position:absolute;left:50%;transform:translateX(-50%);bottom:calc(100% + 3.5px);z-index:2;text-align:left">180 games</span></span><div class="bar"><div class="seg w" style="width:31%">31</div><div class="seg d" style="width:45%">45</div><div class="seg b" style="width:24%">24</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="caption">hovering the first row — no room above, so below</p>
+        <div class="sec-blk" style="height:108px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr hov"><span class="mv"><i>6.</i> Re1</span><span class="pc" style="position:relative">54%<span class="tip" style="position:absolute;left:50%;transform:translateX(-50%);top:calc(100% + 3.5px);z-index:2;text-align:left">692 games</span></span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc" style="position:relative">18%</span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc" style="position:relative">14%</span><div class="bar"><div class="seg w" style="width:31%">31</div><div class="seg d" style="width:45%">45</div><div class="seg b" style="width:24%">24</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="caption">every magnitude it has to carry</p>
+        <div style="display:flex;flex-direction:column;gap:8px;align-items:flex-start">
+          <span class="tip">1 game</span>
+          <span class="tip">7 games</span>
+          <span class="tip">180 games</span>
+          <span class="tip">1,284 games</span>
+          <span class="tip">48,309 games</span>
+        </div>
+        <p class="caption" style="margin-top:10px">Exact, always. <b>No k/M suffix</b> — the reason for
+        one was column width, and a tooltip has none.</p>
+      </div>
+
+      <ul class="leg" style="min-width:300px">
+        <li><span class="tagno">1</span><div><b>One line, one number.</b> <span>It answers the only
+        question the row cannot: <i>how many games is this bar?</i> The move is under the cursor and the
+        share is in the row, so neither is repeated.</span></div></li>
+        <li><span class="tagno">2</span><div><b>The unit stays.</b> <span><span class="mono">180</span>
+        alone could be read as a percentage, which is the one misreading this Section must not
+        invite.</span></div></li>
+        <li><span class="tagno">3</span><div><b>Anchored to the row, not the cursor.</b> <span>Moving down
+        the list steps it down rather than dragging it. The whole row is the target; the tooltip is
+        centred over the share, because the count is what that share is a percentage of.</span></div></li>
+        <li><span class="tagno">4</span><div><b>Exact, and never abbreviated.</b> <span>The tooltip is the
+        one place in the Section with no width pressure, so it is where the precise figure belongs.</span></div></li>
+        <li><span class="tagno">5</span><div><b>Above, or below where it would be clipped.</b> <span>The list
+        scrolls, so it clips anything outside it. The tooltip flips below the row wherever the list's top
+        edge leaves no room — the first row, and any row scrolled up to the top. Updated 15 Sep.</span></div></li>
+      </ul>
+    </div>
+    <div class="callouts">
+      <span class="co good">Roughly a fifth the area of Rev B's first draft, which carried the move, the share and three result lines</span>
+      <span class="co">Hover also draws the move on the board as an arrow. MX-09</span>
+      <span class="co bad">Two things the fuller tooltip covered are now uncovered: the <b>colour key</b>, and the value of any <b>label the bar dropped</b>. Both are back in §10</span>
+    </div>
+    <div class="box plain">
+      <h4>What the compact form gives up</h4>
+      <p>The longer draft named White, Draw and Black beside their swatches, which was the Section's
+      only colour key, and it repeated the three percentages, which was how a reader recovered a label
+      too small to be drawn. Neither has a home now.</p>
+      <p>Neither is fatal. The White-draw-Black order is conventional and light-to-dark reads the right
+      way round without being told; a segment too small to hold two digits is a result too rare for its
+      exact value to matter. But both were answered a revision ago and are not now, so they are recorded
+      as open rather than quietly dropped — Q1 and Q2 in §10.</p>
+    </div>
+  </div>
+</figure>
+
+<div class="hr"></div>
+<p class="caption" style="margin:0 0 -8px"><b>The three alternatives, kept for the record.</b>
+None is drawn further and none should be reopened without a reason that is new.</p>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MX-03b</span><h3>B · Share and count both</h3><span class="verdict no">Not chosen</span></div>
+  <p class="wf-sub">A third numeric cell, restoring the concept's <span class="mono">48k</span>.
+  The bar falls to 155px and the row reads as a table of figures with a chart appended.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+      <div>
+        <p class="caption"><b>B</b> · bar 155px</p>
+        <div class="sec-blk">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr" style="grid-template-columns:84px 34px 38px 1fr"><span class="mv"><i>6.</i> Re1</span><span class="pc">54%</span><span class="ct">693</span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr" style="grid-template-columns:84px 34px 38px 1fr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">18%</span><span class="ct">231</span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr" style="grid-template-columns:84px 34px 38px 1fr"><span class="mv"><i>6.</i> a3</span><span class="pc">1%</span><span class="ct">7</span><div class="bar"><div class="seg w" style="width:57%">57</div><div class="seg d" style="width:29%">29</div><div class="seg b" style="width:14%"></div></div></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co bad">Row 3 · Black's 14% is 21px — the label drops where MX-03a would have kept it</span></div>
+      </div>
+      <ul class="leg" style="min-width:300px">
+        <li><span class="tagno">·</span><div><b>Its argument was answered rather than rejected.</b>
+        <span>A bar computed from 7 games is noise drawn as fact, and B was the only option that said so
+        in the row. MX-13 says it in the tooltip instead, at no cost to the bar, and MX-15 settles that
+        stating it is the whole of the application's duty here.</span></div></li>
+      </ul>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MX-03c</span><h3>C · Share as a fill behind the move</h3><span class="verdict no">Not chosen</span></div>
+  <p class="wf-sub">The widest bar at 243px, and the option's whole risk: two horizontal lengths in
+  one row that mean different things, told apart only by colour.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+      <div>
+        <p class="caption"><b>C</b> · bar 243px</p>
+        <div class="sec-blk">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr" style="grid-template-columns:86px 1fr;height:26px"><span class="gauge"><span class="fillbar" style="width:54%"></span><span class="mv"><i>6.</i> Re1</span></span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr" style="grid-template-columns:86px 1fr;height:26px"><span class="gauge"><span class="fillbar" style="width:18%"></span><span class="mv"><i>6.</i> Bxc6</span></span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr" style="grid-template-columns:86px 1fr;height:26px"><span class="gauge"><span class="fillbar" style="width:3%"></span><span class="mv"><i>6.</i> Nc3</span></span><div class="bar"><div class="seg w" style="width:29%">29</div><div class="seg d" style="width:38%">38</div><div class="seg b" style="width:33%">33</div></div></div>
+          </div>
+        </div>
+      </div>
+      <ul class="leg" style="min-width:300px">
+        <li><span class="tagno">·</span><div><b>Elegant and less honest.</b> <span>The staircase down the
+        left is a pleasure to read and will be compared against the bar on its right whatever the colours
+        say. No exact share appears anywhere without a hover.</span></div></li>
+      </ul>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MX-03d</span><h3>D · Two lines, bar full width</h3><span class="verdict no">Not chosen</span></div>
+  <p class="wf-sub">Everything fits and nothing drops — at 38px a row. With the Section capped at
+  three moves' worth of height, D would show <b>one</b> candidate.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+      <div>
+        <p class="caption"><b>D</b> · 38px rows · bar 337px</p>
+        <div class="sec-blk">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr2"><div class="l1"><span class="mv"><i>6.</i> Re1</span><span class="sp"></span><span class="ct">693 games</span><span class="pc">54%</span></div><div class="bar"><div class="seg w" style="width:39%">39%</div><div class="seg d" style="width:37%">37%</div><div class="seg b" style="width:24%">24%</div></div></div>
+            <div class="xr2"><div class="l1"><span class="mv"><i>6.</i> Bxc6</span><span class="sp"></span><span class="ct">231 games</span><span class="pc">18%</span></div><div class="bar"><div class="seg w" style="width:34%">34%</div><div class="seg d" style="width:42%">42%</div><div class="seg b" style="width:24%">24%</div></div></div>
+          </div>
+        </div>
+      </div>
+      <ul class="leg" style="min-width:300px">
+        <li><span class="tagno">·</span><div><b>Correct and too expensive.</b> <span>The Section compares
+        candidates, and comparison is a function of how many are on screen together. A 337px bar also
+        resolves a third of a percent — precision no shipped library has the sample size to
+        mean.</span></div></li>
+      </ul>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MX-03e</span><h3>The four, as decided</h3></div>
+  <div class="wf-canvas">
+    <table class="rules">
+      <tr><th>Option</th><th>Bar</th><th>Row</th><th>Moves at 108px</th><th>Verdict</th></tr>
+      <tr class="yes"><td class="n v">A</td><td class="c">201px</td><td class="c">24px</td><td class="c">3</td><td class="v" style="color:var(--ok)">Chosen 13 Sep</td></tr>
+      <tr class="dim"><td class="n">B</td><td class="c">155px</td><td class="c">24px</td><td class="c">3</td><td>Not chosen — costs the bar 46px. Its count is in the tooltip instead</td></tr>
+      <tr class="dim"><td class="n">C</td><td class="c">243px</td><td class="c">26px</td><td class="c">2</td><td>Not chosen — two lengths, two meanings</td></tr>
+      <tr class="dim"><td class="n">D</td><td class="c">337px</td><td class="c">38px</td><td class="c">1</td><td>Not chosen — one candidate on screen</td></tr>
+    </table>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-11</span><h3>The share cell — percentage, not a count</h3><span class="verdict yes">Settled 13 Sep</span></div>
+  <p class="wf-sub">Both fitted 34px, so this was never a width question. It was a question about
+  which number the column is for, and the library selector decided it.</p>
+  <div class="wf-canvas done">
+    <div class="cols">
+
+      <div>
+        <p class="caption"><b>Chosen</b> — the same position in two libraries</p>
+        <div class="sec-blk" style="margin-bottom:10px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">54%</span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">18%</span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">14%</span><div class="bar"><div class="seg w" style="width:31%">31</div><div class="seg d" style="width:45%">45</div><div class="seg b" style="width:24%">24</div></div></div>
+          </div>
+        </div>
+        <div class="sec-blk">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>My Games</b> ˅</span><span class="sp"></span><span class="st">11 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">64%</span><div class="bar"><div class="seg w" style="width:43%">43</div><div class="seg d" style="width:29%">29</div><div class="seg b" style="width:28%">28</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">27%</span><div class="bar"><div class="seg w" style="width:67%">67</div><div class="seg b" style="width:33%">33</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">9%</span><div class="bar"><div class="seg w" style="width:100%">100</div></div></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">The column is the same kind of number in both. The header is where the magnitude changes — <span class="mono">1,284</span> → <span class="mono">11</span></span></div>
+      </div>
+
+      <div>
+        <p class="caption"><b>Rejected</b> — a game count with a k/M suffix</p>
+        <div class="sec-blk" style="margin-bottom:10px;opacity:.55">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">693</span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">231</span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">180</span><div class="bar"><div class="seg w" style="width:31%">31</div><div class="seg d" style="width:45%">45</div><div class="seg b" style="width:24%">24</div></div></div>
+          </div>
+        </div>
+        <div class="sec-blk" style="opacity:.55">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>My Games</b> ˅</span><span class="sp"></span><span class="st">11 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">7</span><div class="bar"><div class="seg w" style="width:43%">43</div><div class="seg d" style="width:29%">29</div><div class="seg b" style="width:28%">28</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">3</span><div class="bar"><div class="seg w" style="width:67%">67</div><div class="seg b" style="width:33%">33</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">1</span><div class="bar"><div class="seg w" style="width:100%">100</div></div></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co bad">Same rows, same moves — <span class="mono">693</span> becomes <span class="mono">7</span></span></div>
+      </div>
+
+    </div>
+
+    <table class="rules">
+      <tr><th></th><th>Percentage · chosen</th><th>Count · rejected</th></tr>
+      <tr><td class="n">Widest value</td><td><span class="mono">100%</span> — 26px</td><td><span class="mono">1,284</span> — 33px. Both inside 34px</td></tr>
+      <tr><td class="n">Formats in one column</td><td>One. <span class="mono">1%</span> … <span class="mono">100%</span></td><td>Three. <span class="mono">7</span> · <span class="mono">1,284</span> · <span class="mono">142k</span></td></tr>
+      <tr><td class="n">Across a library switch</td><td>Comparable in kind</td><td>Re-read against a different total each time</td></tr>
+      <tr><td class="n">Answers "how often here"</td><td>Directly</td><td>After dividing by the header's total</td></tr>
+      <tr><td class="n">Answers "can I trust this bar"</td><td>On hover — <b>MX-13</b></td><td>Directly. Its one advantage, and it is now covered</td></tr>
+      <tr><td class="n">Sorting</td><td colspan="2">Identical — same denominator, so the order is the same either way</td></tr>
+    </table>
+
+    <div class="box ok">
+      <h4>Why the percentage</h4>
+      <p><b>The library selector decided it.</b> MX-06 makes the source switchable, and a count column
+      does not survive the switch: the same row, the same move, and <span class="mono">693</span>
+      becomes <span class="mono">7</span> — a change of magnitude that has to be re-read against a
+      different header total every time. A percentage stays the same kind of number in every library,
+      and the header carries the magnitude on its behalf.</p>
+      <p>Three smaller reasons point the same way. The column's question is <i>how often was this chosen
+      here</i>, which is relative. A count column mixes three formats where a percentage has one. And
+      <span class="mono">1.2k</span> is two significant figures presented as a fact.</p>
+      <p><b>What it gave up is bought back by MX-13.</b> The count is in the tooltip, per row, exact —
+      one hover away and never in the way.</p>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ 4 -->
+<h2 class="sec">4 · Labels inside the bar</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-04</span><h3>The fit rule</h3><span class="verdict yes">Agreed 13 Sep</span></div>
+  <p class="wf-sub">A label is drawn inside its own segment or not at all. It is never clipped,
+  never moved outside, never shrunk to fit. This is the rule that makes the overlay safe.</p>
+  <div class="wf-canvas done">
+    <div class="cols">
+      <div>
+        <p class="caption">Bar at <b>201px</b> · label <span class="mono">38</span> = 13px + 8px of clearance</p>
+        <div style="width:221px">
+          <div style="margin-bottom:10px"><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div><p class="caption" style="margin:4px 0 0">39/37/24 — all three fit</p></div>
+          <div style="margin-bottom:10px"><div class="bar"><div class="seg w" style="width:62%">62</div><div class="seg d" style="width:27%">27</div><div class="seg b" style="width:11%">11</div></div><p class="caption" style="margin:4px 0 0">62/27/11 — 11% is 22px, the last width that fits</p></div>
+          <div style="margin-bottom:10px"><div class="bar"><div class="seg w" style="width:57%">57</div><div class="seg d" style="width:36%">36</div><div class="seg b" style="width:7%"></div></div><p class="caption" style="margin:4px 0 0">57/36/<b>7</b> — 14px. The label drops; the segment stays</p></div>
+          <div style="margin-bottom:10px"><div class="bar"><div class="seg w" style="width:88%">88</div><div class="seg d" style="width:9%"></div><div class="seg b" style="width:3%"></div></div><p class="caption" style="margin:4px 0 0">88/9/3 — two drop. The bar still says what it needs to</p></div>
+          <div><div class="bar"><div class="seg w" style="width:100%">100</div></div><p class="caption" style="margin:4px 0 0">100/0/0 — a zero result draws <b>no segment</b>, not a hairline</p></div>
+        </div>
+      </div>
+      <ul class="leg" style="min-width:320px">
+        <li><span class="tagno">1</span><div><b>Drawn only if the segment holds it.</b> <span>Label width
+        plus 8px of clearance. Below that, nothing — the reader loses a number, not the shape.</span></div></li>
+        <li><span class="tagno">2</span><div><b>The bare integer, no "%".</b> <span>A bar divided into
+        three parts is self-evidently proportional, and the sign costs 6.6px in every segment — enough to
+        be the difference between a label and no label in the cases that matter. The same economy §5.4.1
+        applied to the Evaluation Bar's plus sign.</span></div></li>
+        <li><span class="tagno">3</span><div><b>Contrast comes from the segment.</b> <span>Dark ink on
+        White's fill, white on the draw grey, light on Black's. The label is never a colour the segment
+        beneath it does not support.</span></div></li>
+        <li><span class="tagno">4</span><div><b>A dropped label has no fallback.</b> <span>MX-13's tooltip
+        carries the game count and nothing else, so a segment too small to draw its number does not state
+        it anywhere. The rule's own defence is that such a segment is a result too rare for its exact
+        value to matter — <b>Q2 in §10</b> asks whether that is enough.</span></div></li>
+        <li><span class="tagno">5</span><div><b>Zero draws nothing.</b> <span>A 0% segment is absent. A
+        non-zero segment is never drawn below 2px, so "rare" and "never" stay distinguishable.</span></div></li>
+      </ul>
+    </div>
+
+    <table class="rules">
+      <tr><th>Bar width</th><th>Label</th><th>Needs</th><th>Smallest labelled segment</th></tr>
+      <tr class="yes"><td class="n">201px · MX-03a</td><td class="n">38</td><td class="n">21px</td><td class="v">10.4% — the Section's binding figure</td></tr>
+      <tr class="dim"><td class="n">201px</td><td class="n">38%</td><td class="n">28px</td><td>13.9% — the cost of the sign, which is why it is dropped</td></tr>
+      <tr class="dim"><td class="n">155px · B</td><td class="n">38</td><td class="n">21px</td><td>13.5%</td></tr>
+      <tr class="dim"><td class="n">243px · C</td><td class="n">38</td><td class="n">21px</td><td>8.6%</td></tr>
+      <tr><td class="n">201px</td><td class="n">100</td><td class="n">28px</td><td>The only three-digit case, and it is the whole bar</td></tr>
+    </table>
+
+    <div class="box plain">
+      <h4>Why not put the three numbers beside the bar</h4>
+      <p>The concept's <span class="mono">38/34/28</span> is 46px of numerals whose order is the only
+      thing tying each figure to a colour. Overlaying them removes that step: the number sits in the
+      thing it describes. The cost is that the smallest segments give their numbers up — and a segment
+      too small to hold two digits is, by that fact, a result too rare for its exact value to matter.</p>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-05</span><h3>The bar's three colours do not follow the theme</h3><span class="verdict yes">Agreed 13 Sep</span></div>
+  <p class="wf-sub">White means White. A segment that inverted in dark mode would swap the two sides
+  of every result in the Section.</p>
+  <div class="wf-canvas done">
+    <div class="cols">
+      <div>
+        <p class="caption">Light theme</p>
+        <div style="width:221px;background:#ffffff;padding:10px;border:1px solid var(--rule);border-radius:3px">
+          <div class="bar" style="--bar-w:#f0efec;--bar-w-ink:#2b2b28;--bar-w-edge:#b9b8b2;--bar-d:#9a9a94;--bar-d-ink:#fff;--bar-b:#2b2b28;--bar-b-ink:#f0efec"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div>
+        </div>
+      </div>
+      <div>
+        <p class="caption">Dark theme — same order, same meaning</p>
+        <div style="width:221px;background:#1e1e1c;padding:10px;border:1px solid #55554f;border-radius:3px">
+          <div class="bar" style="--bar-w:#e4e2dc;--bar-w-ink:#262623;--bar-w-edge:#6e6c66;--bar-d:#7e7c76;--bar-d-ink:#fff;--bar-b:#242421;--bar-b-ink:#ddd9d1"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div>
+        </div>
+      </div>
+      <ul class="leg" style="min-width:300px">
+        <li><span class="tagno">1</span><div><b>Three dedicated tokens.</b> <span>Adjusted for each theme's
+        ground, never swapped. Black's segment stays the darkest of the three in both.</span></div></li>
+        <li><span class="tagno">2</span><div><b>Order is fixed: White, draw, Black.</b> <span>It does not
+        follow board orientation. Flipping the board must not reorder a statistic.</span></div></li>
+        <li><span class="tagno">3</span><div><b>The track keeps a 1px border.</b> <span>In dark mode
+        White's fill is the lightest thing in the panel and would otherwise bleed; in light mode Black's
+        needs the same containment.</span></div></li>
+        <li><span class="tagno">4</span><div><b>Nothing on screen names them.</b> <span>Light-to-dark is
+        the convention and reads the right way round unaided, but the Section carries no key and MX-13
+        no longer supplies one. <b>Q1 in §10.</b></span></div></li>
+      </ul>
+    </div>
+    <div class="callouts">
+      <span class="co good">The same three tokens would serve a Library Workspace results column, if one is ever drawn</span>
+      <span class="co">A key, if one is wanted, belongs in the options menu — a legend inside a 108px Section is not affordable</span>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ 5 -->
+<h2 class="sec">5 · The header — libraries in the source slot</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-06</span><h3>The source is a locally installed library</h3><span class="verdict yes">Agreed 13 Sep · footer revised</span></div>
+  <p class="wf-sub">The list is the user's own libraries. <b>Changed from Rev A:</b> the explanatory
+  footer is gone. In its place is a shortcut that opens the Settings section where libraries are
+  managed — a control, not a sentence.</p>
+  <div class="wf-canvas done">
+    <div class="cols">
+      <div>
+        <p class="caption">Closed</p>
+        <div class="sec-blk" style="margin-bottom:20px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">54%</span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">18%</span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">14%</span><div class="bar"><div class="seg w" style="width:31%">31</div><div class="seg d" style="width:45%">45</div><div class="seg b" style="width:24%">24</div></div></div>
+          </div>
+        </div>
+        <p class="caption">Open</p>
+        <div style="position:relative;width:360px;padding-bottom:44px">
+          <div class="sec-blk" style="height:108px">
+            <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src" style="color:var(--ink)"><b>Master Games</b> ˄</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+            <div class="xp" style="opacity:.3">
+              <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">54%</span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+              <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">18%</span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+              <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">14%</span><div class="bar"><div class="seg w" style="width:31%">31</div><div class="seg d" style="width:45%">45</div><div class="seg b" style="width:24%">24</div></div></div>
+            </div>
+          </div>
+          <div class="menu" style="position:absolute;left:56px;top:28px">
+            <div class="mi"><span class="tick"></span>None</div>
+            <div class="mi on"><span class="tick">✓</span>Master Games<span class="cnt">142k</span></div>
+            <div class="mi"><span class="tick"></span>My Games<span class="cnt">3,908</span></div>
+            <div class="mi"><span class="tick"></span>Club Championship<span class="cnt">612</span></div>
+            <div class="cut hov"><span class="tick">⚙</span>Settings<span class="arw">›</span></div>
+          </div>
+        </div>
+      </div>
+      <ul class="leg" style="min-width:300px">
+        <li><span class="tagno">1</span><div><b><span class="mono">None</span>, then every installed
+        library in the Library Workspace's order.</b> <span>Two lists of the same objects in two orders
+        would be two lists. <span class="mono">None</span> leads because it is the absence of a
+        selection rather than one of the things being selected between — MX-14.</span></div></li>
+        <li><span class="tagno">2</span><div><b>The size is the library's, not the position's.</b>
+        <span><span class="mono">142k</span> is how many games the library holds; the header's
+        <span class="mono">1,284</span> is how many of them reached this position. They answer "is this
+        worth asking?" and "what did it say?" respectively, and they are the Section's only two absolute
+        numbers.</span></div></li>
+        <li><span class="tagno">3</span><div><b>The last entry is a shortcut, not a note.</b>
+        <span><span class="mono">Settings ›</span> — it names the destination rather than the section
+        inside it, which is what every other shortcut out of a menu does and what keeps the label
+        correct if libraries are ever managed somewhere else. It is separated by a rule and carries a
+        trailing <span class="mono">›</span>, so it reads as leaving the menu rather than as a fourth
+        library.</span></div></li>
+        <li><span class="tagno">4</span><div><b>The library explored need not be the one the game came
+        from.</b> <span>Reading your own game against a master library is the Section's most useful case,
+        so the selector is independent of the open game. <b>Open</b> — what it opens on; §10.</span></div></li>
+        <li><span class="tagno">5</span><div><b>Source truncates first.</b> <span>A long library name
+        ellipses with a tooltip, per the shell's degradation order. The title and the status never shorten
+        to make room for it.</span></div></li>
+      </ul>
+    </div>
+    <div class="callouts">
+      <span class="co good">One library at a time. Merging two would need a rule for what a merged percentage means</span>
+      <span class="co good">Switching library re-queries the same position — the rows change, the board does not</span>
+      <span class="co">The shortcut lands on the Settings section where libraries are managed. The label says <b>Settings</b>; which section it opens is a target, not a design decision</span>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-14</span><h3><span class="mono">None</span> is an entry in the list</h3><span class="verdict yes">New</span></div>
+  <p class="wf-sub">"No library selected" is a state of the selector, so it is drawn in the selector.
+  The source slot reads <span class="mono">None</span>, the menu carries <span class="mono">None</span>
+  as its first entry with the tick against it, and the way out is the control the user already has
+  open.</p>
+  <div class="wf-canvas done">
+    <div class="cols">
+
+      <div style="position:relative;width:360px;padding-bottom:52px">
+        <p class="caption">nothing selected · the menu open</p>
+        <div class="sec-blk" style="height:60px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src" style="color:var(--ink)"><b>None</b> ˄</span><span class="sp"></span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="state" style="opacity:.3"><span class="t">No library selected</span></div>
+        </div>
+        <div class="menu" style="position:absolute;left:56px;top:28px">
+          <div class="mi on"><span class="tick">✓</span>None</div>
+          <div class="mi"><span class="tick"></span>Master Games<span class="cnt">142k</span></div>
+          <div class="mi"><span class="tick"></span>My Games<span class="cnt">3,908</span></div>
+          <div class="mi"><span class="tick"></span>Club Championship<span class="cnt">612</span></div>
+          <div class="cut"><span class="tick">⚙</span>Settings<span class="arw">›</span></div>
+        </div>
+      </div>
+
+      <div style="position:relative;width:360px;padding-bottom:52px">
+        <p class="caption">no libraries installed at all · the list has nothing to list</p>
+        <div class="sec-blk" style="height:60px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src" style="color:var(--ink)"><b>None</b> ˄</span><span class="sp"></span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="state" style="opacity:.3"><span class="t">No library selected</span></div>
+        </div>
+        <div class="menu" style="position:absolute;left:56px;top:28px">
+          <div class="mi on"><span class="tick">✓</span>None</div>
+          <div class="cut hov"><span class="tick">⚙</span>Settings<span class="arw">›</span></div>
+        </div>
+        <div class="callouts" style="position:absolute;top:118px"><span class="co good">Two entries and no explanation. A user who opens this sees the whole truth — there is nothing to pick — and the one thing to do about it</span></div>
+      </div>
+
+      <ul class="leg" style="min-width:300px">
+        <li><span class="tagno">1</span><div><b>The source slot is never empty.</b> <span>Rev B drew it
+        blank when nothing was selected, which made the header look broken rather than unset. A selector
+        with nothing in it is still a selector.</span></div></li>
+        <li><span class="tagno">2</span><div><b><span class="mono">None</span>, not
+        <span class="mono">Select…</span>.</b> <span>It is the list's first <i>entry</i>, with a tick
+        against it like any other, so the slot and the menu agree. <span class="mono">Select…</span>
+        would be a prompt in the slot but could not be an entry in the list without reading as a
+        command.</span></div></li>
+        <li><span class="tagno">3</span><div><b>It is selectable, not only a default.</b> <span>Choosing
+        <span class="mono">None</span> turns the Section off without hiding it — the cheapest way to stop
+        querying a large library while stepping quickly through a game.</span></div></li>
+        <li><span class="tagno">4</span><div><b>Nothing tells the user where to go.</b> <span>The
+        <span class="mono">Settings ›</span> shortcut is in the menu they have just opened. A message
+        body that names a Settings section is describing a route the user is already standing on.</span></div></li>
+        <li><span class="tagno">5</span><div><b>The status slot is empty here.</b> <span>It counts games in
+        the position, and with no library there is no count — not <span class="mono">0 games</span>, which
+        would be an answer to a question nobody asked.</span></div></li>
+      </ul>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ 6 -->
+<h2 class="sec">6 · Height — one to three moves</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-07</span><h3>Sized to content, ceiling of three</h3><span class="verdict yes">Agreed 13 Sep</span></div>
+  <p class="wf-sub">The Section takes the height its rows need, up to three. A fourth move does not
+  make it taller — it makes it scroll. <b>This replaces Rev A's proposal of a 144px floor</b>, and
+  goes the other way: the Section is now smaller than the 92px currently declared.</p>
+  <div class="wf-canvas done">
+    <div class="cols">
+
+      <div>
+        <p class="caption"><b>60px</b> · one move · the floor</p>
+        <div class="sec-blk" style="height:60px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">96 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>14…</i> Rfe8</span><span class="pc">100%</span><div class="bar"><div class="seg w" style="width:36%">36</div><div class="seg d" style="width:41%">41</div><div class="seg b" style="width:23%">23</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="caption"><b>84px</b> · two moves</p>
+        <div class="sec-blk" style="height:84px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">311 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>11.</i> Nbd2</span><span class="pc">71%</span><div class="bar"><div class="seg w" style="width:38%">38</div><div class="seg d" style="width:40%">40</div><div class="seg b" style="width:22%">22</div></div></div>
+            <div class="xr"><span class="mv"><i>11.</i> h3</span><span class="pc">29%</span><div class="bar"><div class="seg w" style="width:33%">33</div><div class="seg d" style="width:44%">44</div><div class="seg b" style="width:23%">23</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="caption"><b>108px</b> · three moves · the ceiling</p>
+        <div class="sec-blk" style="height:108px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">842 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>8.</i> c3</span><span class="pc">61%</span><div class="bar"><div class="seg w" style="width:37%">37</div><div class="seg d" style="width:40%">40</div><div class="seg b" style="width:23%">23</div></div></div>
+            <div class="xr"><span class="mv"><i>8.</i> a4</span><span class="pc">28%</span><div class="bar"><div class="seg w" style="width:35%">35</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:23%">23</div></div></div>
+            <div class="xr"><span class="mv"><i>8.</i> d4</span><span class="pc">11%</span><div class="bar"><div class="seg w" style="width:40%">40</div><div class="seg d" style="width:35%">35</div><div class="seg b" style="width:25%">25</div></div></div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="caption"><b>108px</b> · nine moves — the ceiling holds, the body scrolls</p>
+        <div class="sec-blk" style="height:108px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">1,284 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp scroll">
+            <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">54%</span><div class="bar"><div class="seg w" style="width:39%">39</div><div class="seg d" style="width:37%">37</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">18%</span><div class="bar"><div class="seg w" style="width:34%">34</div><div class="seg d" style="width:42%">42</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">14%</span><div class="bar"><div class="seg w" style="width:31%">31</div><div class="seg d" style="width:45%">45</div><div class="seg b" style="width:24%">24</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Qe2</span><span class="pc">9%</span><div class="bar"><div class="seg w" style="width:42%">42</div><div class="seg d" style="width:33%">33</div><div class="seg b" style="width:25%">25</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Nc3</span><span class="pc">3%</span><div class="bar"><div class="seg w" style="width:29%">29</div><div class="seg d" style="width:38%">38</div><div class="seg b" style="width:33%">33</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> h3</span><span class="pc">1%</span><div class="bar"><div class="seg w" style="width:44%">44</div><div class="seg d" style="width:39%">39</div><div class="seg b" style="width:17%">17</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> a3</span><span class="pc">1%</span><div class="bar"><div class="seg w" style="width:57%">57</div><div class="seg d" style="width:29%">29</div><div class="seg b" style="width:14%"></div></div></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">The scrollbar is the only cue that six more exist, and the one that matters is scrolled to on arrival — MX-09</span></div>
+      </div>
+
+    </div>
+
+    <table class="rules">
+      <tr><th>Part</th><th>Height</th><th>Composed as</th></tr>
+      <tr><td class="n">Section header</td><td class="c">30</td><td>The shell's, unchanged.</td></tr>
+      <tr><td class="n">Body padding</td><td class="c">6</td><td>3px top and bottom.</td></tr>
+      <tr><td class="n">Row</td><td class="c">24</td><td>MX-03a. A 16px bar with 4px of air either side.</td></tr>
+      <tr class="yes"><td class="n">Floor</td><td class="c v">60</td><td>30 + 6 + 24. One move — the least a position with any games can have.</td></tr>
+      <tr><td class="n">Two moves</td><td class="c">84</td><td>30 + 6 + 48.</td></tr>
+      <tr class="yes"><td class="n">Ceiling</td><td class="c v">108</td><td>30 + 6 + 72. Three moves; nothing taller.</td></tr>
+      <tr><td class="n">Collapsed</td><td class="c">30</td><td>Header only, per the shell.</td></tr>
+    </table>
+
+    <table class="rules">
+      <tr><th>Contract</th><th><code>sections.js</code> today</th><th>Rev B</th><th>Note</th></tr>
+      <tr><td class="n">floor</td><td class="c">92</td><td class="c v">60</td><td>One row rather than two and a half.</td></tr>
+      <tr><td class="n">height</td><td class="c">92</td><td class="c v">—</td><td><b>Sized to content</b>, in §5.4.2's vocabulary, with a ceiling of 108. The fixed <code>height</code> is withdrawn.</td></tr>
+      <tr><td class="n">ceiling</td><td class="c">—</td><td class="c v">108</td><td><b>New property.</b> §5.4.2's contract has floor and height behaviour but no ceiling; this Section needs one, and it is the only one so far that does.</td></tr>
+      <tr><td class="n">scrolls</td><td class="c">true</td><td class="c">true</td><td>Unchanged. Engages at the fourth move, not before.</td></tr>
+      <tr><td class="n">absorb</td><td class="c">—</td><td class="c">—</td><td>Unchanged. The Move List absorbs.</td></tr>
+      <tr><td class="n">hideable</td><td class="c">true</td><td class="c">true</td><td>Unchanged.</td></tr>
+    </table>
+
+    <div class="box ok">
+      <h4>This gives height back, it does not take it</h4>
+      <p>Section floors sum to the height at which Game Details begins to scroll. Rev A proposed raising
+      this floor from 92 to 144 and had to argue for the cost. Rev B lowers it to <b>60</b>, so the panel
+      scrolls <b>32px later</b> than it does today, and the Move List — which absorbs surplus — is up to
+      <b>32px taller</b> whenever the Explorer is short.</p>
+      <p>A capped Section also makes the panel predictable in a way an absorbing one cannot: however deep
+      the opening, this Section is never more than 108px, so no position can push the Move List off the
+      screen.</p>
+    </div>
+
+    <div class="box plain">
+      <h4>Rev A's totals strip is withdrawn</h4>
+      <p>At a ceiling of 108px a 22px strip is a fifth of the Section — the price of one of its three
+      candidate rows. Its game count moves into the header's status slot, which is the Section's single
+      absolute number and now its only one.</p>
+      <p>What is lost is the position's aggregate result — <span class="mono">37/39/24</span> across all
+      nine moves. It has no home in Rev B. <b>Q4 in §10</b> asks whether it needs one.</p>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ 7 -->
+<h2 class="sec">7 · States</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-08</span><h3>Three bodies that are not rows — and one that is</h3><span class="verdict yes">Rev B</span></div>
+  <p class="wf-sub">Leaving the last position's rows on screen while the board has moved on would be
+  the worst of these. Each state replaces the body entirely, every message is a single line, and every
+  message body sits at the Section's 60px floor — so a state is never taller than the row it replaced.
+  <b>The fourth panel is not a state.</b> It is a small library drawn by the ordinary rules, and it is
+  here to show that nothing special happens.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+
+      <div>
+        <p class="caption"><b>Out of book</b> — the position is not in the library · 60px</p>
+        <div class="sec-blk" style="height:60px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st">0 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="state">
+            <span class="t">No games reached this position</span>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">One line at the Section's floor. The header already names the library and says <span class="mono">0 games</span>, so the body does not repeat either</span></div>
+      </div>
+
+      <div>
+        <p class="caption"><b>Querying</b> · holds the previous height</p>
+        <div class="sec-blk" style="height:108px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>Master Games</b> ˅</span><span class="sp"></span><span class="st"></span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="skel" style="width:52px"></span><span class="skel" style="width:22px"></span><span class="skel" style="height:16px"></span></div>
+            <div class="xr"><span class="skel" style="width:44px"></span><span class="skel" style="width:22px"></span><span class="skel" style="height:16px"></span></div>
+            <div class="xr"><span class="skel" style="width:56px"></span><span class="skel" style="width:22px"></span><span class="skel" style="height:16px"></span></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">The status empties rather than showing a stale count</span><span class="co bad">A content-sized Section must not resize on every ply. It holds its last height while querying, and takes the new one with the rows</span></div>
+      </div>
+
+      <div>
+        <p class="caption"><b>No library selected</b> · 60px</p>
+        <div class="sec-blk" style="height:60px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>None</b> ˅</span><span class="sp"></span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="state">
+            <span class="t">No library selected</span>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">The source slot reads <span class="mono">None</span> and opens. The route out is the control the user is already looking at — MX-14</span></div>
+      </div>
+
+      <div>
+        <p class="caption"><b>A small library</b> — not a state at all · 108px</p>
+        <div class="sec-blk" style="height:108px">
+          <div class="sec-hd"><span class="ttl">Explorer</span><span class="dot">·</span><span class="src"><b>My Games</b> ˅</span><span class="sp"></span><span class="st">11 games</span><span class="ic">⋯</span><span class="ic">˄</span></div>
+          <div class="xp">
+            <div class="xr"><span class="mv"><i>6.</i> Re1</span><span class="pc">64%</span><div class="bar"><div class="seg w" style="width:43%">43</div><div class="seg d" style="width:29%">29</div><div class="seg b" style="width:28%">28</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> d3</span><span class="pc">27%</span><div class="bar"><div class="seg w" style="width:67%">67</div><div class="seg b" style="width:33%">33</div></div></div>
+            <div class="xr"><span class="mv"><i>6.</i> Bxc6</span><span class="pc">9%</span><div class="bar"><div class="seg w" style="width:100%">100</div></div></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">Row 3 is one game and is drawn exactly like row 1. The header says <span class="mono">11 games</span>, the tooltip says <span class="mono">1 game</span>, and that is the whole answer — MX-15</span></div>
+      </div>
+
+    </div>
+
+    <div class="box plain">
+      <h4>Why the messages are one line each</h4>
+      <p>The two-line form drawn earlier did not sit right, and it was not a drawing error: a 12px
+      primary line and an 11px secondary line have different leading, so a box centred on their combined
+      height puts neither line on the Section's optical centre. Equal 16px leading on both would fix the
+      arithmetic — but the better fix was to notice that <b>neither second line was carrying anything</b>.</p>
+      <p>Out of book said <i>"Master Games holds 142,318 games, none of them here"</i>, when the header
+      beside it already reads <span class="mono">Master Games</span> and <span class="mono">0 games</span>.
+      No library said <i>"Add one in Settings › Databases"</i>, which is an instruction to go and operate
+      a control the user can see and open from where they are standing — MX-14 makes that route the
+      obvious one instead of describing it.</p>
+      <p>So both are single lines, both bodies sit at the 60px floor, and a message is never taller than
+      the row it replaced. The centring rule is stated anyway, because a future state may genuinely need
+      two lines: <b>both lines take 16px leading</b>, and the block is centred as a whole.</p>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-15</span><h3>Sample size changes nothing about how a bar is drawn</h3><span class="verdict yes">Settled 13 Sep</span></div>
+  <p class="wf-sub">A bar from one game and a bar from four hundred are drawn identically. There is
+  no threshold, no weakening, no substitute rendering. <b>The Section states the sample size and
+  leaves the judgement to the reader.</b></p>
+  <div class="wf-canvas done">
+    <div class="cols">
+      <div>
+        <p class="caption">the same move, the same result, three sample sizes</p>
+        <div style="width:221px">
+          <div style="margin-bottom:10px"><div class="bar"><div class="seg w" style="width:100%">100</div></div><p class="caption" style="margin:4px 0 0"><b>1 game</b> — White won it</p></div>
+          <div style="margin-bottom:10px"><div class="bar"><div class="seg w" style="width:100%">100</div></div><p class="caption" style="margin:4px 0 0"><b>9 games</b> — White won all nine</p></div>
+          <div><div class="bar"><div class="seg w" style="width:100%">100</div></div><p class="caption" style="margin:4px 0 0"><b>412 games</b> — White won every one</p></div>
+        </div>
+        <div class="callouts"><span class="co good">Three identical bars, three different facts. The header and the tooltip are where they differ</span></div>
+      </div>
+
+      <ul class="leg" style="min-width:330px">
+        <li><span class="tagno">1</span><div><b>Consistency is the rule.</b> <span>A bar means one thing —
+        how the games that played this move ended. It means that at every sample size, so it looks the
+        same at every sample size.</span></div></li>
+        <li><span class="tagno">2</span><div><b>The threshold would have been invented.</b> <span>Any
+        weakening rule needs a number — below 5 games? 10? 30? — and no number is defensible. Every one
+        would be a judgement the application makes on the user's behalf, applied identically to a casual
+        glance and to serious preparation.</span></div></li>
+        <li><span class="tagno">3</span><div><b>The user already has the figure.</b> <span>The header
+        carries the games in the position and the tooltip the games behind each row. Sample size is
+        stated, not implied — and a stated number is better evidence than a faded bar.</span></div></li>
+        <li><span class="tagno">4</span><div><b>It would have been a fourth visual variable.</b>
+        <span>The bar already carries three lengths and three colours. Adding opacity as a fourth channel
+        competing with the results themselves buys a hint at the cost of legibility.</span></div></li>
+        <li><span class="tagno">5</span><div><b>Nothing is drawn weakly anywhere.</b> <span>The 45%
+        opacity Rev B sketched is withdrawn from the Section entirely — there is no state in which a
+        result bar is rendered at reduced strength.</span></div></li>
+      </ul>
+    </div>
+
+    <div class="box ok">
+      <h4>What this closes and what it leaves</h4>
+      <p><b>Closed:</b> whether a bar from very few games should look different. It should not.</p>
+      <p><b>Left open, and now the whole of Q2:</b> a segment below 10.4% draws no number and states its
+      value nowhere, because the compact tooltip carries only the game count. That is a different
+      problem — a fact the reader cannot reach at all, rather than a fact they might over-trust — and it
+      is not answered by this decision.</p>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ 8 -->
+<h2 class="sec">8 · Interaction</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-09</span><h3>The Section reports; it does not navigate</h3><span class="verdict yes">Settled 13 Sep</span></div>
+  <p class="wf-sub">§5.4.2 anticipates "Sections that offer position navigation of their own". This
+  one does not, in this release. <b>The rows are read-only.</b> Hover tells you about a move; nothing
+  in the Section moves the board.</p>
+  <div class="wf-canvas done">
+    <table class="rules">
+      <tr><th>Input</th><th>Behaviour</th><th>Status</th></tr>
+      <tr><td class="n">Hover a row</td><td>The row grounds, the tooltip opens (MX-13), and the move is drawn on the board as an arrow. Nothing changes position.</td><td class="v">Settled</td></tr>
+      <tr><td class="n">Tooltip</td><td><b>The game count for that move, exact, and nothing else.</b> One line.</td><td class="v">Settled — MX-13</td></tr>
+      <tr class="yes"><td class="n">Click a row</td><td><b>Nothing.</b> No row in the Section is clickable, the played move included. The cursor stays the default arrow — a pointer would promise an action that is not there.</td><td class="v" style="color:var(--ok)">Settled 13 Sep</td></tr>
+      <tr><td class="n">The played move</td><td>The row whose move the game actually plays is marked, so "what was chosen" is visible without hunting. Display, not navigation. <b>Matters more at a ceiling of three</b> — the game's move may be below the fold.</td><td class="v">Proposed — <b>mark not drawn</b></td></tr>
+      <tr><td class="n">Scroll to the played move</td><td>On arriving at a position, the body scrolls so the game's own move is in view. The board drives the Section, never the reverse.</td><td class="v">Proposed</td></tr>
+      <tr><td class="n">Keyboard and touch</td><td>Neither can hover, so neither reaches the game count. Smaller than it was — one number, not a panel — and it may be enough to put the count in each row's accessible name.</td><td style="color:var(--accent);font-weight:600">Open — Q3</td></tr>
+    </table>
+
+    <div class="box ok">
+      <h4>Why nothing is clickable, including the played move</h4>
+      <p>Playing a move from the Explorer means the board can show a position the game never reached,
+      and the workspace's primary state — the current ply — no longer describes it. That is an
+      <b>interactive analysis board</b>: variations the Move List has to show, a way back to the game,
+      and a decision about whether this application is a viewer or an analysis tool. <b>The current
+      release replays an existing game.</b> Move-on-click belongs with interactive analysis and arrives
+      with it.</p>
+      <p><b>The played move could have been the exception</b> — clicking it is the Next control by
+      another name and leads nowhere the game does not already go. It is excluded anyway: a list where
+      one row of three responds to a click and the others do not teaches the user that rows are
+      clickable, and every other row then reads as broken. <b>Uniformly inert is legible; selectively
+      inert is not.</b></p>
+      <p>Nothing here is wasted when analysis does arrive. The rows, the marks and the hover arrow are
+      the same; what changes is that a click gains a meaning.</p>
+    </div>
+
+    <div class="box plain">
+      <h4>The two alternatives, recorded rather than taken</h4>
+      <p><b>Clicking creates a variation</b> the Move List shows and the user can leave — the analysis
+      board, deferred above.</p>
+      <p><b>Clicking opens the games</b> rather than the move: a filtered Library view of the games in
+      which it was played. This one never touches the board and so is not blocked by anything deferred
+      here — it is a different feature, not a smaller version of this one, and belongs in its own
+      wireframe if it is wanted.</p>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ 9 -->
+<h2 class="sec">9 · Settled in Rev B</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id set">MX-12</span><h3>The register</h3></div>
+  <div class="wf-canvas done">
+    <table class="rules">
+      <tr><th>Item</th><th>Rev A</th><th>Rev B</th></tr>
+      <tr class="yes"><td class="n">Row anatomy</td><td>Four options; A proposed</td><td class="v" style="color:var(--ok)">MX-03a. Bar fixed at 201px</td></tr>
+      <tr class="yes"><td class="n">Share cell</td><td>Percentage, unquestioned</td><td class="v" style="color:var(--ok)">Percentage only. A count was drawn and rejected — MX-11</td></tr>
+      <tr class="yes"><td class="n">Game counts</td><td>Q2 — where do they live?</td><td class="v" style="color:var(--ok)">Header status for the position; row tooltip per move — MX-13</td></tr>
+      <tr class="yes"><td class="n">Tooltip contents</td><td>Move, share, three result lines, swatches</td><td class="v" style="color:var(--ok)">Game count only. One line, exact, no suffix</td></tr>
+      <tr class="yes"><td class="n">Header status</td><td>Games in position</td><td class="v" style="color:var(--ok)">Games that contain this position. The Section's only absolute number</td></tr>
+      <tr class="yes"><td class="n">Label fit rule</td><td>Proposed</td><td class="v" style="color:var(--ok)">Agreed. Smallest labelled segment 10.4%</td></tr>
+      <tr class="yes"><td class="n">"%" inside the bar</td><td>Q4 — dropped?</td><td class="v" style="color:var(--ok)">Dropped. Carried by the fit rule</td></tr>
+      <tr class="yes"><td class="n">Bar colours</td><td>Proposed semantic</td><td class="v" style="color:var(--ok)">Agreed. Do not follow the theme</td></tr>
+      <tr><td class="n">Colour key</td><td>Q6 — nowhere to put one</td><td style="color:var(--accent);font-weight:600">Q1 — reopened when the tooltip was made compact</td></tr>
+      <tr class="yes"><td class="n">Source selector</td><td>Proposed, with an explanatory footer</td><td class="v" style="color:var(--ok)">Agreed. Footer replaced by a <span class="mono">Settings ›</span> shortcut</td></tr>
+      <tr class="yes"><td class="n">Height</td><td>Floor 144, height 190, six rows</td><td class="v" style="color:var(--ok)">Sized to content, 60–108. Three rows, then scrolls</td></tr>
+      <tr class="yes"><td class="n">Totals strip</td><td>Q3 — keep it?</td><td class="v" style="color:var(--ok)">Withdrawn</td></tr>
+      <tr><td class="n">Dropped bar labels</td><td>Recoverable from the tooltip</td><td style="color:var(--accent);font-weight:600">Q2 — no fallback now. The whole of Q2</td></tr>
+      <tr class="yes"><td class="n">Thin evidence</td><td>Part of Q2 — weaken the bar?</td><td class="v" style="color:var(--ok)"><b>No special rule.</b> Sample size never changes the bar — MX-15</td></tr>
+      <tr><td class="n">Keyboard and touch</td><td>Not raised</td><td style="color:var(--accent);font-weight:600">Q3 — one number to expose, not a panel</td></tr>
+      <tr class="yes"><td class="n">Click behaviour</td><td>Open — three answers offered</td><td class="v" style="color:var(--ok)"><b>Rows are read-only.</b> Move-on-click waits for interactive analysis</td></tr>
+      <tr class="yes"><td class="n">No-library state</td><td>A body saying "Add one in Settings › Databases"</td><td class="v" style="color:var(--ok)"><span class="mono">None</span> is an entry in the selector — MX-14</td></tr>
+      <tr class="yes"><td class="n">Message bodies</td><td>Two lines, centred unevenly</td><td class="v" style="color:var(--ok)">One line each, at the 60px floor. 16px leading if a second is ever needed</td></tr>
+      <tr><td class="n">Position index</td><td>Raised</td><td>Still unresolved. Blocks G2, not G1</td></tr>
+    </table>
+  </div>
+</figure>
+
+<!-- ============================================================ 10 -->
+<h2 class="sec">10 · What is still being asked</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MX-10</span><h3>Open</h3></div>
+  <div class="wf-canvas">
+
+    <div class="box">
+      <h4>Q1 · Where the colour key goes, if anywhere</h4>
+      <p class="q">Nothing on screen says the light segment is White.</p>
+      <p>The compact tooltip gave up the swatches that answered this a revision ago. The order is
+      conventional and light-to-dark reads the right way round unaided, so <b>nowhere</b> is a defensible
+      answer. If a key is wanted, the options menu is the only place with room — a legend inside a 108px
+      Section is not affordable.</p>
+    </div>
+
+    <div class="box">
+      <h4>Q2 · A dropped label has no fallback</h4>
+      <p class="q">A segment below 10.4% draws no number and states its value nowhere.</p>
+      <p>The compact tooltip carries the game count alone, so the three percentages exist only inside
+      the bar — and the smallest of them is exactly the one the bar cannot draw. The fit rule's own
+      defence is that such a result is too rare for its exact value to matter, which is reasonable and
+      is not the same as answering the question.</p>
+      <p>The alternatives are to put the three percentages somewhere — a second tooltip line, the
+      options menu — or to accept the gap as the price of a 201px bar and a one-line tooltip.</p>
+      <p><b>This is now the whole of Q2.</b> The other half — whether a bar from few games should look
+      different — is settled: it should not. MX-15.</p>
+    </div>
+
+    <div class="box">
+      <h4>Q3 · What replaces the tooltip for keyboard and touch</h4>
+      <p class="q">The game count lives in a hover, which neither can perform.</p>
+      <p>Smaller than it was: one number, not a panel. Putting the count in each row's accessible name
+      costs nothing visually and reaches screen readers, which a tooltip does not. A long press could
+      show the same chip on touch.</p>
+    </div>
+
+    <div class="box">
+      <h4>Q4 · The position's aggregate result</h4>
+      <p class="q">Does <span class="mono">37/39/24</span> across every move need a home?</p>
+      <p>The totals strip carried it in Rev A and is withdrawn. The status slot now carries the game
+      count. It could go in the options menu, or nowhere — it is the least-asked question the Section
+      could answer.</p>
+    </div>
+
+    <div class="box">
+      <h4>Q5 · Which library the Section opens on</h4>
+      <p class="q">The game's own library, the largest installed, or the last one chosen?</p>
+      <p>The last one chosen is the most useful and needs somewhere to persist, alongside collapse and
+      hidden state.</p>
+    </div>
+
+    <div class="box">
+      <h4>Q6 · Ordering</h4>
+      <p class="q">Always by share, descending — or can the user sort by result?</p>
+      <p>Fixed ordering is proposed, and the three-row ceiling strengthens it: a sort by result would put
+      one-game rows in the only three slots the Section has.</p>
+    </div>
+
+    <div class="box warn">
+      <h4>The blocker is resolved — and was already stale when this was read</h4>
+      <p>This paragraph was written against schema <b>v009</b>.
+      <code>database-schema.md</code> is now <b>v010</b>, and its §6 defines exactly the table the
+      Section needs: <code>pos · move · games · white · draws · black</code>, one row per position
+      per distinct move played from it — which is a row of this Section. §6.2 fixes the position key
+      at the first four FEN fields, recording an en passant square only where the capture is actually
+      legal, so transpositions merge.</p>
+      <p>What does not exist is a <b>populated</b> one. The sample databases were built on 12 Sep,
+      before §6, and the Game Workspace never opens the <code>.db</code> files — it reads
+      <code>games.js</code>. So the built Section reads <b>mock</b> statistics shaped as §6 rows
+      (<code>explorerMock.js</code>); the moves in them are real and legal, generated from the
+      position, and only the counts are invented. Swapping in a real query replaces that one file.</p>
+    </div>
+
+    <div class="box plain">
+      <h4>Closed, and not to be reopened here</h4>
+      <p><b>Move-on-click.</b> The rows are read-only and the board is driven only by the Game Controls
+      Toolbar and the keyboard. Playing a move from the Explorer is an interactive analysis board, and
+      that is a later feature with its own wireframe. MX-09.</p>
+      <p><b>External opening databases.</b> Not drawn — the source list is the user's locally installed
+      libraries and nothing else.</p>
+    </div>
+
+  </div>
+</figure>
+
+</div>
+</body>
+</html>

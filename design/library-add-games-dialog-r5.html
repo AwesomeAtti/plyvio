@@ -1,0 +1,759 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessgui — Add Games — the dialog reads nothing</title>
+<style>
+ :root{--paper:#f7f7f5;--ink:#1b1b19;--muted:#6b6b66;--faint:#94948e;--rule:#d6d6d1;--rule-strong:#adada6;
+  --fill-0:#fff;--fill-1:#ececea;--fill-2:#dededa;--fill-3:#cfcfc9;--accent:#8a5a1c;--accent-bg:#f6ecdc;
+  --accent-rule:#d9b478;--warn:#8a2c2c;--warn-bg:#f8e9e9;--ok:#2f5d3a;--ok-bg:#e9f2ec;
+  --sel:#dfe7f2;--sel-rule:#93a9c8;--scrim:rgba(20,20,18,.34);
+  --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+ @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+  --paper:#141413;--ink:#eceae4;--muted:#a3a099;--faint:#7d7a73;--rule:#333330;--rule-strong:#55554f;
+  --fill-0:#1e1e1c;--fill-1:#2a2a27;--fill-2:#353531;--fill-3:#43433d;--accent:#d9a55f;--accent-bg:#2c2418;
+  --accent-rule:#6b5326;--warn:#e08a8a;--warn-bg:#2e1c1c;--ok:#8fbf9c;--ok-bg:#1b2a20;
+  --sel:#25303f;--sel-rule:#42597a;--scrim:rgba(0,0,0,.52)}}
+ *{box-sizing:border-box} svg{display:block}
+ body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans)}
+ .wrap{max-width:1060px;margin:0 auto;padding:56px 28px 140px}
+ header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px}
+ .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+ header.doc h1{font-size:29px;line-height:1.15;margin:12px 0 10px;letter-spacing:-.02em}
+ header.doc p{margin:0 0 8px;color:var(--muted);max-width:74ch}
+ .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+ .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+ .chip b{color:var(--ink);font-weight:600}
+ .gate{border:1px solid var(--warn);background:var(--warn-bg);border-radius:4px;padding:14px 16px;margin:22px 0 0}
+ .gate h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--warn)}
+ .gate p{margin:0;color:var(--ink);font-size:13px;max-width:76ch} .gate p+p{margin-top:7px}
+ h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+   margin:54px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+ h3.sub{font-size:17px;letter-spacing:-.01em;margin:26px 0 6px}
+ p.lede{color:var(--muted);max-width:76ch;margin:10px 0 0;font-size:13.5px}
+ p.lede b,p.note b,ul.pts b,ol.pts b,td b,.card p b,.st p b{color:var(--ink)}
+ figure.wf{margin:24px 0 0;padding:0}
+ .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+ .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+ .wf-head h4{margin:0;font-size:15px;letter-spacing:-.01em}
+ .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:78ch}
+ .wf-canvas{background:var(--fill-1);border:1px solid var(--rule);border-radius:4px;padding:20px;overflow-x:auto}
+ p.note{color:var(--muted);font-size:13px;max-width:78ch;margin:14px 0 0}
+ table{border-collapse:collapse;width:100%;font-size:13px;margin-top:16px}
+ th,td{text-align:left;padding:8px 12px 8px 0;border-bottom:1px solid var(--rule);vertical-align:top}
+ th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);padding-bottom:9px}
+ td.m{font-family:var(--mono);font-size:11.5px}
+ ul.pts,ol.pts{margin:14px 0 0;padding-left:19px;color:var(--muted);font-size:13px;max-width:78ch}
+ ul.pts li,ol.pts li{margin-bottom:7px}
+ .callout{border:1px solid var(--accent-rule);background:var(--accent-bg);border-radius:4px;padding:14px 16px;margin-top:20px}
+ .callout p{margin:0;font-size:13px;max-width:76ch} .callout p+p{margin-top:8px}
+ .callout h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--accent)}
+ .callout.ok{border-color:var(--ok);background:var(--ok-bg)} .callout.ok h4{color:var(--ok)}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px}
+ .card{border:1px solid var(--rule-strong);border-radius:8px;background:var(--fill-0);padding:16px;display:flex;flex-direction:column}
+ .card h4{margin:0 0 8px;font-size:14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+ .card p{margin:0;font-size:12.5px;color:var(--muted)} .card p+p{margin-top:8px}
+ .tag{font:9px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;padding:3px 5px;border-radius:3px;
+   border:1px solid var(--rule-strong);color:var(--muted);background:var(--fill-1);white-space:nowrap}
+ .tag.rec{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
+ .tag.no{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+ .tag.done{color:var(--ok);border-color:var(--ok);background:var(--ok-bg)}
+ .tag.todo{color:var(--accent);border-color:var(--accent-rule);background:var(--accent-bg)}
+ .tag.block{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+ @media (max-width:820px){.grid2{grid-template-columns:1fr}}
+ .cap{font-size:12px;color:var(--muted);margin:9px 0 0;text-align:center}
+ .frames{display:flex;flex-direction:column;gap:30px}
+ .states{display:grid;grid-template-columns:1fr 1fr;gap:18px}
+ @media (max-width:900px){.states{grid-template-columns:1fr}}
+ .st{border:1px solid var(--rule);border-radius:6px;background:var(--fill-0);padding:13px}
+ .st h5{margin:0 0 9px;font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+ .st p{margin:10px 0 0;font-size:11.5px;color:var(--muted);line-height:1.5}
+
+ .win{width:900px;background:var(--fill-0);border:1px solid var(--rule-strong);border-radius:7px;overflow:hidden;position:relative}
+ .tabbar{height:38px;display:flex;align-items:flex-end;gap:2px;padding:0 8px;background:var(--fill-2);border-bottom:1px solid var(--rule-strong)}
+ .tab{height:30px;display:flex;align-items:center;gap:6px;padding:0 13px;font-size:12.5px;color:var(--muted);
+   border:1px solid transparent;border-bottom:none;border-radius:6px 6px 0 0;white-space:nowrap}
+ .tab.on{background:var(--fill-0);color:var(--ink);font-weight:600;border-color:var(--rule-strong)}
+ .tab .ic{color:var(--faint)}
+ .body{display:flex;height:492px;background:var(--fill-0)}
+ .side{width:206px;flex:none;background:var(--fill-1);border-right:1px solid var(--rule-strong);display:flex;flex-direction:column}
+ .shead{height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;border-bottom:1px solid var(--rule)}
+ .swch{flex:1;display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;min-width:0}
+ .stog{width:20px;height:20px;flex:none;border:1px solid var(--rule-strong);border-radius:3px;display:grid;place-items:center;color:var(--muted);background:var(--fill-0)}
+ .snav{flex:1;padding:5px 0;font-size:12.5px;min-height:0}
+ .grp{font:9px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);padding:10px 12px 5px;display:flex;align-items:center;gap:6px}
+ .it{height:26px;display:flex;align-items:center;gap:8px;padding:0 12px;color:var(--ink)}
+ .it.on{background:var(--sel);box-shadow:inset 2px 0 0 var(--sel-rule);font-weight:600}
+ .it .ic{color:var(--faint);flex:none} .it.on .ic{color:var(--ink)}
+ .it .ct{margin-left:auto;font:10px/1 var(--mono);color:var(--faint)}
+ .it .mk{width:14px;height:14px;flex:none;border:1px solid var(--rule-strong);border-radius:2px;font:7px/12px var(--mono);text-align:center;color:var(--faint)}
+ .sfoot{flex:none;border-top:1px solid var(--rule);padding:5px 0}
+ .cont{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--fill-0)}
+ .tool{height:38px;flex:none;display:flex;align-items:center;gap:10px;padding:0 12px;border-bottom:1px solid var(--rule)}
+ .search{flex:1;min-width:0;height:26px;display:flex;align-items:center;gap:7px;padding:0 9px;background:var(--fill-1);
+   border:1px solid var(--rule-strong);border-radius:5px;color:var(--faint);font-size:12px}
+ .btn{height:26px;padding:0 10px;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--ink);
+   border-radius:5px;background:var(--ink);color:var(--paper);font-size:12px;font-weight:600;white-space:nowrap;flex:none}
+ .btn.ghost{background:var(--fill-0);color:var(--ink);border-color:var(--rule-strong);font-weight:500}
+ .btn.dis{opacity:.38}
+ .list{flex:1;min-height:0;position:relative;overflow:hidden}
+ .list .lrow{height:28px;display:grid;grid-template-columns:1.15fr 1.15fr 54px 62px 1fr;align-items:center;gap:10px;
+   padding:0 12px;border-bottom:1px solid var(--rule);font-size:11.5px;color:var(--ink)}
+ .list .lrow.h{font:9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);
+   height:26px;background:var(--fill-1);border-bottom:1px solid var(--rule-strong)}
+ .list .lrow .r{font-family:var(--mono);font-size:10.5px;color:var(--muted)}
+ .list .fade{position:absolute;left:0;right:0;bottom:0;height:44px;background:linear-gradient(transparent,var(--fill-0))}
+ .status{height:24px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-top:1px solid var(--rule);
+   font:10px/1 var(--mono);color:var(--muted)}
+ .status .rt{margin-left:auto;display:flex;align-items:center;gap:7px}
+
+ .scrim{position:absolute;inset:0;background:var(--scrim)}
+ .modal{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);background:var(--fill-0);
+   border:1px solid var(--rule-strong);border-radius:9px;box-shadow:0 18px 44px rgba(0,0,0,.28);
+   display:flex;flex-direction:column;overflow:hidden;width:700px;height:430px}
+ .mhead{height:38px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-bottom:1px solid var(--rule);font-size:13px;font-weight:600}
+ .mhead .x{margin-left:auto;color:var(--faint)}
+ .dtabs{height:34px;flex:none;display:flex;align-items:stretch;gap:2px;padding:0 12px;border-bottom:1px solid var(--rule);background:var(--fill-0)}
+ .dtab{display:flex;align-items:center;gap:7px;padding:0 11px;font-size:12.5px;color:var(--muted);box-shadow:inset 0 -2px 0 transparent;white-space:nowrap}
+ .dtab.on{color:var(--ink);font-weight:600;box-shadow:inset 0 -2px 0 var(--ink)}
+ .dtab .ic{color:var(--faint)} .dtab.on .ic{color:var(--ink)}
+ .dsrc{flex:1;min-height:0;display:flex;flex-direction:column;overflow:hidden}
+ .dsrc .hd{flex:none;padding:11px 12px;display:flex;flex-direction:column;gap:10px}
+ .orow{height:40px;flex:none;display:flex;align-items:center;gap:9px;padding:0 12px;background:var(--fill-1);font-size:11.5px}
+ .orow+.orow{border-top:1px solid var(--rule)}
+ .orow.first{border-top:1px solid var(--rule-strong)}
+ .mfoot{height:42px;flex:none;display:flex;align-items:center;gap:8px;padding:0 12px;border-top:1px solid var(--rule-strong);background:var(--fill-1)}
+ .mfoot .spacer{margin-left:auto}
+ .mfoot .cnt{font:10px/1 var(--mono);color:var(--muted)}
+ .field{height:26px;display:flex;align-items:center;gap:7px;padding:0 8px;background:var(--fill-0);
+   border:1px solid var(--rule-strong);border-radius:5px;font-size:11.5px;color:var(--ink)}
+ .field .ph{color:var(--faint)}
+ .field .cap2{margin-left:auto;font:10px/1 var(--mono);color:var(--faint);display:flex;align-items:center;gap:5px}
+ .field.focus{border-color:var(--sel-rule);box-shadow:0 0 0 2px var(--sel)}
+ .lbl{font:9px/1 var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--muted)}
+ .tok{display:inline-flex;align-items:center;gap:5px;height:18px;padding:0 5px;border-radius:3px;
+   background:var(--sel);border:1px solid var(--sel-rule);font-size:11px;color:var(--ink);white-space:nowrap}
+ .tok svg{color:var(--muted);flex:none}
+ .seg{display:flex;border:1px solid var(--rule-strong);border-radius:5px;overflow:hidden;height:26px;font-size:11.5px;flex:none}
+ .seg div{display:flex;align-items:center;justify-content:center;gap:6px;padding:0 12px;border-right:1px solid var(--rule-strong)}
+ .seg div:last-child{border-right:0}
+ .seg div.on{background:var(--sel);font-weight:600;box-shadow:inset 0 -2px 0 var(--sel-rule)}
+ .mk{width:13px;height:13px;border:1px solid var(--rule-strong);border-radius:2px;font:7px/11px var(--mono);
+   text-align:center;color:var(--faint);flex:none}
+ .chk{display:flex;align-items:center;gap:7px;font-size:11.5px;color:var(--ink)}
+ .chk .bx{width:13px;height:13px;border:1px solid var(--rule-strong);border-radius:3px;background:var(--fill-0);
+   flex:none;display:grid;place-items:center;color:var(--paper)}
+ .chk .bx.on{background:var(--ink);border-color:var(--ink)}
+ .ta{flex:1;min-height:0;margin:11px 12px;border:1px solid var(--rule-strong);border-radius:5px;background:var(--fill-0);
+   padding:9px 10px;font:11px/1.7 var(--mono);color:var(--muted);overflow:hidden;position:relative}
+ .ta b{color:var(--ink);font-weight:400}
+ .ta.focus{border-color:var(--sel-rule);box-shadow:0 0 0 2px var(--sel)}
+ .ta.empty{display:flex;align-items:center;justify-content:center;color:var(--faint);font:12px/1.5 var(--sans);text-align:center}
+ .flist{flex:1;min-height:0;overflow:hidden;display:flex;flex-direction:column;border-top:1px solid var(--rule)}
+ .flist .fh{height:24px;flex:none;display:grid;grid-template-columns:1fr 110px;gap:10px;align-items:center;padding:0 12px;
+   background:var(--fill-1);border-bottom:1px solid var(--rule-strong);font:9px/1 var(--mono);letter-spacing:.1em;
+   text-transform:uppercase;color:var(--muted)}
+ .flist .fr{height:32px;flex:none;display:grid;grid-template-columns:1fr 110px;gap:10px;align-items:center;padding:0 12px;
+   border-bottom:1px solid var(--rule);font-size:12px}
+ .flist .fr .nm{display:flex;align-items:center;gap:8px;min-width:0}
+ .flist .fr .nm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+ .flist .fr .v{font-family:var(--mono);font-size:11px;color:var(--muted);text-align:right;display:flex;align-items:center;justify-content:flex-end;gap:7px}
+ .flist .tot{height:30px;flex:none;display:grid;grid-template-columns:1fr 110px;gap:10px;align-items:center;padding:0 12px;
+   border-top:1px solid var(--rule-strong);background:var(--fill-1);font-size:12px;font-weight:600;margin-top:auto}
+ .flist .tot .v{font-family:var(--mono);font-size:11px;text-align:right}
+ .subs{flex:none;border-top:1px solid var(--rule);padding:9px 12px}
+ .subs .t{font:9px/1 var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--muted);margin-bottom:7px}
+ .subs .s{height:24px;display:flex;align-items:center;gap:8px;font-size:11.5px;color:var(--muted)}
+ .prog{height:5px;border-radius:3px;background:var(--fill-2);overflow:hidden}
+ .prog i{display:block;height:100%;background:var(--ink)}
+ .prog.thin{height:3px}
+ .pill{font:9px/1 var(--mono);letter-spacing:.06em;text-transform:uppercase;padding:3px 5px;border-radius:3px;
+   border:1px solid var(--rule-strong);color:var(--muted);background:var(--fill-1);white-space:nowrap}
+ .pill.err{color:var(--warn);border-color:var(--warn);background:var(--warn-bg)}
+ .anat{display:flex;gap:16px;align-items:flex-start}
+ .inv{border:1px solid var(--rule-strong);border-radius:8px;overflow:hidden;margin-top:18px}
+ .inv .ih{padding:10px 14px;background:var(--fill-1);border-bottom:1px solid var(--rule-strong);
+   font:10px/1 var(--mono);letter-spacing:.11em;text-transform:uppercase;color:var(--muted);display:flex;align-items:center;gap:9px}
+ .inv .ir{padding:11px 14px;border-bottom:1px solid var(--rule);display:flex;gap:12px;align-items:flex-start;font-size:12.5px}
+ .inv .ir:last-child{border-bottom:0}
+ .inv .ir .n{width:26px;flex:none;font:10px/1.5 var(--mono);color:var(--faint)}
+ .inv .ir .c{flex:1;min-width:0}
+ .inv .ir .c b{display:block;margin-bottom:2px}
+ .inv .ir .c span{color:var(--muted);font-size:12px;line-height:1.5}
+ .inv .ir .s{flex:none;width:92px;text-align:right}
+</style></head>
+<body>
+
+<svg style="display:none" aria-hidden="true"><defs>
+<symbol id="i-plus" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></symbol>
+<symbol id="i-file" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M8 13h8M8 17h5"/></symbol>
+<symbol id="i-clip" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></symbol>
+<symbol id="i-globe" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></symbol>
+<symbol id="i-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></symbol>
+<symbol id="i-alert" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="m10.3 3.9-8.5 14.1A2 2 0 0 0 3.5 21h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/><path d="M12 9v4M12 17h.01"/></symbol>
+<symbol id="i-x" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></symbol>
+<symbol id="i-cdown" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></symbol>
+<symbol id="i-cleft" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></symbol>
+<symbol id="i-search" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></symbol>
+<symbol id="i-list" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/></symbol>
+<symbol id="i-star" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><path d="m12 3 2.9 5.9 6.1.9-4.5 4.4 1.1 6.1-5.6-3-5.6 3 1.1-6.1L3 9.8l6.1-.9z"/></symbol>
+<symbol id="i-clock" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></symbol>
+<symbol id="i-tag" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12.6 2.6a2 2 0 0 0-1.4-.6H4a2 2 0 0 0-2 2v7.2a2 2 0 0 0 .6 1.4l8.6 8.6a2 2 0 0 0 2.8 0l7.2-7.2a2 2 0 0 0 0-2.8z"/><path d="M6.5 6.5h.01"/></symbol>
+<symbol id="i-folder" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.7-.9L9.6 3.9A2 2 0 0 0 7.9 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2z"/></symbol>
+<symbol id="i-trash" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></symbol>
+<symbol id="i-db" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.7 4 3 9 3s9-1.3 9-3V5"/><path d="M3 12c0 1.7 4 3 9 3s9-1.3 9-3"/></symbol>
+<symbol id="i-spin" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"/></symbol>
+<symbol id="i-cloud-down" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 13v8M8 17l4 4 4-4"/><path d="M20.9 18.4A5 5 0 0 0 18 9.5h-1.3A8 8 0 1 0 3 16.3"/></symbol>
+<symbol id="i-wifi-off" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><path d="M2 2l20 20M8.5 16.4a5 5 0 0 1 7 0M5 12.9a10 10 0 0 1 3-2M2 8.8a15 15 0 0 1 4.2-2.6M19.9 12.9a10 10 0 0 0-4.3-2.6M22 8.8A15 15 0 0 0 10 5.9M12 20h.01"/></symbol>
+</defs></svg>
+
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">Chessgui · §3.2.4.5 · revision 5 · the import dialog, final</div>
+  <h1>The dialog reads nothing — and what that leaves to build</h1>
+  <p>No username check, no game counts anywhere, no detecting that a paste contains no chess. Each removal
+     was right on its own; together they change the dialog's nature. <b>It never opens a PGN at all.</b></p>
+  <p>Which makes it a form. It collects a source and some options, hands them to the import, and closes.
+     Everything that requires looking at a game happens in the lane, and everything that can go wrong is
+     an import error. The second half of this document is the answer to your last question: what is left
+     to build a click-through mockup, and which parts are blocked.</p>
+  <div class="meta">
+    <span class="chip"><b>Dialog</b> · pure form, no I/O</span>
+    <span class="chip"><b>Validation</b> · presence only</span>
+    <span class="chip"><b>Button</b> · Add Games, everywhere</span>
+    <span class="chip"><b>Mockup</b> · 4 of 5 screens unblocked</span>
+  </div>
+  <div class="gate">
+    <h4>Exploration — no gate passed</h4>
+    <p>§3.2.4.5 untouched. Post-import errors remain parked, and §5 shows exactly which part of a mockup
+       that parks with them.</p>
+  </div>
+</header>
+
+<!-- ════════ 1 · CONSEQUENCE ════════ -->
+<h2 class="sec">1 · What the three removals add up to</h2>
+
+<table>
+<tr><th style="width:210px">Removed</th><th>What it was buying</th><th style="width:150px">Now</th></tr>
+<tr><td>Username verification</td><td>Catching a typo before a doomed import</td><td class="m">import error</td></tr>
+<tr><td>Pre-import game counts</td><td>Confidence the file is what you meant</td><td class="m">post-import count</td></tr>
+<tr><td>"No games in this text"</td><td>Catching a bad paste before commit</td><td class="m">import error</td></tr>
+</table>
+
+<div class="callout ok">
+  <h4>The dialog is now a form, and the read band has nothing to report</h4>
+  <p>The read band existed to say <i>what I found when I looked</i>. Nothing looks any more, so on two of
+     the three tabs it would only repeat the controls directly above it — the Online line said
+     <i>chess.com — AwesomeAtti · all time</i> under a form that already said exactly that, and the Paste
+     line named a text area the user is looking at.</p>
+  <p>So the read band <b>survives only on the File tab</b>, where it is not a read at all: it is the list
+     of files, and a list is the only way to show several of something. The dialog's anatomy drops from
+     four bands to three.</p>
+</div>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">AG‑A‑2</span><h4>Three bands, one of which varies</h4></div>
+  <div class="wf-canvas"><div class="anat">
+    <div style="flex:none;width:380px;border:1px solid var(--rule-strong);border-radius:9px;overflow:hidden;background:var(--fill-0)">
+      <div class="mhead" style="height:32px">Add Games</div>
+      <div class="dtabs" style="height:32px">
+        <div class="dtab on"><svg class="ic" width="13" height="13"><use href="#i-file"/></svg>File</div>
+        <div class="dtab"><svg class="ic" width="13" height="13"><use href="#i-globe"/></svg>Online</div>
+        <div class="dtab"><svg class="ic" width="13" height="13"><use href="#i-clip"/></svg>Paste</div>
+      </div>
+      <div style="height:150px;border-bottom:1px solid var(--rule-strong);background:var(--accent-bg);display:grid;place-items:center;
+        font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)">source — varies</div>
+      <div style="height:34px;border-bottom:1px solid var(--rule);background:var(--fill-1);display:grid;place-items:center;
+        font:9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">add to · duplicates</div>
+      <div style="height:34px;border-bottom:1px solid var(--rule);background:var(--fill-1);display:grid;place-items:center;
+        font:9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">tags</div>
+      <div style="height:34px;border-bottom:1px solid var(--rule-strong);background:var(--fill-1);display:grid;place-items:center;
+        font:9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">collections</div>
+      <div style="height:36px;background:var(--fill-1);display:grid;place-items:center;
+        font:9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)">cancel · add games</div>
+    </div>
+    <div style="flex:1;font-size:12.5px;color:var(--muted);line-height:1.6">
+      <p style="margin:38px 0 0"><b style="color:var(--ink)">Source</b> — the whole flexible region, filled
+        differently by each tab: a <b>file list</b> with a chooser above it, a <b>form</b>, or a
+        <b>text area</b>. No tab has a void to fill and none needs a second region.</p>
+      <p style="margin:14px 0 0"><b style="color:var(--ink)">Options</b> — three fixed rows, identical in
+        every tab and every state.</p>
+      <p style="margin:14px 0 0"><b style="color:var(--ink)">Commit</b> — identical. The button reads
+        <b>Add Games</b> on all three tabs now that Paste has no count either, which settles r4 §4 in
+        favour of the consistent answer.</p>
+      <p style="margin:14px 0 0"><b style="color:var(--ink)">Enablement is presence, not validity.</b>
+        At least one file · a non-empty username · non-empty text. Nothing else is checked, because
+        nothing else can be checked without reading.</p>
+    </div>
+  </div></div>
+  <p class="cap">AG‑A‑2 — the dialog can now be built with no asynchronous behaviour of any kind except opening the OS file picker.</p>
+</figure>
+
+<!-- ════════ 2 · THE TABS ════════ -->
+<h2 class="sec">2 · The two revised tabs</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">AG‑ON‑3</span><h4>Online — a form, and nothing else</h4></div>
+  <p class="wf-sub">No spinner, no tick, no error state on the field. The subscription list below is
+     optional and argued for underneath.</p>
+  <div class="wf-canvas"><div class="win">
+    <div class="tabbar"><div class="tab on"><svg class="ic" width="13" height="13"><use href="#i-list"/></svg>Library</div><div class="tab">Carlsen–Nepomniachtchi</div></div>
+    <div class="body">
+      <div class="side">
+        <div class="shead"><div class="swch"><span>Master Games</span><svg width="12" height="12"><use href="#i-cdown"/></svg></div><div class="stog"><svg width="12" height="12"><use href="#i-cleft"/></svg></div></div>
+        <div class="snav">
+          <div class="it on"><svg class="ic" width="14" height="14"><use href="#i-list"/></svg>All Games<span class="ct">1,248</span></div>
+          <div class="it"><svg class="ic" width="14" height="14"><use href="#i-star"/></svg>Favorites<span class="ct">36</span></div>
+          <div class="it"><svg class="ic" width="14" height="14"><use href="#i-clock"/></svg>Recently Added<span class="ct">18</span></div>
+          <div class="grp"><svg width="9" height="9"><use href="#i-cdown"/></svg>Subscriptions</div>
+          <div class="it"><span class="mk">li</span>Lichess — User<span class="ct">4</span></div>
+        </div>
+        <div class="sfoot"><div class="it"><svg class="ic" width="14" height="14"><use href="#i-trash"/></svg>Trash<span class="ct">4</span></div></div>
+      </div>
+      <div class="cont">
+        <div class="tool"><div class="search"><svg width="12" height="12"><use href="#i-search"/></svg>Search players, games, events, sites…</div>
+          <div class="btn"><svg width="12" height="12"><use href="#i-plus"/></svg>Add Games</div></div>
+        <div class="list"><div class="lrow h"><span>White</span><span>Black</span><span>Result</span><span>Date</span><span>Event</span></div>
+          <div class="lrow"><span>Carlsen, M</span><span>Nepomniachtchi, I</span><span class="r">1–0</span><span class="r">2021.12.03</span><span>World Championship</span></div>
+          <div class="fade"></div></div>
+        <div class="status">1,248 games</div>
+      </div>
+      <div class="scrim"></div>
+      <div class="modal">
+        <div class="mhead">Add Games<span class="x"><svg width="13" height="13"><use href="#i-x"/></svg></span></div>
+        <div class="dtabs">
+          <div class="dtab"><svg class="ic" width="13" height="13"><use href="#i-file"/></svg>File</div>
+          <div class="dtab on"><svg class="ic" width="13" height="13"><use href="#i-globe"/></svg>Online</div>
+          <div class="dtab"><svg class="ic" width="13" height="13"><use href="#i-clip"/></svg>Paste</div>
+        </div>
+        <div class="dsrc">
+          <div class="hd">
+            <div style="display:flex;align-items:center;gap:9px">
+              <span class="lbl" style="width:52px">Source</span>
+              <span class="field" style="width:126px"><span class="mk">cc</span>chess.com<span class="cap2"><svg width="10" height="10"><use href="#i-cdown"/></svg></span></span>
+              <span class="lbl">Username</span>
+              <span class="field focus" style="flex:1">AwesomeAtti</span>
+              <span class="lbl">From</span>
+              <span class="field" style="width:112px">All time<span class="cap2"><svg width="10" height="10"><use href="#i-cdown"/></svg></span></span>
+            </div>
+            <div class="chk" style="margin-top:2px;padding-left:61px"><span class="bx on"><svg width="9" height="9"><use href="#i-check"/></svg></span>Keep checking for new games
+              <span style="color:var(--muted)">— adds a Subscription to the Sidebar</span></div>
+          </div>
+          <div class="subs" style="margin-top:auto">
+            <div class="t">You already subscribe to</div>
+            <div class="s"><span class="mk">li</span>lichess — AwesomeAtti<span style="margin-left:auto;font-family:var(--mono);font-size:10px">4 games · synced 2 h ago</span></div>
+          </div>
+        </div>
+        <div class="orow first"><span class="lbl" style="width:76px">Add to</span>
+          <span class="field" style="flex:1"><svg width="11" height="11" style="color:var(--faint)"><use href="#i-db"/></svg>Master Games<span class="cap2"><svg width="9" height="9"><use href="#i-cdown"/></svg></span></span>
+          <span class="lbl">Duplicates</span><span class="field" style="width:78px">Skip<span class="cap2"><svg width="9" height="9"><use href="#i-cdown"/></svg></span></span></div>
+        <div class="orow"><span class="lbl" style="width:76px">Tags</span>
+          <span class="field" style="flex:1;gap:5px"><span class="tok">online<svg width="8" height="8"><use href="#i-x"/></svg></span><span class="ph" style="font-size:11px">add…</span></span></div>
+        <div class="orow"><span class="lbl" style="width:76px">Collections</span>
+          <span class="field" style="flex:1;gap:5px"><span class="ph" style="font-size:11px">add…</span></span></div>
+        <div class="mfoot"><span class="cnt">chess.com · all time</span><span class="spacer"></span>
+          <span class="btn ghost">Cancel</span><span class="btn">Add Games</span></div>
+      </div>
+    </div>
+  </div></div>
+  <p class="cap">AG‑ON‑3 — the whole source is one line: <b>where from · who · how much</b>. The username field is an ordinary text field; typing <i>AwesomeAtt</i> and pressing Add Games is allowed, and fails as an import error.</p>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">AG‑ON‑4</span><h4>The source dropdown, open</h4></div>
+  <p class="wf-sub">Two entries, each carrying its brand mark, in the same popover the destination and range
+     controls use. A dropdown rather than a segmented control costs about 90px less width — which is what
+     lets the username share the line — and it treats a third source, if §3.2.3.3 ever gains one, as a
+     list entry rather than a re-layout.</p>
+  <div class="wf-canvas"><div style="width:560px;position:relative;padding-bottom:74px">
+    <div style="border:1px solid var(--rule-strong);border-radius:6px;overflow:hidden;background:var(--fill-0)">
+      <div class="dtabs" style="border-bottom:1px solid var(--rule)">
+        <div class="dtab"><svg class="ic" width="13" height="13"><use href="#i-file"/></svg>File</div>
+        <div class="dtab on"><svg class="ic" width="13" height="13"><use href="#i-globe"/></svg>Online</div>
+        <div class="dtab"><svg class="ic" width="13" height="13"><use href="#i-clip"/></svg>Paste</div>
+      </div>
+      <div class="hd" style="padding:11px 12px;display:flex;flex-direction:column;gap:10px">
+        <div style="display:flex;align-items:center;gap:9px">
+          <span class="lbl" style="width:52px">Source</span>
+          <span class="field focus" style="width:126px"><span class="mk">cc</span>chess.com<span class="cap2"><svg width="10" height="10"><use href="#i-cdown"/></svg></span></span>
+          <span class="lbl">Username</span>
+          <span class="field" style="flex:1"><span class="ph">Username</span></span>
+          <span class="lbl">From</span>
+          <span class="field" style="width:100px">All time<span class="cap2"><svg width="10" height="10"><use href="#i-cdown"/></svg></span></span>
+        </div>
+        <div class="chk" style="padding-left:61px;opacity:.4"><span class="bx"></span>Keep checking for new games</div>
+      </div>
+    </div>
+    <div style="position:absolute;left:64px;top:88px;width:150px;background:var(--fill-0);border:1px solid var(--rule-strong);
+      border-radius:6px;box-shadow:0 12px 28px rgba(0,0,0,.22);overflow:hidden;padding:4px;z-index:9">
+      <div class="it on" style="height:28px;font-size:12px;border-radius:4px;box-shadow:none"><span class="mk">cc</span>chess.com<svg width="12" height="12" style="margin-left:auto"><use href="#i-check"/></svg></div>
+      <div class="it" style="height:28px;font-size:12px;border-radius:4px"><span class="mk">li</span>lichess</div>
+    </div>
+  </div></div>
+  <p class="cap">AG‑ON‑4 — <span class="pill">menuitemradio</span> with <span class="pill">aria-checked</span>, matching §3.2.3.10's Library switcher rather than inventing a second list behaviour.</p>
+</figure>
+
+<div class="grid2">
+  <div class="card">
+    <h4><span class="tag rec">Suggested</span> Keep the subscription list</h4>
+    <p>Removing the verification left the Online tab with a form and empty space below it. Listing the
+       subscriptions that already exist fills it with the one thing the user might otherwise get wrong —
+       <b>asking for something they already receive automatically</b>.</p>
+    <p>It is local data, needs no network, and answers the "already subscribed?" question that r4 handled
+       with a lookup. Purely informative: nothing is clickable.</p>
+  </div>
+  <div class="card">
+    <h4><span class="tag">Alternative</span> Leave the space empty</h4>
+    <p>The form sits at the top of the source band and the rest is whitespace.</p>
+    <p>Defensible — the dialog is a form and forms are allowed to be short. But it is the only tab with a
+       visible void, and a void invites the question of what should be there. The list is a cheaper answer
+       than shrinking the dialog for one tab.</p>
+  </div>
+</div>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">AG‑PA‑3</span><h4>Paste — text area, no count, no judgement</h4></div>
+  <p class="wf-sub">The text area now fills the whole source band. <b>Clear</b> moves to the footer, beside
+     the other actions, since there is no source line left to hold it.</p>
+  <div class="wf-canvas"><div class="zoom" style="display:block">
+    <div style="width:700px;border:1px solid var(--rule-strong);border-radius:9px;overflow:hidden;background:var(--fill-0);height:430px;display:flex;flex-direction:column">
+      <div class="mhead">Add Games<span class="x"><svg width="13" height="13"><use href="#i-x"/></svg></span></div>
+      <div class="dtabs">
+        <div class="dtab"><svg class="ic" width="13" height="13"><use href="#i-file"/></svg>File</div>
+        <div class="dtab"><svg class="ic" width="13" height="13"><use href="#i-globe"/></svg>Online</div>
+        <div class="dtab on"><svg class="ic" width="13" height="13"><use href="#i-clip"/></svg>Paste</div>
+      </div>
+      <div class="dsrc">
+        <div class="ta focus" style="margin:11px 12px"><b>[Event "Sinquefield Cup"]</b> <b>[Site "Saint Louis USA"]</b><br>
+          <b>[Date "2026.09.01"]</b> <b>[Round "3"]</b><br>
+          <b>[White "Gukesh, D"]</b> <b>[Black "Praggnanandhaa, R"]</b> <b>[Result "1-0"]</b><br><br>
+          1. d4 Nf6 2. c4 g6 3. Nc3 d5 4. cxd5 Nxd5 5. e4 Nxc3<br>
+          6. bxc3 Bg7 7. Nf3 c5 8. Rb1 O-O 9. Be2 cxd4 10. cxd4 Qa5+<br>
+          11. Bd2 Qxa2 12. O-O Bg4 13. Bg5 h6 14. Be3 Nc6 15. d5 Bxf3<br>
+          16. Bxf3 Ne5 17. Be2 e6 18. dxe6 fxe6 19. Qb3 Qxb3 20. Rxb3 …</div>
+      </div>
+      <div class="orow first"><span class="lbl" style="width:76px">Add to</span>
+        <span class="field" style="flex:1"><svg width="11" height="11" style="color:var(--faint)"><use href="#i-db"/></svg>Master Games<span class="cap2"><svg width="9" height="9"><use href="#i-cdown"/></svg></span></span>
+        <span class="lbl">Duplicates</span><span class="field" style="width:78px">Skip<span class="cap2"><svg width="9" height="9"><use href="#i-cdown"/></svg></span></span></div>
+      <div class="orow"><span class="lbl" style="width:76px">Tags</span>
+        <span class="field" style="flex:1;gap:5px"><span class="ph" style="font-size:11px">add…</span></span></div>
+      <div class="orow"><span class="lbl" style="width:76px">Collections</span>
+        <span class="field" style="flex:1;gap:5px"><span class="tok">Openings<svg width="8" height="8"><use href="#i-x"/></svg></span><span class="ph" style="font-size:11px">add…</span></span></div>
+      <div class="mfoot"><span class="btn ghost">Clear</span><span class="spacer"></span>
+        <span class="btn ghost">Cancel</span><span class="btn">Add Games</span></div>
+    </div>
+  </div></div>
+  <p class="cap">AG‑PA‑3 — empty text area, placeholder, <b>Add Games</b> disabled; any text at all, enabled. Those are the only two states this tab has.</p>
+</figure>
+
+<!-- ════════ 3 · IMPORT ERRORS ════════ -->
+<h2 class="sec">3 · What moved into the import</h2>
+
+<p class="lede">The failures the dialog used to catch are now outcomes the import reports. They are
+   <b>whole-source failures</b> rather than per-game ones — nothing was added from that source at all —
+   and they say so in one sentence, the same sentence every time.</p>
+
+<div class="callout ok">
+  <h4>One outcome: <i>No games found</i></h4>
+  <p>A misspelled username, an account with nothing in the chosen range, a paste that turned out to be an
+     email, a .pgn holding only comments — <b>these are the same outcome and get the same words</b>. The
+     causes differ; what the user is told does not, because nothing they could do about it differs either.
+     They check what they gave it.</p>
+  <p>It is also the only honest option now that nothing is verified: the import has a source that yielded
+     nothing, and in most of these cases it <b>cannot tell which reason applies</b> — an API that returns
+     an empty list looks identical whether the account is empty or absent.</p>
+</div>
+
+<table>
+<tr><th style="width:130px">Source</th><th style="width:290px">Message</th><th>Covers</th></tr>
+<tr><td>File</td><td class="m">No games found in notes.pgn</td><td>Empty file, comments only, not PGN at all</td></tr>
+<tr><td>Paste</td><td class="m">No games found in the pasted text</td><td>Prose, a broken copy, the email around the games</td></tr>
+<tr><td>Online</td><td class="m">No games found for AwesomeAtti on chess.com</td><td>No such member, empty account, nothing in the chosen range</td></tr>
+</table>
+
+<p class="note"><b>The source is still named</b> — that is identification, not diagnosis. With three files
+   chosen, "No games found" alone would not say which one, and naming it costs nothing and explains
+   nothing.</p>
+
+<h3 class="sub">The two outcomes that stay separate, and their names</h3>
+
+<p class="lede">Both are cases where the source was never read at all — so "no games found" would describe
+   a search that never happened. Each is named for <b>the thing that went wrong</b>, in two words, matching
+   the brevity of the message they sit beside.</p>
+
+<table>
+<tr><th style="width:130px">Name</th><th style="width:290px">Message</th><th>When</th></tr>
+<tr><td><b>File error</b></td><td class="m">File error — twic1600.pgn could not be opened</td>
+    <td>Missing, moved, permission refused, a directory. The next move is <b>find the file</b>, not check its contents — and this is the one case the import knows for certain.</td></tr>
+<tr><td><b>Network error</b></td><td class="m">Network error — download did not complete · Try again</td>
+    <td>The connection dropped mid-download. Nothing was written and nothing was wrong with the request, so this is the only failure in the design with a <b>one-click remedy</b>.</td></tr>
+</table>
+
+<p class="note">Three outcomes in total, then, and a user can tell them apart at a glance without reading
+   past the first two words: <b>No games found</b> · <b>File error</b> · <b>Network error</b>. Only the
+   third offers an action.</p>
+
+<p class="note"><b>A whole-source failure is not a partial success.</b> Under the r3 §4 scope rule an import
+   fails only if <i>every</i> source failed — so three files where one is empty is still a successful
+   import with a note, and a paste with no games is a <b>failed import</b>, because the paste was the only
+   source. The result of an import needs to distinguish those two, whatever form it eventually takes.</p>
+
+<!-- ════════ 4 · NO BANNER ════════ -->
+<h2 class="sec">4 · The result, without a banner</h2>
+
+<p class="lede">The layout objection settles this. A banner between the toolbar and the Content Table
+   <b>shifts the table twice</b> — down when it appears, up when it is dismissed — in a region the user may
+   be scrolled in, and it arrives at a moment they did not choose. Every alternative that avoids the shift
+   introduces an overlay the application does not have.</p>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">AG‑B‑1</span><h4>Why every banner position costs something</h4></div>
+  <div class="wf-canvas"><div class="states" style="grid-template-columns:1fr 1fr 1fr">
+
+    <div class="st">
+      <h5>Inserted — as drawn in r2</h5>
+      <div style="border:1px solid var(--rule-strong);border-radius:5px;overflow:hidden;background:var(--fill-0)">
+        <div class="tool" style="height:30px"><div class="search" style="height:22px;font-size:11px">Search…</div><span class="btn" style="height:22px;font-size:11px">Add Games</span></div>
+        <div style="padding:6px 8px;border-bottom:1px solid var(--rule)"><div class="bar ok" style="padding:6px 9px;font-size:11px"><svg width="12" height="12"><use href="#i-check"/></svg>3,000 games added</div></div>
+        <div style="height:74px;background:repeating-linear-gradient(var(--fill-0) 0 21px,var(--rule) 21px 22px)"></div>
+        <div class="status" style="height:20px">3,000 games</div>
+      </div>
+      <p><b>The table moves 46px, twice.</b> Scroll position is preserved but the row under the pointer is
+         not, and the second shift arrives on a dismiss click.</p>
+    </div>
+
+    <div class="st">
+      <h5>Overlaid on the table</h5>
+      <div style="border:1px solid var(--rule-strong);border-radius:5px;overflow:hidden;background:var(--fill-0);position:relative">
+        <div class="tool" style="height:30px"><div class="search" style="height:22px;font-size:11px">Search…</div><span class="btn" style="height:22px;font-size:11px">Add Games</span></div>
+        <div style="height:106px;background:repeating-linear-gradient(var(--fill-0) 0 21px,var(--rule) 21px 22px);position:relative">
+          <div class="bar ok" style="position:absolute;left:8px;right:8px;top:6px;padding:6px 9px;font-size:11px;box-shadow:0 6px 16px rgba(0,0,0,.18)"><svg width="12" height="12"><use href="#i-check"/></svg>3,000 games added</div>
+        </div>
+        <div class="status" style="height:20px">3,000 games</div>
+      </div>
+      <p>No shift — but it <b>covers the first two rows</b> of exactly the games it is announcing, and it
+         is a floating layer the shell has never defined.</p>
+    </div>
+
+    <div class="st">
+      <h5>A corner toast</h5>
+      <div style="border:1px solid var(--rule-strong);border-radius:5px;overflow:hidden;background:var(--fill-0);position:relative">
+        <div class="tool" style="height:30px"><div class="search" style="height:22px;font-size:11px">Search…</div><span class="btn" style="height:22px;font-size:11px">Add Games</span></div>
+        <div style="height:106px;background:repeating-linear-gradient(var(--fill-0) 0 21px,var(--rule) 21px 22px);position:relative">
+          <div class="bar ok" style="position:absolute;right:8px;bottom:8px;width:150px;padding:6px 9px;font-size:11px;box-shadow:0 6px 16px rgba(0,0,0,.18)"><svg width="12" height="12"><use href="#i-check"/></svg>3,000 added</div>
+        </div>
+        <div class="status" style="height:20px">3,000 games</div>
+      </div>
+      <p>No shift and covers little — but it is a <b>third overlay system</b> after the dialog and the
+         popover, with its own stacking, timing and dismissal rules, for one sentence.</p>
+    </div>
+
+  </div></div>
+  <p class="cap">AG‑B‑1 — three positions, three different costs, and the cheapest of them still adds a layer to a shell that currently has two.</p>
+</figure>
+
+<div class="callout ok">
+  <h4>Recommendation — no banner. The Status Bar carries it, and the Library itself is the receipt</h4>
+  <p><b>A clean import does not need announcing.</b> The table fills with the games, the count climbs,
+     the Sidebar moves to Recently Added, the tag and collection appear as Sidebar rows. That is a more
+     informative report than a sentence, and it is already on screen.</p>
+  <p><b>The exception does need persisting</b> — and the Status Bar's right slot already holds it, at
+     rank 2 of the precedence in r2 §2, surviving Sidebar changes and searches until it is answered.</p>
+  <p>Nothing new is built, nothing shifts, and a banner can still be added later if the mockup shows the
+     finish is too quiet. <b>Adding one later is easy; removing one is not.</b></p>
+</div>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">AG‑B‑2</span><h4>A clean import finishing — no banner anywhere</h4></div>
+  <p class="wf-sub">Four things changed and all four are visible: the Sidebar selection, the counts, the new
+     TWIC tag row, and the table. The Status Bar states the outcome briefly and then clears itself.</p>
+  <div class="wf-canvas"><div class="win">
+    <div class="tabbar"><div class="tab on"><svg class="ic" width="13" height="13"><use href="#i-list"/></svg>Library</div><div class="tab">Carlsen–Nepomniachtchi</div></div>
+    <div class="body">
+      <div class="side">
+        <div class="shead"><div class="swch"><span>Master Games</span><svg width="12" height="12"><use href="#i-cdown"/></svg></div><div class="stog"><svg width="12" height="12"><use href="#i-cleft"/></svg></div></div>
+        <div class="snav">
+          <div class="it"><svg class="ic" width="14" height="14"><use href="#i-list"/></svg>All Games<span class="ct">4,248</span></div>
+          <div class="it"><svg class="ic" width="14" height="14"><use href="#i-star"/></svg>Favorites<span class="ct">36</span></div>
+          <div class="it on"><svg class="ic" width="14" height="14"><use href="#i-clock"/></svg>Recently Added<span class="ct">3,000</span></div>
+          <div class="grp"><svg width="9" height="9"><use href="#i-cdown"/></svg>Collections</div>
+          <div class="it"><svg class="ic" width="14" height="14"><use href="#i-folder"/></svg>Openings<span class="ct">3,084</span></div>
+          <div class="grp"><svg width="9" height="9"><use href="#i-cdown"/></svg>Tags</div>
+          <div class="it"><svg class="ic" width="14" height="14"><use href="#i-tag"/></svg>TWIC 1600<span class="ct">3,000</span></div>
+        </div>
+        <div class="sfoot"><div class="it"><svg class="ic" width="14" height="14"><use href="#i-trash"/></svg>Trash<span class="ct">4</span></div></div>
+      </div>
+      <div class="cont">
+        <div class="tool"><div class="search"><svg width="12" height="12"><use href="#i-search"/></svg>Search in Recently Added…</div>
+          <div class="btn"><svg width="12" height="12"><use href="#i-plus"/></svg>Add Games</div></div>
+        <div class="list">
+          <div class="lrow h"><span>White</span><span>Black</span><span>Result</span><span>Date</span><span>Event</span></div>
+          <div class="lrow"><span>Gukesh, D</span><span>Praggnanandhaa, R</span><span class="r">1–0</span><span class="r">2026.09.01</span><span>Sinquefield Cup</span></div>
+          <div class="lrow"><span>Firouzja, A</span><span>Caruana, F</span><span class="r">0–1</span><span class="r">2026.09.01</span><span>Sinquefield Cup</span></div>
+          <div class="lrow"><span>Nakamura, H</span><span>So, W</span><span class="r">½–½</span><span class="r">2026.09.02</span><span>Sinquefield Cup</span></div>
+          <div class="lrow"><span>Abdusattorov, N</span><span>Erigaisi, A</span><span class="r">1–0</span><span class="r">2026.09.02</span><span>Sinquefield Cup</span></div>
+          <div class="lrow"><span>Vachier-Lagrave, M</span><span>Aronian, L</span><span class="r">½–½</span><span class="r">2026.09.03</span><span>Sinquefield Cup</span></div>
+          <div class="lrow"><span>Duda, J</span><span>Rapport, R</span><span class="r">1–0</span><span class="r">2026.09.03</span><span>Sinquefield Cup</span></div>
+          <div class="fade"></div>
+        </div>
+        <div class="status">3,000 games<span class="rt"><svg width="11" height="11" style="color:var(--ok)"><use href="#i-check"/></svg>3,000 games added</span></div>
+      </div>
+      <div class="anno" style="right:14px;bottom:32px">clears itself</div>
+    </div>
+  </div></div>
+  <p class="cap">AG‑B‑2 — the confirmation is one line in a slot that already exists, and it needs no dismiss control because it removes itself.</p>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">AG‑B‑3</span><h4>An import with problems — the same slot, but it stays</h4></div>
+  <p class="wf-sub">The only difference is persistence and a link. Clicking anywhere on the notice opens the
+     import report (r3 AG‑E‑2b); the close control dismisses it unread.</p>
+  <div class="wf-canvas"><div class="win" style="height:auto">
+    <div class="tabbar"><div class="tab on"><svg class="ic" width="13" height="13"><use href="#i-list"/></svg>Library</div><div class="tab">Carlsen–Nepomniachtchi</div></div>
+    <div class="body" style="height:210px">
+      <div class="side">
+        <div class="shead"><div class="swch"><span>Master Games</span><svg width="12" height="12"><use href="#i-cdown"/></svg></div><div class="stog"><svg width="12" height="12"><use href="#i-cleft"/></svg></div></div>
+        <div class="snav">
+          <div class="it"><svg class="ic" width="14" height="14"><use href="#i-list"/></svg>All Games<span class="ct">4,244</span></div>
+          <div class="it on"><svg class="ic" width="14" height="14"><use href="#i-clock"/></svg>Recently Added<span class="ct">2,996</span></div>
+        </div>
+      </div>
+      <div class="cont">
+        <div class="tool"><div class="search"><svg width="12" height="12"><use href="#i-search"/></svg>Search in Recently Added…</div>
+          <div class="btn"><svg width="12" height="12"><use href="#i-plus"/></svg>Add Games</div></div>
+        <div class="list">
+          <div class="lrow h"><span>White</span><span>Black</span><span>Result</span><span>Date</span><span>Event</span></div>
+          <div class="lrow"><span>Gukesh, D</span><span>Praggnanandhaa, R</span><span class="r">1–0</span><span class="r">2026.09.01</span><span>Sinquefield Cup</span></div>
+          <div class="lrow"><span>Firouzja, A</span><span>Caruana, F</span><span class="r">0–1</span><span class="r">2026.09.01</span><span>Sinquefield Cup</span></div>
+          <div class="fade"></div>
+        </div>
+        <div class="status">2,996 games<span class="rt"><svg width="11" height="11" style="color:var(--warn)"><use href="#i-alert"/></svg>
+          <span style="text-decoration:underline;color:var(--ink)">4 games were not added — Review</span>
+          <svg width="10" height="10"><use href="#i-x"/></svg></span></div>
+      </div>
+      <div class="anno" style="right:14px;bottom:32px">persists until answered</div>
+    </div>
+  </div></div>
+  <p class="cap">AG‑B‑3 — <b>4 games were not added</b> rather than "could not be read", so one wording covers a parse failure, a skipped duplicate the user did not expect, and a whole source that yielded nothing.</p>
+</figure>
+
+<h3 class="sub">The two timings this needs</h3>
+<table>
+<tr><th style="width:190px">Notice</th><th style="width:150px">Lifetime</th><th>Dismiss</th></tr>
+<tr><td><b>Import finished, clean</b></td><td class="m">about 8 seconds</td><td>None — it removes itself. Nothing is lost if it is missed, because the Library already shows the result.</td></tr>
+<tr><td><b>Import finished, problems</b></td><td class="m">until answered</td><td>Clicking it opens the report; the close control dismisses it unread. Survives Sidebar changes, searches, and switching tabs and back.</td></tr>
+</table>
+
+<p class="note"><b>The one case worth watching in the mockup:</b> a first import into an empty Library. There
+   the Content Table was showing §3.2.4.2's empty state, so the change from "No games in your library" to
+   3,000 rows is the largest confirmation the application can give — and the argument for silence is at
+   its strongest. If a banner is ever wanted, it is for the <i>opposite</i> case: a 12-game import into a
+   library of 40,000, where nothing visibly changes.</p>
+
+<!-- ════════ 5 · MOCKUP ════════ -->
+<h2 class="sec">5 · What is left to build a click-through mockup</h2>
+
+<p class="lede">The answer is: <b>four of the five screens are fully specified</b>, the interactions are all
+   synchronous or fakeable, and the only blocked piece is the last one. Below is the inventory, in the
+   order it would be built.</p>
+
+<div class="inv">
+  <div class="ih"><span style="flex:1">Screens</span><span>Status</span></div>
+  <div class="ir"><span class="n">1</span><span class="c"><b>Library at rest</b>
+    <span>Sidebar, toolbar, game table, status bar. <b>Already drawn and already built</b> — the prototype has it.</span></span>
+    <span class="s"><span class="tag done">ready</span></span></div>
+  <div class="ir"><span class="n">2</span><span class="c"><b>The Add Games dialog, three tabs</b>
+    <span>AG‑D‑2s (File), AG‑ON‑3 (Online), AG‑PA‑3 (Paste), plus the empty state of each. Scrim, header, tabs, source band, three option rows, footer.</span></span>
+    <span class="s"><span class="tag done">ready</span></span></div>
+  <div class="ir"><span class="n">3</span><span class="c"><b>The import running</b>
+    <span>Dialog closes; status bar right slot shows determinate progress with a cancel; rows appear in the table; Add Games disabled. Two phases on the Online tab.</span></span>
+    <span class="s"><span class="tag done">ready</span></span></div>
+  <div class="ir"><span class="n">4</span><span class="c"><b>The import finishing, cleanly</b>
+    <span>Status bar states it briefly and clears itself; Sidebar switches to Recently Added; counts update; tags and collections appear as Sidebar rows. <b>No banner</b> (§4).</span></span>
+    <span class="s"><span class="tag done">ready</span></span></div>
+  <div class="ir"><span class="n">5</span><span class="c"><b>The import finishing, with problems</b>
+    <span>Status-bar notice that persists, and the import report dialog it opens. Buildable with a single-list report; the Class 2 policy only decides whether that list later splits in two.</span></span>
+    <span class="s"><span class="tag done">ready</span></span></div>
+</div>
+
+<h3 class="sub">Interactions to simulate</h3>
+
+<div class="inv">
+  <div class="ih"><span style="flex:1">Behaviour</span><span>Note</span></div>
+  <div class="ir"><span class="n">a</span><span class="c"><b>Open and close the dialog</b>
+    <span>Scrim fade, focus moves in, <span class="pill">Esc</span> and the close control both dismiss, focus returns to the Add Games button. <b>This is the unspecified shell piece</b> — the mockup is where its behaviour gets decided in practice.</span></span><span class="s"></span></div>
+  <div class="ir"><span class="n">b</span><span class="c"><b>Switch tabs, keeping each tab's draft</b>
+    <span>S‑1. The footer's left text changes with the tab. Pure state, no I/O.</span></span><span class="s"></span></div>
+  <div class="ir"><span class="n">c</span><span class="c"><b>Add and remove files</b>
+    <span>A real file picker returns real names and sizes and needs no PGN reading — so this one can be genuine rather than faked. Drag-and-drop onto the dialog and onto the table both set the same state.</span></span><span class="s"></span></div>
+  <div class="ir"><span class="n">d</span><span class="c"><b>Four dropdowns</b>
+    <span>Destination, Duplicates, Games-from, and the two token lists. Open, filter, select, dismiss on <span class="pill">Esc</span> and outside click — the same popover behaviour the Library switcher already has.</span></span><span class="s"></span></div>
+  <div class="ir"><span class="n">e</span><span class="c"><b>Token fields</b>
+    <span>Type to filter, Enter to commit a token, Backspace to remove the last, per-token remove control, <b>Create “x”</b> as the last row. The most interaction-heavy control in the dialog and the one most worth testing by hand.</span></span><span class="s"></span></div>
+  <div class="ir"><span class="n">f</span><span class="c"><b>A fake import that takes time</b>
+    <span>A timer driving the progress line, rows appearing in the table, the cancel control working, and a scenario picker so the same mockup can run a clean import, a slow one, an online two-phase one, and a cancelled one.</span></span><span class="s"></span></div>
+  <div class="ir"><span class="n">g</span><span class="c"><b>Add Games disabled while importing</b>
+    <span>One boolean, but it is the single-lane rule made visible and worth feeling.</span></span><span class="s"></span></div>
+</div>
+
+<h3 class="sub">Fixtures — the fake data it needs</h3>
+<ul class="pts">
+  <li><b>A game list</b> — the prototype already generates one.</li>
+  <li><b>Databases</b> — three or four, one disabled and one indexing, so the destination dropdown shows
+      §3.2.3.10's non-selectable states.</li>
+  <li><b>Tags</b> — a dozen, including two that share a prefix, so filtering is visibly doing something.</li>
+  <li><b>Collections</b> — half a dozen, <b>including two Smart Collections that must not appear</b> in the
+      picker. Without them in the fixture the exclusion rule is untested.</li>
+  <li><b>Subscriptions</b> — one, so the Online tab's list has a row and the "already subscribed" case is
+      reachable.</li>
+  <li><b>Import scenarios</b> — clean · slow · cancelled · online two-phase · connection lost. Each is a
+      script of timings, not data.</li>
+</ul>
+
+<h3 class="sub">What the mockup would settle that drawings cannot</h3>
+<ul class="pts">
+  <li><b>Whether the modal is right at all.</b> Three revisions have flagged the missing modal layer as the
+      largest cost in this direction. A click-through is the cheapest way to find out whether a dialog over
+      the Library feels correct before the shell gains a layer it cannot easily lose.</li>
+  <li><b>Whether the two tab strips collide</b> (AG‑D‑5's open risk) — 60px apart, in motion, on a real
+      screen.</li>
+  <li><b>Whether three option rows feel heavy</b> for a user who wants none of them.</li>
+  <li><b>Whether the status bar is noticeable enough</b> to carry the only progress in the application.</li>
+</ul>
+
+<!-- ════════ 5 · BLOCKED ════════ -->
+<h2 class="sec">6 · What is still parked</h2>
+
+<p class="lede">One thing, and it no longer blocks anything: <b>the Class 2 policy</b> — whether a game with
+   an illegal move is rejected, truncated and kept, or imported unvalidated (r3 §5).</p>
+
+<p class="lede">It decides the import report's <i>contents</i>, not its shape. Under P‑1 the report is one
+   list of games that were not added; under P‑2 that list gains a second section above it for games that
+   were added but truncated. <b>A mockup built on the one-list version needs no rework to gain the
+   second</b> — it is another group header in the same scroller.</p>
+
+<div class="callout ok">
+  <h4>Nothing is blocked</h4>
+  <p>All five screens can be built now. The banner question is answered by not having one, and the Class 2
+     policy changes a list's contents rather than any screen's structure.</p>
+</div>
+
+<h2 class="sec">7 · Still open</h2>
+<ol class="pts">
+  <li><b>The Class 2 policy</b> — parked, and now gating nothing structural (§6).</li>
+  <li><b>The modal layer</b> — scrim, focus trap, <span class="pill">Esc</span>, a third material layer.
+      Now the most likely thing a mockup would answer rather than ask.</li>
+  <li><b>The Online tab's subscription list</b> — suggested in §2, not decided.</li>
+  <li><b>Remembering the last username, tags and collections between imports</b> — one question, one
+      answer, carried from r3.</li>
+  <li><b>A paste ceiling</b> — whether a very large paste should suggest the File tab.</li>
+  <li><b>Undo</b> — unchanged.</li>
+</ol>
+
+<p class="note" style="margin-top:34px">Drawn at 900px window width; dialog at 700 × 430 — intended size
+   <b>820 × 600</b>. Sidebar 206px against the specified 220px. Every other measure is the specified one.
+   Icons are Lucide (§7.4); source marks are <span class="pill">cc</span> <span class="pill">li</span>
+   placeholders for the Simple Icons brand marks. No character is used as an icon.</p>
+
+</div>
+</body></html>
