@@ -1,0 +1,405 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessgui — Library Switcher Placement Options</title>
+<style>
+  :root{--paper:#f7f7f5;--ink:#1b1b19;--muted:#6b6b66;--faint:#94948e;
+    --rule:#d6d6d1;--rule-strong:#adada6;--fill-0:#fff;--fill-1:#ececea;--fill-2:#dededa;--fill-3:#cfcfc9;
+    --accent:#8a5a1c;--accent-bg:#f6ecdc;--accent-rule:#d9b478;--warn:#8a2c2c;--warn-bg:#f8e9e9;
+    --ok:#2f5d3a;--ok-bg:#e9f2ec;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif}
+  @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
+    --paper:#141413;--ink:#eceae4;--muted:#a3a099;--faint:#7d7a73;--rule:#333330;--rule-strong:#55554f;
+    --fill-0:#1e1e1c;--fill-1:#2a2a27;--fill-2:#353531;--fill-3:#43433d;--accent:#d9a55f;
+    --accent-bg:#2c2418;--accent-rule:#6b5326;--warn:#e08a8a;--warn-bg:#2e1c1c;--ok:#8fbf9c;--ok-bg:#1b2a20}}
+  *{box-sizing:border-box} svg{display:block}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans)}
+  .wrap{max-width:1180px;margin:0 auto;padding:56px 28px 120px}
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:34px}
+  .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  header.doc h1{font-size:29px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+  header.doc p{margin:0 0 8px;color:var(--muted);max-width:68ch}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:16px}
+  .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+  h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:50px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+  figure.wf{margin:28px 0 0;padding:0}
+  .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+  .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+  .wf-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:72ch}
+  .wf-canvas{background:var(--fill-0);border:1px solid var(--rule);border-radius:4px;padding:22px 20px;overflow-x:auto}
+  .wf-canvas.tight{padding:18px}
+  .caption{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 9px}
+  .two{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+
+  .ws{display:flex;border:1px solid var(--rule-strong);overflow:hidden;position:relative;flex:none}
+  .side{flex:none;width:220px;background:var(--fill-1);border-right:1px solid var(--rule-strong);
+        display:flex;flex-direction:column}
+  .side.rail{width:56px}
+  .head{flex:none;height:40px;display:flex;align-items:center;gap:8px;padding:0 6px 0 12px;
+        border-bottom:1px solid var(--rule)}
+  .head.rail{justify-content:center;padding:0}
+  .sw{flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:28px;padding:0 6px 0 8px;
+      border:1px solid var(--rule-strong);border-radius:5px;background:var(--fill-0)}
+  .sw .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+          font-size:12.5px;font-weight:600}
+  .btn{flex:none;width:28px;height:28px;display:grid;place-items:center;border:1px solid var(--rule-strong);
+       border-radius:4px;background:var(--fill-0);color:var(--muted)}
+  .btn.ghost{border-color:transparent;background:none}
+  .grp{font:9px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);padding:10px 12px 5px}
+  .it{display:flex;align-items:center;gap:8px;height:26px;padding:0 8px 0 12px;font-size:12.5px;color:var(--muted)}
+  .it.on{background:var(--fill-0);color:var(--ink);font-weight:600;box-shadow:inset 3px 0 0 var(--ink)}
+  .it .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .it .ct{flex:none;width:34px;text-align:right;font:10px/1 var(--mono);color:var(--faint)}
+  .it svg{opacity:.62}.it.on svg{opacity:1}
+  .rail-it{display:grid;place-items:center;height:34px;color:var(--muted)}
+  .rail-it.on{background:var(--fill-0);color:var(--ink);box-shadow:inset 3px 0 0 var(--ink)}
+  .ca{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--fill-0)}
+  .tbar{flex:none;height:40px;display:flex;align-items:center;gap:10px;padding:0 10px;
+        border-bottom:1px solid var(--rule);background:var(--fill-1)}
+  .field{flex:1;min-width:0;display:flex;align-items:center;gap:8px;height:26px;padding:0 8px;
+         background:var(--fill-0);border:1px solid var(--rule-strong);border-radius:5px;
+         color:var(--faint);font-size:12px}
+  .add{flex:none;height:26px;padding:0 11px;display:flex;align-items:center;gap:6px;border-radius:5px;
+       background:var(--ink);color:var(--paper);font-size:12px;font-weight:600}
+  .thead{flex:none;height:28px;display:flex;align-items:center;padding:0 6px;background:var(--fill-1);
+         border-bottom:1px solid var(--rule-strong);font:11px/1 var(--sans);color:var(--muted);font-weight:600}
+  .trow{flex:none;height:30px;display:flex;align-items:center;padding:0 6px;border-bottom:1px solid var(--rule);font-size:12px}
+  .c{padding:0 6px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+  .menu{width:246px;background:var(--fill-0);border:1px solid var(--rule-strong);
+        border-radius:7px;box-shadow:0 8px 26px rgba(0,0,0,.18);padding:4px}
+  .mrow{display:flex;align-items:center;gap:9px;height:34px;padding:0 8px;border-radius:5px;font-size:12.5px}
+  .mrow .nm{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mrow .ct{flex:none;font:10px/1 var(--mono);color:var(--faint)}
+  .mrow.on{background:var(--fill-1);font-weight:600}
+  .mrow.off{color:var(--faint)}
+  .msep{height:1px;background:var(--rule);margin:4px 6px}
+  .mlab{font:9px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--faint);padding:8px 9px 5px}
+  .dim{position:relative;height:24px;margin-top:5px}
+  .dim .bar2{position:absolute;top:9px;height:1px;background:var(--accent)}
+  .dim .bar2::before,.dim .bar2::after{content:"";position:absolute;top:-3px;width:1px;height:7px;background:var(--accent)}
+  .dim .bar2::before{left:0}.dim .bar2::after{right:0}
+  .dim .txt{position:absolute;top:13px;font:10px/1 var(--mono);color:var(--accent);transform:translateX(-50%);white-space:nowrap}
+  .callouts{display:flex;flex-wrap:wrap;gap:6px;margin-top:13px}
+  .co{font:10px/1.4 var(--mono);color:var(--accent);background:var(--accent-bg);
+      border:1px solid var(--accent-rule);border-radius:3px;padding:5px 8px}
+  .co.bad{color:var(--warn);background:var(--warn-bg);border-color:var(--warn)}
+  .co.good{color:var(--ok);background:var(--ok-bg);border-color:var(--ok)}
+  code{font:11.5px/1 var(--mono);background:var(--fill-1);padding:2px 4px;border-radius:2px;color:var(--ink)}
+  .ref{font:10px/1 var(--mono);color:var(--faint)}
+  table.rules{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  table.rules th,table.rules td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  table.rules th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  table.rules td.n{font-family:var(--mono);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  tr.bad td{color:var(--warn)} tr.bad{background:var(--warn-bg)}
+  td.v{color:var(--ok);font-weight:600}
+  .box{border:1px solid var(--rule-strong);border-left:3px solid var(--accent);background:var(--accent-bg);
+       border-radius:3px;padding:14px 16px;margin-top:16px}
+  .box.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .box h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .box.warn h4{color:var(--warn)}
+  .box p{margin:0 0 8px;font-size:13px;color:var(--ink)}.box p:last-child{margin-bottom:0}
+  .box ul{margin:8px 0 0;padding-left:20px;font-size:13px}.box li{margin:6px 0;color:var(--ink)}
+  .note{font-size:12px;color:var(--muted);margin:8px 0 0;max-width:460px}
+</style></head><body><div class="wrap">
+
+<header class="doc">
+  <div class="kicker">Chessgui · §3.2.3 · Library switcher placement · <b style="color:var(--ok)">ACCEPTED 4 Sep — Option A · G1 and G2 passed, spec pending</b></div>
+  <h1>Where the Library switcher and the collapse control go</h1>
+  <p>The switcher is a <b>scope selector</b>: it names which database the Library Workspace is showing,
+     and its list comes from the Databases configured in Settings (§3.4.8). In the prototype it would be
+     <b>presentational only</b> — the same dataset stays on screen whichever entry is picked, and search
+     is untouched.</p>
+  <p>Adding it creates a competition the 40px sidebar header has not had before: it now has both a name
+     to show and a control to hold. Four placements below, then three for the collapsed rail.</p>
+  <div class="meta">
+    <span class="chip">Sidebar <b>220px</b></span><span class="chip">Header <b>40px</b></span>
+    <span class="chip">Drawn <b>1:1</b></span><span class="chip">Names measured in <b>IBM Plex Sans</b></span><span class="chip" style="border-color:var(--ok);color:var(--ok)">Option A <b>accepted</b></span>
+  </div>
+</header>
+
+<div class="box" style="border-left-color:var(--ok);background:var(--ok-bg);margin:0 0 8px">
+  <h4 style="color:var(--ok)">Accepted 4 Sep — wireframe (G1) and prototype (G2) approved · specification (G3) pending</h4>
+  <p><b>This wireframe is accepted and the control is built.</b> It is <b>not yet in the specification</b>,
+     so it has no section number and must not claim one — §3.2.3.9 is Sidebar Resizing. G3 is a separate
+     approval.</p>
+  <p>The approvals here are retrospective: the three gates were defined while this work was already
+     under way. That is recorded as an exception in <code>STATUS.md</code>, not a precedent.</p>
+  <p><b>Option A</b> — the switcher fills the Sidebar header with the collapse control trailing it.
+     It matches the closest structural analogues (Notion, Linear: a switcher in the header of a
+     collapsible sidebar, in an app with no window-spanning toolbar), and the name budget that argued
+     against it stopped mattering once two other things were settled.</p>
+  <p><b>The switcher carries no icon.</b> A Library <i>is</i> a database file — one object, two words —
+     so a glyph beside the name in a panel that is unambiguously the library would be a second name
+     for the same thing. That returns 24px, taking the name budget from 122px to <b>146px</b>.</p>
+  <p><b>Names middle-truncate</b>, with the full name on hover and in the menu. End truncation renders
+     "Chessgui Reference 2026" and "…2025" as the same string; see the note in LS-01.</p>
+  <p><b>Also settled:</b> the pinned tab keeps its fixed "Library" label, and Settings keeps the word
+     "Databases". <b>Still open:</b> whether the "Library" group heading survives beneath a header
+     that now names the library.</p>
+</div>
+
+<h2 class="sec">1 · What has to fit</h2>
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">LS-01</span><h3>The 40px header, before and after</h3></div>
+  <p class="wf-sub">Today the header holds one control and nothing else — that was the point of removing
+     its title on 4 Sep. <span class="ref">§3.2.3.8</span></p>
+  <div class="wf-canvas">
+    <div class="two">
+      <div>
+        <p class="caption">today — control only</p>
+        <div style="width:220px;border:1px solid var(--rule-strong)">
+          <div class="head" style="justify-content:flex-end"><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></div></div>
+          <div style="background:var(--fill-1)">      <div class="grp">Library</div>
+      <div class="it on"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="18" x="3" y="3" rx="1"/><path d="M7 3v18"/><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/></svg><span class="nm">All Games</span><span class="ct">1,248</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg><span class="nm">Favorites</span><span class="ct">84</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span class="nm">Recently Added</span><span class="ct">61</span></div>
+      <div class="grp">Subscriptions</div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0a3.85 3.85 0 0 0-3.875 3.846A3.84 3.84 0 0 0 9.73 6.969l-2.79 1.85c0 .622.144 1.114.434 1.649H9.83c-.014.245-.014.549-.014.925 0 .025.003.048.006.071-.064 1.353-.507 3.472-3.62 5.842-.816.625-1.423 1.495-1.806 2.533a.33.33 0 0 0-.045.084 8.124 8.124 0 0 0-.39 2.516c0 .1.216 1.561 8.038 1.561s8.038-1.46 8.038-1.561c0-2.227-.824-4.048-2.24-5.133-4.034-3.08-3.586-5.74-3.644-6.838h2.458c.29-.535.434-1.027.434-1.649l-2.79-1.836a3.86 3.86 0 0 0 1.604-3.123A3.873 3.873 0 0 0 13.445.275c-.004-.002-.01.004-.015.004A3.76 3.76 0 0 0 12 0Z"/></svg><span class="nm">magnuscarlsen</span><span class="ct">12</span></div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.457 6.161a.237.237 0 0 0-.296.165c-.8 2.785 2.819 5.579 5.214 7.428.653.504 1.216.939 1.591 1.292 1.745 1.642 2.564 2.851 2.733 3.178a.24.24 0 0 0 .275.122c.047-.013 4.726-1.3 3.934-4.574a.257.257 0 0 0-.023-.06L18.204 3.407 18.93.295a.24.24 0 0 0-.262-.293c-1.7.201-3.115.435-4.5 1.425-4.844-.323-8.718.9-11.213 3.539C.334 7.737-.246 11.515.085 14.128c.763 5.655 5.191 8.631 9.081 9.532.993.229 1.974.34 2.923.34 3.344 0 6.297-1.381 7.946-3.85a.24.24 0 0 0-.372-.3c-3.411 3.527-9.002 4.134-13.296 1.444-4.485-2.81-6.202-8.41-3.91-12.749C4.741 4.221 8.801 2.362 13.888 3.31c.056.01.115 0 .165-.029l.335-.197c.926-.546 1.961-1.157 2.873-1.279l-.694 1.993a.243.243 0 0 0 .02.202l6.082 10.192c-.193 2.028-1.706 2.506-2.226 2.611-.287-.645-.814-1.364-2.306-2.803-.422-.407-1.21-.941-2.124-1.56-2.364-1.601-5.937-4.02-5.391-5.984a.239.239 0 0 0-.165-.295z"/></svg><span class="nm">Broadcasts — Top</span><span class="ct"></span></div></div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:360px">
+        <table class="rules" style="margin-top:0">
+          <tr><th>Part</th><th>Width</th></tr>
+          <tr><td>Sidebar</td><td class="n">220px</td></tr>
+          <tr><td>Padding</td><td class="n">12 left + 6 right = 18</td></tr>
+          <tr><td>Content available</td><td class="n">202px</td></tr>
+          <tr><td>Collapse control</td><td class="n">28px + 8 gap</td></tr>
+          <tr><td>Switcher furniture</td><td class="n">16 icon + 8 + 6 + 14 chevron = 44px</td></tr>
+        </table>
+        <div class="box">
+          <h4>So the name gets 122px, or 158px</h4>
+          <p>122px if the collapse control stays in the header, 158px if it moves out. Measured against
+             the bundled face:</p>
+          <table class="rules" style="margin-top:6px">
+            <tr><th>Database name</th><th>Width</th><th>122px</th><th>158px</th></tr>
+            <tr><td class="n">My Games</td><td class="n">60px</td><td class="v">fits</td><td class="v">fits</td></tr>
+            <tr><td class="n">Master Games</td><td class="n">83px</td><td class="v">fits</td><td class="v">fits</td></tr>
+            <tr class="bad"><td class="n">Chessgui Reference 2026</td><td class="n">148px</td><td>truncates</td><td style="color:var(--ok);font-weight:600">fits</td></tr>
+            <tr class="bad"><td class="n">TWIC Complete Archive 1994–2026</td><td class="n">209px</td><td>truncates</td><td>truncates</td></tr>
+          </table>
+          <p style="margin-top:10px">36px of name is the whole difference. It buys <b>one</b> more
+             realistic database name and no more, so it should not decide this on its own.</p>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<h2 class="sec">2 · Expanded — four placements</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">LS-02</span><h3>Option A · both in the header, collapse trailing</h3></div>
+  <p class="wf-sub">Nothing moves regions. The switcher takes space the header was not using.</p>
+  <div class="wf-canvas">
+    <div class="ws" style="width:690px;height:232px"><div class="side"><div class="head"><div class="sw" ><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg><span class="nm">Master Games</span><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></div><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></div></div>      <div class="grp">Library</div>
+      <div class="it on"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="18" x="3" y="3" rx="1"/><path d="M7 3v18"/><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/></svg><span class="nm">All Games</span><span class="ct">1,248</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg><span class="nm">Favorites</span><span class="ct">84</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span class="nm">Recently Added</span><span class="ct">61</span></div>
+      <div class="grp">Subscriptions</div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0a3.85 3.85 0 0 0-3.875 3.846A3.84 3.84 0 0 0 9.73 6.969l-2.79 1.85c0 .622.144 1.114.434 1.649H9.83c-.014.245-.014.549-.014.925 0 .025.003.048.006.071-.064 1.353-.507 3.472-3.62 5.842-.816.625-1.423 1.495-1.806 2.533a.33.33 0 0 0-.045.084 8.124 8.124 0 0 0-.39 2.516c0 .1.216 1.561 8.038 1.561s8.038-1.46 8.038-1.561c0-2.227-.824-4.048-2.24-5.133-4.034-3.08-3.586-5.74-3.644-6.838h2.458c.29-.535.434-1.027.434-1.649l-2.79-1.836a3.86 3.86 0 0 0 1.604-3.123A3.873 3.873 0 0 0 13.445.275c-.004-.002-.01.004-.015.004A3.76 3.76 0 0 0 12 0Z"/></svg><span class="nm">magnuscarlsen</span><span class="ct">12</span></div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.457 6.161a.237.237 0 0 0-.296.165c-.8 2.785 2.819 5.579 5.214 7.428.653.504 1.216.939 1.591 1.292 1.745 1.642 2.564 2.851 2.733 3.178a.24.24 0 0 0 .275.122c.047-.013 4.726-1.3 3.934-4.574a.257.257 0 0 0-.023-.06L18.204 3.407 18.93.295a.24.24 0 0 0-.262-.293c-1.7.201-3.115.435-4.5 1.425-4.844-.323-8.718.9-11.213 3.539C.334 7.737-.246 11.515.085 14.128c.763 5.655 5.191 8.631 9.081 9.532.993.229 1.974.34 2.923.34 3.344 0 6.297-1.381 7.946-3.85a.24.24 0 0 0-.372-.3c-3.411 3.527-9.002 4.134-13.296 1.444-4.485-2.81-6.202-8.41-3.91-12.749C4.741 4.221 8.801 2.362 13.888 3.31c.056.01.115 0 .165-.029l.335-.197c.926-.546 1.961-1.157 2.873-1.279l-.694 1.993a.243.243 0 0 0 .02.202l6.082 10.192c-.193 2.028-1.706 2.506-2.226 2.611-.287-.645-.814-1.364-2.306-2.803-.422-.407-1.21-.941-2.124-1.56-2.364-1.601-5.937-4.02-5.391-5.984a.239.239 0 0 0-.165-.295z"/></svg><span class="nm">Broadcasts — Top</span><span class="ct"></span></div></div><div class="ca"><div class="tbar"><div class="field"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span>Search players, games, events…</span></div><div class="add"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add Games</div></div><div class="thead"><span class="c" style="width:84px">Date</span><span class="c" style="width:128px">White</span><span class="c" style="width:41px">Elo</span><span class="c" style="width:128px">Black</span><span class="c" style="flex:1">Event</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2021.12.03</span><span class="c" style="width:128px">Carlsen, M</span><span class="c" style="width:41px;font-family:var(--mono)">2856</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1972.07.23</span><span class="c" style="width:128px">Fischer, R</span><span class="c" style="width:41px;font-family:var(--mono)">2785</span><span class="c" style="width:128px">Spassky, B</span><span class="c" style="flex:1">World Ch 28th</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1999.01.20</span><span class="c" style="width:128px">Kasparov, G</span><span class="c" style="width:41px;font-family:var(--mono)">2812</span><span class="c" style="width:128px">Topalov, V</span><span class="c" style="flex:1">Hoogovens A</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2023.04.16</span><span class="c" style="width:128px">Ding, L</span><span class="c" style="width:41px;font-family:var(--mono)">2788</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div></div></div>
+    <div class="dim" style="width:220px">
+      <div class="bar2" style="left:12px;width:166px"></div><div class="txt" style="left:95px">switcher 166 → name 122</div>
+      <div class="bar2" style="left:186px;width:28px"></div><div class="txt" style="left:200px">28</div>
+    </div>
+    <div class="callouts">
+      <span class="co good">Keeps §3.2.2's region boundary intact — a Sidebar control stays in the Sidebar</span>
+      <span class="co good">Reverses nothing; the 3 Sep placement decision stands as written</span>
+      <span class="co bad">Two controls in a 40px row; the name truncates soonest of any option</span>
+      <span class="co">The switcher stops reading as the header and starts reading as one of two things in it</span>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">LS-03</span><h3>Option B · switcher fills the header, collapse moves to the toolbar</h3></div>
+  <p class="wf-sub">The proposal under discussion. The collapse control sits at the leading edge of the
+     Content Toolbar, on the boundary between the two regions.</p>
+  <div class="wf-canvas">
+    <div class="ws" style="width:690px;height:232px"><div class="side"><div class="head"><div class="sw" ><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg><span class="nm">Chessgui Reference 2026</span><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></div></div>      <div class="grp">Library</div>
+      <div class="it on"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="18" x="3" y="3" rx="1"/><path d="M7 3v18"/><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/></svg><span class="nm">All Games</span><span class="ct">1,248</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg><span class="nm">Favorites</span><span class="ct">84</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span class="nm">Recently Added</span><span class="ct">61</span></div>
+      <div class="grp">Subscriptions</div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0a3.85 3.85 0 0 0-3.875 3.846A3.84 3.84 0 0 0 9.73 6.969l-2.79 1.85c0 .622.144 1.114.434 1.649H9.83c-.014.245-.014.549-.014.925 0 .025.003.048.006.071-.064 1.353-.507 3.472-3.62 5.842-.816.625-1.423 1.495-1.806 2.533a.33.33 0 0 0-.045.084 8.124 8.124 0 0 0-.39 2.516c0 .1.216 1.561 8.038 1.561s8.038-1.46 8.038-1.561c0-2.227-.824-4.048-2.24-5.133-4.034-3.08-3.586-5.74-3.644-6.838h2.458c.29-.535.434-1.027.434-1.649l-2.79-1.836a3.86 3.86 0 0 0 1.604-3.123A3.873 3.873 0 0 0 13.445.275c-.004-.002-.01.004-.015.004A3.76 3.76 0 0 0 12 0Z"/></svg><span class="nm">magnuscarlsen</span><span class="ct">12</span></div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.457 6.161a.237.237 0 0 0-.296.165c-.8 2.785 2.819 5.579 5.214 7.428.653.504 1.216.939 1.591 1.292 1.745 1.642 2.564 2.851 2.733 3.178a.24.24 0 0 0 .275.122c.047-.013 4.726-1.3 3.934-4.574a.257.257 0 0 0-.023-.06L18.204 3.407 18.93.295a.24.24 0 0 0-.262-.293c-1.7.201-3.115.435-4.5 1.425-4.844-.323-8.718.9-11.213 3.539C.334 7.737-.246 11.515.085 14.128c.763 5.655 5.191 8.631 9.081 9.532.993.229 1.974.34 2.923.34 3.344 0 6.297-1.381 7.946-3.85a.24.24 0 0 0-.372-.3c-3.411 3.527-9.002 4.134-13.296 1.444-4.485-2.81-6.202-8.41-3.91-12.749C4.741 4.221 8.801 2.362 13.888 3.31c.056.01.115 0 .165-.029l.335-.197c.926-.546 1.961-1.157 2.873-1.279l-.694 1.993a.243.243 0 0 0 .02.202l6.082 10.192c-.193 2.028-1.706 2.506-2.226 2.611-.287-.645-.814-1.364-2.306-2.803-.422-.407-1.21-.941-2.124-1.56-2.364-1.601-5.937-4.02-5.391-5.984a.239.239 0 0 0-.165-.295z"/></svg><span class="nm">Broadcasts — Top</span><span class="ct"></span></div></div><div class="ca"><div class="tbar"><div class="btn ghost"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></div><div class="field"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span>Search players, games, events…</span></div><div class="add"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add Games</div></div><div class="thead"><span class="c" style="width:84px">Date</span><span class="c" style="width:128px">White</span><span class="c" style="width:41px">Elo</span><span class="c" style="width:128px">Black</span><span class="c" style="flex:1">Event</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2021.12.03</span><span class="c" style="width:128px">Carlsen, M</span><span class="c" style="width:41px;font-family:var(--mono)">2856</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1972.07.23</span><span class="c" style="width:128px">Fischer, R</span><span class="c" style="width:41px;font-family:var(--mono)">2785</span><span class="c" style="width:128px">Spassky, B</span><span class="c" style="flex:1">World Ch 28th</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1999.01.20</span><span class="c" style="width:128px">Kasparov, G</span><span class="c" style="width:41px;font-family:var(--mono)">2812</span><span class="c" style="width:128px">Topalov, V</span><span class="c" style="flex:1">Hoogovens A</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2023.04.16</span><span class="c" style="width:128px">Ding, L</span><span class="c" style="width:41px;font-family:var(--mono)">2788</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div></div></div>
+    <div class="dim" style="width:690px">
+      <div class="bar2" style="left:12px;width:202px"></div><div class="txt" style="left:113px">switcher 202 → name 158</div>
+      <div class="bar2" style="left:230px;width:28px"></div><div class="txt" style="left:300px">collapse — now inside the Content Area</div>
+    </div>
+    <div class="callouts">
+      <span class="co good">The switcher reads as the Sidebar's identity, which is what it is</span>
+      <span class="co good">Finder, Mail, Xcode and VS Code all put the sidebar toggle here</span>
+      <span class="co bad">A Sidebar control inside the Content Area — the thing §3.2.2 separates</span>
+      <span class="co bad">Reverses the 3 Sep decision, taken for exactly this reason</span>
+      <span class="co">Costs search 38px at the 800px minimum: 438 → 400</span>
+    </div>
+  </div>
+  <div class="box">
+    <h4>The 3 Sep reasoning, and what has changed since</h4>
+    <p>Option B was rejected then because it "puts a Sidebar control inside the Content Area" and
+       "steals ~36px from a search field the spec wants prominent".</p>
+    <p><b>One premise has changed and one has not.</b> The header was empty then, so keeping the control
+       there cost nothing; now it competes with a name. The region-boundary objection is untouched — as
+       true today as it was.</p>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">LS-04</span><h3>Option C · both in the header, collapse leading</h3></div>
+  <p class="wf-sub">Same widths as A, opposite order. The control sits where a back or menu control
+     usually sits.</p>
+  <div class="wf-canvas">
+    <div class="ws" style="width:690px;height:232px"><div class="side"><div class="head"><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></div><div class="sw" ><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg><span class="nm">Master Games</span><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></div></div>      <div class="grp">Library</div>
+      <div class="it on"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="18" x="3" y="3" rx="1"/><path d="M7 3v18"/><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/></svg><span class="nm">All Games</span><span class="ct">1,248</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg><span class="nm">Favorites</span><span class="ct">84</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span class="nm">Recently Added</span><span class="ct">61</span></div>
+      <div class="grp">Subscriptions</div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0a3.85 3.85 0 0 0-3.875 3.846A3.84 3.84 0 0 0 9.73 6.969l-2.79 1.85c0 .622.144 1.114.434 1.649H9.83c-.014.245-.014.549-.014.925 0 .025.003.048.006.071-.064 1.353-.507 3.472-3.62 5.842-.816.625-1.423 1.495-1.806 2.533a.33.33 0 0 0-.045.084 8.124 8.124 0 0 0-.39 2.516c0 .1.216 1.561 8.038 1.561s8.038-1.46 8.038-1.561c0-2.227-.824-4.048-2.24-5.133-4.034-3.08-3.586-5.74-3.644-6.838h2.458c.29-.535.434-1.027.434-1.649l-2.79-1.836a3.86 3.86 0 0 0 1.604-3.123A3.873 3.873 0 0 0 13.445.275c-.004-.002-.01.004-.015.004A3.76 3.76 0 0 0 12 0Z"/></svg><span class="nm">magnuscarlsen</span><span class="ct">12</span></div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.457 6.161a.237.237 0 0 0-.296.165c-.8 2.785 2.819 5.579 5.214 7.428.653.504 1.216.939 1.591 1.292 1.745 1.642 2.564 2.851 2.733 3.178a.24.24 0 0 0 .275.122c.047-.013 4.726-1.3 3.934-4.574a.257.257 0 0 0-.023-.06L18.204 3.407 18.93.295a.24.24 0 0 0-.262-.293c-1.7.201-3.115.435-4.5 1.425-4.844-.323-8.718.9-11.213 3.539C.334 7.737-.246 11.515.085 14.128c.763 5.655 5.191 8.631 9.081 9.532.993.229 1.974.34 2.923.34 3.344 0 6.297-1.381 7.946-3.85a.24.24 0 0 0-.372-.3c-3.411 3.527-9.002 4.134-13.296 1.444-4.485-2.81-6.202-8.41-3.91-12.749C4.741 4.221 8.801 2.362 13.888 3.31c.056.01.115 0 .165-.029l.335-.197c.926-.546 1.961-1.157 2.873-1.279l-.694 1.993a.243.243 0 0 0 .02.202l6.082 10.192c-.193 2.028-1.706 2.506-2.226 2.611-.287-.645-.814-1.364-2.306-2.803-.422-.407-1.21-.941-2.124-1.56-2.364-1.601-5.937-4.02-5.391-5.984a.239.239 0 0 0-.165-.295z"/></svg><span class="nm">Broadcasts — Top</span><span class="ct"></span></div></div><div class="ca"><div class="tbar"><div class="field"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span>Search players, games, events…</span></div><div class="add"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add Games</div></div><div class="thead"><span class="c" style="width:84px">Date</span><span class="c" style="width:128px">White</span><span class="c" style="width:41px">Elo</span><span class="c" style="width:128px">Black</span><span class="c" style="flex:1">Event</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2021.12.03</span><span class="c" style="width:128px">Carlsen, M</span><span class="c" style="width:41px;font-family:var(--mono)">2856</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1972.07.23</span><span class="c" style="width:128px">Fischer, R</span><span class="c" style="width:41px;font-family:var(--mono)">2785</span><span class="c" style="width:128px">Spassky, B</span><span class="c" style="flex:1">World Ch 28th</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1999.01.20</span><span class="c" style="width:128px">Kasparov, G</span><span class="c" style="width:41px;font-family:var(--mono)">2812</span><span class="c" style="width:128px">Topalov, V</span><span class="c" style="flex:1">Hoogovens A</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2023.04.16</span><span class="c" style="width:128px">Ding, L</span><span class="c" style="width:41px;font-family:var(--mono)">2788</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div></div></div>
+    <div class="callouts">
+      <span class="co good">Collapse lands in the same column as the rail's expand control, so it does not move when toggled</span>
+      <span class="co">Same 122px name budget as A</span>
+      <span class="co bad">Puts a control before the thing it labels — reads as "collapse Master Games"</span>
+      <span class="co bad">Pushes the switcher off the 12px text margin every row below it uses</span>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">LS-05</span><h3>Option D · switcher in the Content Toolbar</h3></div>
+  <p class="wf-sub">Scope sits with the content it scopes; the Sidebar header is untouched. Included for
+     contrast — it is not the switcher-in-sidebar concept.</p>
+  <div class="wf-canvas">
+    <div class="ws" style="width:690px;height:232px"><div class="side"><div class="head"><span style="flex:1"></span><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m16 15-3-3 3-3"/></svg></div></div>      <div class="grp">Library</div>
+      <div class="it on"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="18" x="3" y="3" rx="1"/><path d="M7 3v18"/><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/></svg><span class="nm">All Games</span><span class="ct">1,248</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg><span class="nm">Favorites</span><span class="ct">84</span></div>
+      <div class="it"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg><span class="nm">Recently Added</span><span class="ct">61</span></div>
+      <div class="grp">Subscriptions</div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 0a3.85 3.85 0 0 0-3.875 3.846A3.84 3.84 0 0 0 9.73 6.969l-2.79 1.85c0 .622.144 1.114.434 1.649H9.83c-.014.245-.014.549-.014.925 0 .025.003.048.006.071-.064 1.353-.507 3.472-3.62 5.842-.816.625-1.423 1.495-1.806 2.533a.33.33 0 0 0-.045.084 8.124 8.124 0 0 0-.39 2.516c0 .1.216 1.561 8.038 1.561s8.038-1.46 8.038-1.561c0-2.227-.824-4.048-2.24-5.133-4.034-3.08-3.586-5.74-3.644-6.838h2.458c.29-.535.434-1.027.434-1.649l-2.79-1.836a3.86 3.86 0 0 0 1.604-3.123A3.873 3.873 0 0 0 13.445.275c-.004-.002-.01.004-.015.004A3.76 3.76 0 0 0 12 0Z"/></svg><span class="nm">magnuscarlsen</span><span class="ct">12</span></div>
+      <div class="it"><svg class="b" width="16" height="16" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M10.457 6.161a.237.237 0 0 0-.296.165c-.8 2.785 2.819 5.579 5.214 7.428.653.504 1.216.939 1.591 1.292 1.745 1.642 2.564 2.851 2.733 3.178a.24.24 0 0 0 .275.122c.047-.013 4.726-1.3 3.934-4.574a.257.257 0 0 0-.023-.06L18.204 3.407 18.93.295a.24.24 0 0 0-.262-.293c-1.7.201-3.115.435-4.5 1.425-4.844-.323-8.718.9-11.213 3.539C.334 7.737-.246 11.515.085 14.128c.763 5.655 5.191 8.631 9.081 9.532.993.229 1.974.34 2.923.34 3.344 0 6.297-1.381 7.946-3.85a.24.24 0 0 0-.372-.3c-3.411 3.527-9.002 4.134-13.296 1.444-4.485-2.81-6.202-8.41-3.91-12.749C4.741 4.221 8.801 2.362 13.888 3.31c.056.01.115 0 .165-.029l.335-.197c.926-.546 1.961-1.157 2.873-1.279l-.694 1.993a.243.243 0 0 0 .02.202l6.082 10.192c-.193 2.028-1.706 2.506-2.226 2.611-.287-.645-.814-1.364-2.306-2.803-.422-.407-1.21-.941-2.124-1.56-2.364-1.601-5.937-4.02-5.391-5.984a.239.239 0 0 0-.165-.295z"/></svg><span class="nm">Broadcasts — Top</span><span class="ct"></span></div></div><div class="ca"><div class="tbar"><div class="sw" style="max-width:180px"><svg class="i" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.250" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg><span class="nm">Master Games</span><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></div><div class="field"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span>Search players, games, events…</span></div><div class="add"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add Games</div></div><div class="thead"><span class="c" style="width:84px">Date</span><span class="c" style="width:128px">White</span><span class="c" style="width:41px">Elo</span><span class="c" style="width:128px">Black</span><span class="c" style="flex:1">Event</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2021.12.03</span><span class="c" style="width:128px">Carlsen, M</span><span class="c" style="width:41px;font-family:var(--mono)">2856</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1972.07.23</span><span class="c" style="width:128px">Fischer, R</span><span class="c" style="width:41px;font-family:var(--mono)">2785</span><span class="c" style="width:128px">Spassky, B</span><span class="c" style="flex:1">World Ch 28th</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1999.01.20</span><span class="c" style="width:128px">Kasparov, G</span><span class="c" style="width:41px;font-family:var(--mono)">2812</span><span class="c" style="width:128px">Topalov, V</span><span class="c" style="flex:1">Hoogovens A</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2023.04.16</span><span class="c" style="width:128px">Ding, L</span><span class="c" style="width:41px;font-family:var(--mono)">2788</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div></div></div>
+    <div class="callouts">
+      <span class="co good">Nothing in the Sidebar changes at all</span>
+      <span class="co good">Scope stays visible when the Sidebar is collapsed to the rail</span>
+      <span class="co bad">Search drops from 438px to 248px at the 800px minimum — a 43% cut</span>
+      <span class="co bad">Reads as a filter on the list, not as the identity of the library</span>
+    </div>
+  </div>
+  <div class="box warn">
+    <h4>The toolbar cannot hold three things at 800px</h4>
+    <p>The Content Area is 580px at the minimum window. Switcher 180 + Add Games 112 + padding and gaps
+       leaves search <b>248px</b>. §3.2.4.1 wants search prominent, and this is the option that most
+       directly contradicts it.</p>
+  </div>
+</figure>
+
+<h2 class="sec">3 · The dropdown itself</h2>
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">LS-06</span><h3>Shared by every option</h3></div>
+  <p class="wf-sub">The same menu wherever the trigger sits. Sourced from Settings → Databases (§3.4.8),
+     so it inherits their name, status and count.</p>
+  <div class="wf-canvas">
+    <div class="two">
+      <div class="menu">
+        <div class="mlab">Library</div>
+        <div class="mrow on"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg><span class="nm">Master Games</span><span class="ct">2.4M</span><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg></div>
+        <div class="mrow"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg><span class="nm">My Games</span><span class="ct">812</span></div>
+        <div class="mrow off"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg><span class="nm">Chessgui Reference 2026</span><span class="ct">indexing</span></div>
+        <div class="mrow off"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg><span class="nm">TWIC Archive</span><span class="ct">missing</span></div>
+        <div class="msep"></div>
+        <div class="mrow"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg><span class="nm">Manage databases…</span></div>
+      </div>
+      <div style="flex:1;min-width:380px">
+        <table class="rules" style="margin-top:0">
+          <tr><th>Row</th><th>Behaviour</th></tr>
+          <tr><td>Available</td><td>Name, game count, tick on the active one. Selecting closes the menu and re-scopes the workspace.</td></tr>
+          <tr><td>Indexing</td><td>Listed, not selectable, state where the count goes. It becomes selectable on its own.</td></tr>
+          <tr><td>Unavailable</td><td>Listed, not selectable. Hiding it would make a configured database look deleted.</td></tr>
+          <tr><td><code>Manage databases…</code></td><td>Opens Settings → Databases. Databases are added and removed only there, so §3.2.3.3's rule that the Sidebar carries no configuration controls still holds.</td></tr>
+        </table>
+      </div>
+    </div>
+    <div class="box">
+      <h4>Two questions this raises</h4>
+      <ul>
+        <li><b>Is a dropdown right for two entries?</b> Settings ships with two databases. A menu earns
+            its place at three or four; below that a cycle-on-click says the same in less space. The
+            list is user-grown, so this may only be an early-life problem.</li>
+        <li><b><code>enabled</code> already exists on a Database object.</b> Does <code>enabled: false</code>
+            remove it from this menu, or is that a separate idea? Two switches for one concept is worth
+            avoiding before either ships.</li>
+      </ul>
+    </div>
+  </div>
+</figure>
+
+<h2 class="sec">4 · Collapsed — three rail treatments</h2>
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">LS-07</span><h3>What the 56px rail shows</h3></div>
+  <p class="wf-sub">Independent of the expanded choice, except that R3 only pairs with option B.
+     <span class="ref">§3.2.3.7</span></p>
+  <div class="wf-canvas">
+    <p class="caption">R1 — expand only</p>
+    <div class="ws" style="width:690px;height:196px"><div class="side rail"><div class="head rail"><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg></div></div><div style="padding:5px 0"><div class="rail-it on"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="18" x="3" y="3" rx="1"/><path d="M7 3v18"/><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/></svg></div><div class="rail-it"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg></div><div class="rail-it"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><div class="rail-it"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg></div></div></div><div class="ca"><div class="tbar"><div class="field"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span>Search players, games, events…</span></div><div class="add"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add Games</div></div><div class="thead"><span class="c" style="width:84px">Date</span><span class="c" style="width:128px">White</span><span class="c" style="width:41px">Elo</span><span class="c" style="width:128px">Black</span><span class="c" style="flex:1">Event</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2021.12.03</span><span class="c" style="width:128px">Carlsen, M</span><span class="c" style="width:41px;font-family:var(--mono)">2856</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1972.07.23</span><span class="c" style="width:128px">Fischer, R</span><span class="c" style="width:41px;font-family:var(--mono)">2785</span><span class="c" style="width:128px">Spassky, B</span><span class="c" style="flex:1">World Ch 28th</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1999.01.20</span><span class="c" style="width:128px">Kasparov, G</span><span class="c" style="width:41px;font-family:var(--mono)">2812</span><span class="c" style="width:128px">Topalov, V</span><span class="c" style="flex:1">Hoogovens A</span></div></div></div>
+    <p class="note">Scope becomes invisible for as long as the Sidebar is collapsed.</p>
+
+    <p class="caption" style="margin-top:24px">R2 — expand in the header, a database icon as the first rail item</p>
+    <div class="ws" style="width:690px;height:196px"><div class="side rail"><div class="head rail"><div class="btn"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg></div></div><div style="padding:5px 0"><div class="rail-it" style="border-bottom:1px solid var(--rule)"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></div><div class="rail-it on"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="18" x="3" y="3" rx="1"/><path d="M7 3v18"/><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/></svg></div><div class="rail-it"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg></div><div class="rail-it"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><div class="rail-it"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg></div></div></div><div class="ca"><div class="tbar"><div class="field"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span>Search players, games, events…</span></div><div class="add"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add Games</div></div><div class="thead"><span class="c" style="width:84px">Date</span><span class="c" style="width:128px">White</span><span class="c" style="width:41px">Elo</span><span class="c" style="width:128px">Black</span><span class="c" style="flex:1">Event</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2021.12.03</span><span class="c" style="width:128px">Carlsen, M</span><span class="c" style="width:41px;font-family:var(--mono)">2856</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1972.07.23</span><span class="c" style="width:128px">Fischer, R</span><span class="c" style="width:41px;font-family:var(--mono)">2785</span><span class="c" style="width:128px">Spassky, B</span><span class="c" style="flex:1">World Ch 28th</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1999.01.20</span><span class="c" style="width:128px">Kasparov, G</span><span class="c" style="width:41px;font-family:var(--mono)">2812</span><span class="c" style="width:128px">Topalov, V</span><span class="c" style="flex:1">Hoogovens A</span></div></div></div>
+    <p class="note">Switching stays reachable. Costs one 34px slot, and needs a rule about where it sits
+       relative to the destinations.</p>
+
+    <p class="caption" style="margin-top:24px">R3 — database icon in the header, expand in the toolbar (pairs with option B)</p>
+    <div class="ws" style="width:690px;height:196px"><div class="side rail"><div class="head rail"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></div><div style="padding:5px 0"><div class="rail-it on"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="8" height="18" x="3" y="3" rx="1"/><path d="M7 3v18"/><path d="M20.4 18.9c.2.5-.1 1.1-.6 1.3l-1.9.7c-.5.2-1.1-.1-1.3-.6L11.1 5.1c-.2-.5.1-1.1.6-1.3l1.9-.7c.5-.2 1.1.1 1.3.6Z"/></svg></div><div class="rail-it"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M11.525 2.295a.53.53 0 0 1 .95 0l2.31 4.679a2.123 2.123 0 0 0 1.595 1.16l5.166.756a.53.53 0 0 1 .294.904l-3.736 3.638a2.123 2.123 0 0 0-.611 1.878l.882 5.14a.53.53 0 0 1-.771.56l-4.618-2.428a2.122 2.122 0 0 0-1.973 0L6.396 21.01a.53.53 0 0 1-.77-.56l.881-5.139a2.122 2.122 0 0 0-.611-1.879L2.16 9.795a.53.53 0 0 1 .294-.906l5.165-.755a2.122 2.122 0 0 0 1.597-1.16z"/></svg></div><div class="rail-it"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></div><div class="rail-it"><svg class="i" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.000" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg></div></div></div><div class="ca"><div class="tbar"><div class="btn ghost"><svg class="i" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.400" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M9 3v18"/><path d="m14 9 3 3-3 3"/></svg></div><div class="field"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/></svg><span>Search players, games, events…</span></div><div class="add"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>Add Games</div></div><div class="thead"><span class="c" style="width:84px">Date</span><span class="c" style="width:128px">White</span><span class="c" style="width:41px">Elo</span><span class="c" style="width:128px">Black</span><span class="c" style="flex:1">Event</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">2021.12.03</span><span class="c" style="width:128px">Carlsen, M</span><span class="c" style="width:41px;font-family:var(--mono)">2856</span><span class="c" style="width:128px">Nepomniachtchi, I</span><span class="c" style="flex:1">FIDE World Ch</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1972.07.23</span><span class="c" style="width:128px">Fischer, R</span><span class="c" style="width:41px;font-family:var(--mono)">2785</span><span class="c" style="width:128px">Spassky, B</span><span class="c" style="flex:1">World Ch 28th</span></div><div class="trow"><span class="c" style="width:84px;font-family:var(--mono)">1999.01.20</span><span class="c" style="width:128px">Kasparov, G</span><span class="c" style="width:41px;font-family:var(--mono)">2812</span><span class="c" style="width:128px">Topalov, V</span><span class="c" style="flex:1">Hoogovens A</span></div></div></div>
+    <p class="note"><b>Correction, 4 Sep.</b> This note previously claimed the expand control "keeps the
+       position collapse had". That is wrong. The Content Toolbar begins <i>after</i> the Sidebar, so its
+       leading edge moves by 164px when the Sidebar collapses. Finder's toggle does not move because
+       Finder's toolbar spans the whole window — the one structural feature this shell lacks. R3 only
+       pairs with option B, which was not chosen.</p>
+
+    <div class="box">
+      <h4>The argument running through all three</h4>
+      <p><b>Scope you cannot see is scope you will get wrong.</b> R1 hides which database is active while
+         collapsed — and the rail exists precisely so people can work collapsed for long stretches. R2
+         and R3 both keep it visible; they differ only in whether the collapse control must leave the
+         Sidebar.</p>
+    </div>
+  </div>
+</figure>
+
+<h2 class="sec">5 · Side by side</h2>
+<figure class="wf">
+  <div class="wf-canvas tight">
+    <table class="rules">
+      <tr><th></th><th style="color:var(--ok)">A · header, trailing ✓ accepted</th><th>B · header, toolbar</th><th>C · header, leading</th><th>D · toolbar</th></tr>
+      <tr><td>Name budget, no icon</td><td class="n v">146px</td><td class="n">182px</td><td class="n">146px</td><td class="n">~160px</td></tr>
+      <tr><td>Search at 800px</td><td class="n v">438px</td><td class="n">400px</td><td class="n v">438px</td><td class="n" style="color:var(--warn)">248px</td></tr>
+      <tr><td>Region boundary</td><td class="v">intact</td><td>crossed</td><td class="v">intact</td><td>crossed</td></tr>
+      <tr><td>Reverses 3 Sep</td><td class="v">no</td><td>yes</td><td class="v">no</td><td>yes</td></tr>
+      <tr><td>Scope visible in rail</td><td>needs R2</td><td>R2 or R3</td><td>needs R2</td><td class="v">always</td></tr>
+      <tr><td>Toggle travel on collapse</td><td class="n">172px</td><td class="n">164px</td><td class="n v">2px</td><td class="n">n/a</td></tr>
+      <tr><td>Convention</td><td>Slack, Notion, 1Password</td><td>Finder, Mail, VS&nbsp;Code</td><td>—</td><td>Calibre</td></tr>
+    </table>
+    <div class="box">
+      <h4>Chosen, and what remains open</h4>
+      <ul>
+        <li><s>Does the collapse control leave the Sidebar?</s> <b>No</b> — Option A keeps it in the
+            header. The 3 Sep placement decision stands, though not for the reason it originally gave.</li>
+        <li><s>Is 122px enough?</s> <b>Moot</b> — dropping the icon makes it 146px, and middle
+            truncation makes overflow safe rather than ambiguous.</li>
+        <li><s>Must scope stay visible in the rail?</s> <s>Yes — R2.</s> <b>No — reversed 4 Sep.</b> A
+            database icon looks identical for every Library, so it could not answer the one question a
+            collapsed switcher exists to answer — which Library is open — and offering only a way to
+            change it blindly was the wrong half of the feature. The rail icon was removed from the
+            prototype 4 Sep; switching a Library now expands the Sidebar first (R1). Spec reconciled
+            12 Sep, §3.2.3.7.</li>
+        <li><b>Does the group heading "Library" survive?</b> With a database name in the header,
+            "Master Games" sits above a group called "Library" — no longer redundant, but odd.</li>
+      </ul>
+    </div>
+  </div>
+</figure>
+</div></body></html>

@@ -1,0 +1,808 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessgui — Game Workspace Wireframes</title>
+<style>
+  :root{
+    --paper:#f7f7f5; --ink:#1b1b19; --muted:#6b6b66; --faint:#94948e;
+    --rule:#d6d6d1; --rule-strong:#adada6;
+    --fill-0:#ffffff; --fill-1:#ececea; --fill-2:#dedeDA; --fill-3:#cfcfc9;
+    --accent:#8a5a1c; --accent-bg:#f6ecdc; --accent-rule:#d9b478;
+    --warn:#8a2c2c; --warn-bg:#f8e9e9;
+    --sq-l:#eae6dd; --sq-d:#b3ac9e;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#141413; --ink:#eceae4; --muted:#a3a099; --faint:#7d7a73;
+      --rule:#333330; --rule-strong:#55554f;
+      --fill-0:#1e1e1c; --fill-1:#2a2a27; --fill-2:#353531; --fill-3:#43433d;
+      --accent:#d9a55f; --accent-bg:#2c2418; --accent-rule:#6b5326;
+      --warn:#e08a8a; --warn-bg:#2e1c1c;
+      --sq-l:#4a4740; --sq-d:#2e2c27;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans)}
+  .wrap{max-width:1120px;margin:0 auto;padding:56px 28px 120px}
+
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:34px}
+  .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  header.doc h1{font-size:30px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+  header.doc p{margin:0;color:var(--muted);max-width:64ch}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+  .chip.open{border-style:dashed;border-color:var(--accent);color:var(--accent)}
+
+  h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:52px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+
+  figure.wf{margin:30px 0 0;padding:0}
+  .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+  .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+  .wf-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:70ch}
+  .wf-canvas{background:var(--fill-0);border:1px solid var(--rule);border-radius:4px;padding:24px 20px;overflow-x:auto}
+  .wf-canvas.tight{padding:18px}
+
+  /* ---------- workspace primitives ---------- */
+  .ws{display:flex;border:1.5px solid var(--rule-strong);background:var(--fill-0);overflow:hidden}
+  .gv{flex:1;min-width:0;display:flex;align-items:center;justify-content:center;
+      padding:16px;background:var(--fill-0);position:relative}
+  .asm{display:flex;align-items:stretch;gap:8px;flex:none}
+  .bar{flex:none;width:27px;border:1px solid var(--rule-strong);background:var(--fill-1);
+       position:relative;display:flex;flex-direction:column}
+  .bar .w{background:var(--fill-0)} .bar .b{background:var(--ink)}
+  .bar .even{position:absolute;left:0;right:0;top:50%;border-top:1px dashed var(--rule-strong)}
+  /* §5.4.1 — the label is proportional sans at 10px, deliberately NOT the mono
+     used for tabular data. It is a standalone label; it aligns with nothing. */
+  .bar .lab{position:absolute;left:0;right:0;font:10px/1 var(--sans);text-align:center;
+    font-variant-numeric:proportional-nums;letter-spacing:0}
+  .board{flex:none;aspect-ratio:1;border:1px solid var(--rule-strong);
+    background-image:
+      linear-gradient(45deg,var(--sq-d) 25%,transparent 25%,transparent 75%,var(--sq-d) 75%),
+      linear-gradient(45deg,var(--sq-d) 25%,transparent 25%,transparent 75%,var(--sq-d) 75%);
+    background-color:var(--sq-l)}
+  .sq{position:absolute;left:2px;bottom:2px;font:9px/1 var(--mono);color:var(--ink);opacity:.55}
+
+  .gd{flex:none;width:360px;border-left:1.5px solid var(--rule-strong);
+      background:var(--fill-1);display:flex;flex-direction:column;overflow:hidden}
+  .stack{flex:1;min-height:0;display:flex;flex-direction:column;gap:1px;padding:1px 0;overflow:hidden}
+  .sec-blk{background:var(--fill-0);display:flex;flex-direction:column;min-height:0;flex:none}
+  .sec-blk.absorb{flex:1}
+  .sec-hd{flex:none;height:30px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;
+    border-bottom:1px solid var(--rule);font:11px/1 var(--sans)}
+  .sec-hd .ttl{color:var(--ink);font-weight:600;white-space:nowrap}
+  .sec-hd .src{color:var(--muted);font:10px/1 var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .sec-hd .sp{flex:1;min-width:12px}
+  .sec-hd .st{flex:none;font:10px/1 var(--mono);color:var(--muted);white-space:nowrap}
+  .sec-hd .ic{flex:none;width:16px;height:16px;border:1px solid var(--rule-strong);border-radius:3px;
+    display:grid;place-items:center;font:9px/1 var(--mono);color:var(--muted)}
+  .sec-body{flex:1;min-height:0;display:grid;place-items:center;
+    background:repeating-linear-gradient(135deg,transparent,transparent 7px,var(--fill-1) 7px,var(--fill-1) 8px);
+    font:9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint)}
+  .sec-body span{background:var(--fill-0);padding:4px 7px;border:1px solid var(--rule)}
+  .sec-blk.collapsed .sec-body{display:none}
+
+  .toolbar{flex:none;height:40px;display:flex;align-items:center;gap:6px;padding:0 10px;
+    border-top:1.5px solid var(--rule-strong);background:var(--fill-1)}
+  .tb svg,.sec-hd .ic svg{display:block}
+  .tb{flex:none;display:inline-flex;align-items:center;gap:4px;height:26px;min-width:28px;padding:0 8px;display:grid;place-items:center;
+    border:1px solid var(--rule-strong);border-radius:4px;background:var(--fill-0);
+    font:11px/1 var(--mono);color:var(--ink)}
+  .toolbar .gap{flex:1}
+
+  /* annotation */
+  .dim{position:relative;height:26px;margin-top:6px}
+  .dim .bar2{position:absolute;top:9px;height:1px;background:var(--accent)}
+  .dim .bar2::before,.dim .bar2::after{content:"";position:absolute;top:-3px;width:1px;height:7px;background:var(--accent)}
+  .dim .bar2::before{left:0}.dim .bar2::after{right:0}
+  .dim .txt{position:absolute;top:14px;font:10px/1 var(--mono);color:var(--accent);transform:translateX(-50%);white-space:nowrap}
+  .vdim{position:absolute;width:26px;top:0;bottom:0}
+  .vdim .bar2{position:absolute;left:9px;width:1px;background:var(--accent)}
+
+  .callouts{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .co{font:10px/1.4 var(--mono);color:var(--accent);background:var(--accent-bg);
+    border:1px solid var(--accent-rule);border-radius:3px;padding:5px 8px}
+
+  .wf-notes{margin:14px 0 0;padding:0 0 0 18px}
+  .wf-notes li{margin:5px 0;color:var(--muted)}
+  .wf-notes li b{color:var(--ink);font-weight:600}
+  code{font:11.5px/1 var(--mono);background:var(--fill-1);padding:2px 4px;border-radius:2px;color:var(--ink)}
+  .ref{font:10px/1 var(--mono);color:var(--faint)}
+
+  table.rules{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  table.rules th,table.rules td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  table.rules th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  table.rules td.n{font-family:var(--mono);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  table.rules tr.no td{color:var(--warn)}
+  table.rules tr.yes td.v{color:var(--ink);font-weight:600}
+
+  .box{border:1px solid var(--rule-strong);border-left:3px solid var(--accent);
+    background:var(--accent-bg);border-radius:3px;padding:14px 16px;margin-top:16px}
+  .box.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .box h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .box.warn h4{color:var(--warn)}
+  .box p{margin:0 0 8px;font-size:13px;color:var(--ink)}
+  .box p:last-child{margin-bottom:0}
+  .box ul,.box ol{margin:8px 0 0;padding-left:20px;font-size:13px}
+  .box li{margin:6px 0;color:var(--ink)}
+
+  .flow{font:11px/1.7 var(--mono);color:var(--muted);white-space:pre;overflow-x:auto;
+    background:var(--fill-1);border:1px solid var(--rule);border-radius:3px;padding:14px 16px;margin:0}
+  .caption{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+  .stack2{display:flex;flex-direction:column;gap:24px}
+  .two{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+
+  .ctl{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-bottom:14px;font:11px/1 var(--mono);color:var(--muted)}
+  .ctl input[type=range]{flex:1;min-width:180px;accent-color:var(--accent)}
+  .ctl button{font:11px/1 var(--mono);padding:7px 10px;background:var(--fill-1);
+    border:1px solid var(--rule-strong);border-radius:3px;color:var(--ink);cursor:pointer}
+  .ctl button:hover{background:var(--fill-2)}
+  .ro{font:11px/1 var(--mono);color:var(--accent);background:var(--accent-bg);
+    border:1px solid var(--accent-rule);border-radius:3px;padding:7px 9px;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">Chessgui · Game Workspace · Wireframes Rev B · icons: Lucide 1.41.0</div>
+  <h1>Game Workspace</h1>
+  <p>Wireframes for §5. The Application Shell is not drawn — everything sits inside the Workspace
+     Area. The Game View is specified; Game Details is drawn as a <b>shell</b> with placeholder
+     Sections, because the Sections themselves are not yet specified.</p>
+  <div class="meta">
+    <span class="chip">Spec <b>§5</b></span>
+    <span class="chip">Game View floor <b>427px</b></span>
+    <span class="chip">Game Details <b>360px</b> fixed</span>
+    <span class="chip">Board max <b>none</b></span>
+    <span class="chip open">Padding <b>16px</b> — assumed</span>
+  </div>
+</header>
+
+<h2 class="sec">1 · Anatomy</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-01</span><h3>Two regions</h3></div>
+  <p class="wf-sub">A flexible Game View and a fixed 360px Game Details. Drawn at the 800 × 600
+     minimum, 1:1. <span class="ref">§5.2</span></p>
+  <div class="wf-canvas">
+    <div class="ws" style="width:800px;height:560px">
+      <div class="gv">
+        <div class="asm" style="height:373px">
+          <div class="bar">
+            <div class="w" style="height:44%"></div><div class="b" style="height:56%"></div>
+            <div class="even"></div>
+            <div class="lab" style="bottom:4px;color:var(--muted)">0.4</div>
+          </div>
+          <div class="board" style="width:373px;background-size:93.25px 93.25px;background-position:0 0,46.625px 46.625px"></div>
+        </div>
+      </div>
+      <div class="gd">
+        <div class="stack">
+          <div class="sec-blk" style="height:96px">
+            <div class="sec-hd"><span class="ttl">Section</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div>
+            <div class="sec-body"><span>content-sized</span></div>
+          </div>
+          <div class="sec-blk" style="height:104px">
+            <div class="sec-hd"><span class="ttl">Section</span><span class="src">· source <svg class="i" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.273" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span><span class="sp"></span><span class="st">status</span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div>
+            <div class="sec-body"><span>fixed</span></div>
+          </div>
+          <div class="sec-blk absorb">
+            <div class="sec-hd"><span class="ttl">Section</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div>
+            <div class="sec-body"><span>absorbing</span></div>
+          </div>
+          <div class="sec-blk" style="height:92px">
+            <div class="sec-hd"><span class="ttl">Section</span><span class="src">· source <svg class="i" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.273" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span><span class="sp"></span><span class="st">status</span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div>
+            <div class="sec-body"><span>scrolls internally</span></div>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></div>
+          <div class="gap"></div>
+          <div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 3-5 5-5-5h10"/><path d="m17 21-5-5-5 5h10"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/></svg> Flip</div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></div>
+        </div>
+      </div>
+    </div>
+    <div class="dim" style="width:800px">
+      <div class="bar2" style="left:0;width:440px"></div><div class="txt" style="left:220px">Game View 440px — flexible, floor 427</div>
+      <div class="bar2" style="left:440px;right:0"></div><div class="txt" style="left:620px">Game Details 360px — fixed</div>
+    </div>
+    <div class="callouts">
+      <span class="co">Board 373px at the minimum window — width-constrained</span>
+      <span class="co">Evaluation bar is inside the Game View, not a third region</span>
+      <span class="co">Toolbar anchored to the bottom of Game Details</span>
+      <span class="co">Sections are placeholders — none is specified yet</span>
+    </div>
+  </div>
+  <div class="box">
+    <h4>Derived constraint</h4>
+    <p><code>427 + 360 = 787</code> against an 800px window leaves <b>13px</b>. A fixed Game Details
+       can never exceed <b>373px</b> — a change that would fail only at the minimum window size,
+       which is why it is written down rather than left to be discovered.</p>
+    <p>The Evaluation Bar contributes 27px of that floor and <b>never contributes more</b> — its width
+       is fixed, so this budget is settled at design time and cannot drift at runtime.</p>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">2 · Game View</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-02</span><h3>The assembly and its floor</h3></div>
+  <p class="wf-sub">Padding, bar, gap and board compose the 427px floor exactly.
+     <span class="ref">§5.4.1</span></p>
+  <div class="wf-canvas">
+    <div style="position:relative;width:427px">
+      <div class="ws" style="width:427px;height:200px;border-style:dashed">
+        <div class="gv" style="padding:16px">
+          <div class="asm" style="height:168px">
+            <div class="bar"><div class="w" style="height:50%"></div><div class="b" style="height:50%"></div><div class="even"></div></div>
+            <div class="board" style="width:360px;background-size:90px 90px;background-position:0 0,45px 45px"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dim" style="width:427px">
+      <div class="bar2" style="left:0;width:16px"></div><div class="txt" style="left:8px">16</div>
+      <div class="bar2" style="left:16px;width:27px"></div><div class="txt" style="left:29px">27</div>
+      <div class="bar2" style="left:43px;width:8px"></div><div class="txt" style="left:47px">8</div>
+      <div class="bar2" style="left:51px;width:360px"></div><div class="txt" style="left:231px">board floor 360</div>
+      <div class="bar2" style="left:411px;width:16px"></div><div class="txt" style="left:419px">16</div>
+    </div>
+    <table class="rules">
+      <tr><th>Part</th><th>Value</th><th>Note</th></tr>
+      <tr><td>Padding</td><td class="n">16px all sides</td><td style="color:var(--accent)"><b>Assumed</b> — reconciles the floor exactly</td></tr>
+      <tr><td>Evaluation Bar</td><td class="n">27px</td><td>Constant at every board and window size. Set by the label's fit (GW-04)</td></tr>
+      <tr><td>Gap</td><td class="n">8px</td><td>Bar to board edge</td></tr>
+      <tr><td>Board floor</td><td class="n">360px</td><td>~45px squares</td></tr>
+      <tr><td><b>Game View floor</b></td><td class="n"><b>427px</b></td><td>16 + 27 + 8 + 360 + 16</td></tr>
+    </table>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-03</span><h3>Board sizing — live</h3></div>
+  <p class="wf-sub">The board is square, has <b>no maximum</b>, and consumes one axis fully. The
+     assembly centres on both axes; slack on the unconstrained axis becomes symmetric margin.
+     <span class="ref">§5.4.1</span></p>
+  <div class="wf-canvas">
+    <div class="ctl">
+      <label for="w">width</label><input id="w" type="range" min="800" max="2560" value="1280" step="1">
+      <label for="h">height</label><input id="h" type="range" min="600" max="1440" value="800" step="1">
+      <span class="ro" id="ro">—</span>
+    </div>
+    <div class="ctl">
+      <button data-w="800" data-h="600">800×600</button>
+      <button data-w="1024" data-h="768">1024×768</button>
+      <button data-w="1280" data-h="800">1280×800</button>
+      <button data-w="1440" data-h="900">1440×900</button>
+      <button data-w="1920" data-h="1080">1920×1080</button>
+      <button data-w="2560" data-h="1440">2560×1440</button>
+    </div>
+    <div id="demo"></div>
+  </div>
+  <div class="wf-canvas" style="margin-top:12px">
+<pre class="flow">board = min( gameViewWidth − 67 , gameViewHeight − 32 )
+
+              67 = 16 padding + 27 bar + 8 gap + 16 padding
+              32 = 16 padding + 16 padding
+
+in window terms, where the tab bar takes 40px of height
+
+board = min( W − 427 , H − 72 )
+
+crossover:    W = H + 355      narrower is width-constrained, wider is height-constrained</pre>
+  </div>
+  <table class="rules">
+    <tr><th>Window</th><th>Game View</th><th>Board</th><th>Constrained by</th><th>Slack</th></tr>
+    <tr><td class="n">800 × 600</td><td class="n">440</td><td class="n">373</td><td>width</td><td class="n">155 vertical</td></tr>
+    <tr><td class="n">1024 × 768</td><td class="n">664</td><td class="n">597</td><td>width</td><td class="n">99 vertical</td></tr>
+    <tr><td class="n">1280 × 800</td><td class="n">920</td><td class="n">728</td><td>height</td><td class="n">125 horizontal</td></tr>
+    <tr><td class="n">1440 × 900</td><td class="n">1080</td><td class="n">828</td><td>height</td><td class="n">185 horizontal</td></tr>
+    <tr><td class="n">1920 × 1080</td><td class="n">1560</td><td class="n">1008</td><td>height</td><td class="n">485 horizontal</td></tr>
+    <tr><td class="n">2560 × 1440</td><td class="n">2200</td><td class="n">1368</td><td>height</td><td class="n">765 horizontal</td></tr>
+  </table>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-04</span><h3>Evaluation Bar</h3></div>
+  <p class="wf-sub"><b>Fixed 27px wide — it never grows.</b> Height exactly the board's, top and
+     bottom aligned. Flips with the board. The label is <b>10px proportional sans, one decimal —
+     negatives signed, positives not</b>. <span class="ref">§5.4.1</span></p>
+  <div class="wf-canvas">
+    <div class="two">
+      <div>
+        <p class="caption">White ahead · normal orientation</p>
+        <div class="asm" style="height:200px">
+          <div class="bar"><div class="w" style="height:38%"></div><div class="b" style="height:62%"></div><div class="even"></div>
+            <div class="lab" style="bottom:4px;color:var(--muted)">0.8</div></div>
+          <div class="board" style="width:200px;background-size:50px 50px;background-position:0 0,25px 25px;position:relative">
+            <span class="sq">a1</span><span class="sq" style="top:2px;right:2px;bottom:auto;left:auto">h8</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="caption">Same position · flipped</p>
+        <div class="asm" style="height:200px">
+          <div class="bar"><div class="w" style="height:38%"></div><div class="b" style="height:62%"></div><div class="even"></div>
+            <div class="lab" style="bottom:4px;color:var(--muted)">0.8</div></div>
+          <div class="board" style="width:200px;background-size:50px 50px;background-position:0 0,25px 25px;position:relative">
+            <span class="sq" style="top:2px;right:2px;bottom:auto;left:auto">a1</span><span class="sq">h8</span>
+          </div>
+        </div>
+      </div>
+      <div>
+        <p class="caption">Black ahead</p>
+        <div class="asm" style="height:200px">
+          <div class="bar"><div class="w" style="height:22%"></div><div class="b" style="height:78%"></div><div class="even"></div>
+            <div class="lab" style="top:4px;color:var(--fill-0)">−2.4</div></div>
+          <div class="board" style="width:200px;background-size:50px 50px;background-position:0 0,25px 25px"></div>
+        </div>
+      </div>
+      <div>
+        <p class="caption">Mate — unsigned by notation</p>
+        <div class="asm" style="height:200px">
+          <div class="bar"><div class="w" style="height:96%"></div><div class="b" style="height:4%"></div>
+            <div class="lab" style="bottom:4px;color:var(--muted)">M3</div></div>
+          <div class="board" style="width:200px;background-size:50px 50px;background-position:0 0,25px 25px"></div>
+        </div>
+      </div>
+      <div>
+        <p class="caption">No evaluation available</p>
+        <div class="asm" style="height:200px">
+          <div class="bar" style="background:var(--fill-2)"></div>
+          <div class="board" style="width:200px;background-size:50px 50px;background-position:0 0,25px 25px"></div>
+        </div>
+      </div>
+      <div>
+        <p class="caption">Hidden — slot reserved, board unmoved</p>
+        <div class="asm" style="height:200px">
+          <div class="bar" style="border-style:dashed;background:none;opacity:.4"></div>
+          <div class="board" style="width:200px;background-size:50px 50px;background-position:0 0,25px 25px"></div>
+        </div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">Negatives carry a minus; positives are bare — a plus adds nothing the end position doesn't</span>
+      <span class="co">Label rides the advantaged end, contrasting with the fill it sits on</span>
+      <span class="co">Flipping rotates the board; the bar's white end stays white</span>
+      <span class="co">No evaluation renders a single neutral fill — no divider, no number</span>
+      <span class="co">Hiding renders nothing into the slot; the slot is never reclaimed</span>
+      <span class="co">The board never moves or resizes because of the bar</span>
+    </div>
+  </div>
+
+  <div class="box">
+    <h4>Label typography — measured, not assumed</h4>
+    <p>The label is a standalone value. It aligns with no column and sits in no table, so it takes
+       the <b>proportional sans</b>, not the monospace used for tabular data. Widths below are
+       advance widths read from the bundled IBM Plex faces.</p>
+    <table class="rules">
+      <tr><th>Glyph</th><th>Plex Sans</th><th>Plex Mono</th><th></th></tr>
+      <tr><td class="n">0–9</td><td class="n">0.600 em</td><td class="n">0.600 em</td><td>identical — sans saves nothing on digits</td></tr>
+      <tr class="yes"><td class="n">.</td><td class="v n">0.272 em</td><td class="n">0.600 em</td><td>the whole saving is here</td></tr>
+      <tr class="yes"><td class="n">-</td><td class="v n">0.399 em</td><td class="n">0.600 em</td><td>and here</td></tr>
+      <tr><td class="n">-</td><td class="n">0.399 em</td><td class="n">0.600 em</td><td>hyphen-minus — the sign actually used</td></tr>
+      <tr><td class="n">−</td><td class="n">0.600 em</td><td class="n">0.600 em</td><td>U+2212 typographic minus — 0.2 em dearer, and it costs</td></tr>
+      <tr><td class="n">M</td><td class="n">0.812 em</td><td class="n">0.600 em</td><td>wider in sans — and now the binding glyph</td></tr>
+    </table>
+  </div>
+
+  <figure class="wf" style="margin-top:18px">
+    <div class="wf-canvas tight">
+      <p class="caption">Fit at 10px in a 27px column</p>
+      <table class="rules" style="margin-top:0">
+        <tr><th>Label</th><th>Width at 10px</th><th>Clearance each side</th><th>Verdict</th></tr>
+        <tr class="yes"><td class="n">9.9</td><td class="n">1.472 em = 14.72px</td><td class="n">6.14px</td><td class="v">fits easily</td></tr>
+        <tr class="yes"><td class="n">0.4</td><td class="n">1.472 em = 14.72px</td><td class="n">6.14px</td><td class="v">fits easily</td></tr>
+        <tr class="yes"><td class="n">-9.9</td><td class="n">1.871 em = 18.71px</td><td class="n">4.14px</td><td class="v">fits</td></tr>
+        <tr class="yes"><td class="n">M12</td><td class="n">2.012 em = 20.12px</td><td class="n">3.44px</td><td class="v"><b>binding case</b> — fits</td></tr>
+        <tr class="yes"><td class="n">-M12</td><td class="n">2.411 em = 24.11px</td><td class="n">1.45px</td><td class="v">fits, should mate ever be signed</td></tr>
+        <tr class="yes"><td class="n">-12.5</td><td class="n">2.471 em = 24.71px</td><td class="n">1.15px</td><td class="v">fits — the clamp is no longer a fit constraint</td></tr>
+        <tr class="no"><td class="n">−M12</td><td class="n">2.612 em = 26.12px</td><td class="n">0.44px</td><td>U+2212 — too tight to survive rounding</td></tr>
+      </table>
+
+      <div class="two" style="margin-top:18px;align-items:flex-end">
+        <div>
+          <p class="caption">specimen, 1:1</p>
+          <div style="display:flex;gap:16px;align-items:flex-start">
+            <div style="width:27px;height:60px;border:1px solid var(--rule-strong);background:var(--fill-0);position:relative">
+              <div class="lab" style="bottom:4px;color:var(--muted)">9.9</div>
+            </div>
+            <div style="width:27px;height:60px;border:1px solid var(--rule-strong);background:var(--ink);position:relative">
+              <div class="lab" style="top:4px;color:var(--fill-0)">-9.9</div>
+            </div>
+            <div style="width:27px;height:60px;border:1px solid var(--rule-strong);background:var(--fill-0);position:relative">
+              <div class="lab" style="bottom:4px;color:var(--muted)">M12</div>
+            </div>
+          </div>
+          <div class="dim" style="width:27px">
+            <div class="bar2" style="left:0;right:0"></div><div class="txt" style="left:13px">27</div>
+          </div>
+        </div>
+        <div style="flex:1;min-width:300px">
+          <ul class="wf-notes" style="margin-top:0">
+            <li><b>Dropping the plus moves the binding case off the numbers entirely.</b> The widest
+                label is now <code>M12</code> at 2.012 em, because Plex's <code>M</code> is 0.812 em.
+                <b>Mate sets the bar's width, not evaluation.</b></li>
+            <li><b>27px is a fixed design-time value, not a computed one.</b> It is derived once from
+                the binding label and then never changes — not with board size, not with window size.
+                Growing the board does not widen the bar; it only makes the bar taller.</li>
+            <li><b>Use the hyphen-minus, not U+2212.</b> The typographic minus is 0.2 em wider, which
+                is precisely the difference between <code>-M12</code> fitting and not.</li>
+            <li><code>tabular-nums</code> is not applied — it would force the digits back to a uniform
+                advance and gain nothing, since this label is never stacked against another.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </figure>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">3 · Game Details shell</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-05</span><h3>The shell</h3></div>
+  <p class="wf-sub">A fixed 360px column: a stack of Sections above, a Game Controls Toolbar anchored
+     below. Sections plug in; each is constrained by the shell. <span class="ref">§5.4.2</span></p>
+  <div class="wf-canvas">
+    <div class="two">
+      <div class="gd" style="border:1.5px solid var(--rule-strong);height:440px">
+        <div class="stack">
+          <div class="sec-blk" style="height:84px">
+            <div class="sec-hd"><span class="ttl">Section A</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div>
+            <div class="sec-body"><span>content-sized</span></div>
+          </div>
+          <div class="sec-blk" style="height:96px">
+            <div class="sec-hd"><span class="ttl">Section B</span><span class="src">· source <svg class="i" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.273" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span><span class="sp"></span><span class="st">status</span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div>
+            <div class="sec-body"><span>fixed height</span></div>
+          </div>
+          <div class="sec-blk absorb">
+            <div class="sec-hd"><span class="ttl">Section C</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div>
+            <div class="sec-body"><span>absorbs surplus · scrolls</span></div>
+          </div>
+          <div class="sec-blk" style="height:80px">
+            <div class="sec-hd"><span class="ttl">Section D</span><span class="src">· source <svg class="i" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.273" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span><span class="sp"></span><span class="st">status</span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div>
+            <div class="sec-body"><span>scrolls</span></div>
+          </div>
+        </div>
+        <div class="toolbar">
+          <div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></div>
+          <div class="gap"></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 3-5 5-5-5h10"/><path d="m17 21-5-5-5 5h10"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/></svg> Flip</div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></div>
+        </div>
+      </div>
+
+      <div style="flex:1;min-width:320px">
+        <p class="caption">What the shell provides</p>
+        <ul class="wf-notes" style="margin-top:0">
+          <li>A fixed-width column, full height of the Workspace Area.</li>
+          <li>A <b>toolbar anchored to the bottom</b> that no Section can displace or scroll away.</li>
+          <li>A vertical stack above it, Sections in a fixed order.</li>
+          <li>A <b>common Section Header</b> that Sections fill in (GW-06).</li>
+          <li>Collapse and visibility management.</li>
+          <li>Height allocation, including which Section absorbs surplus.</li>
+        </ul>
+        <p class="caption" style="margin-top:20px">What each Section declares</p>
+        <table class="rules" style="margin-top:0">
+          <tr><th>Property</th><th>Meaning</th></tr>
+          <tr><td class="n">Floor</td><td>Minimum rendered height. Content never drawn below it.</td></tr>
+          <tr><td class="n">Height</td><td>Fixed, content-sized, or absorbing. Exactly one absorbs.</td></tr>
+          <tr><td class="n">Scrolling</td><td>Internal scrolling. <b>Default: no.</b></td></tr>
+          <tr><td class="n">Header slots</td><td>Title, and optionally source, status, one control.</td></tr>
+          <tr><td class="n">States</td><td>Including unavailable, empty, loading.</td></tr>
+          <tr><td class="n">Hideable</td><td>Whether the user may remove it.</td></tr>
+        </table>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-06</span><h3>Section Header</h3></div>
+  <p class="wf-sub">One pattern. Sections fill the slots; they do not invent their own headers.
+     <span class="ref">§5.4.2</span></p>
+  <div class="wf-canvas">
+    <div style="width:360px;border:1.5px solid var(--rule-strong);background:var(--fill-0)">
+      <div class="sec-hd" style="border-bottom:1px solid var(--rule-strong)">
+        <span class="ttl">Title</span><span class="src">· source <svg class="i" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.273" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span><span class="sp"></span>
+        <span class="st">status</span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 2v10"/><path d="M18.4 6.6a9 9 0 1 1-12.77.04"/></svg></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+      </div>
+    </div>
+    <div class="dim" style="width:360px">
+      <div class="bar2" style="left:12px;width:150px"></div><div class="txt" style="left:87px">left cluster — truncates</div>
+      <div class="bar2" style="left:236px;right:8px"></div><div class="txt" style="left:300px">right cluster — fixed, never truncates</div>
+    </div>
+
+    <table class="rules">
+      <tr><th>Slot</th><th>Rule</th></tr>
+      <tr><td class="n">Title</td><td>The Section's identity. Never truncates before the source does.</td></tr>
+      <tr><td class="n">Source</td><td>Optional. Absorbs truncation, with a tooltip. Sits with the identity because it is read far more often than it is operated.</td></tr>
+      <tr><td class="n">Status</td><td>Optional. In the right cluster specifically so it can never be truncated away.</td></tr>
+      <tr><td class="n">Control</td><td>Optional, and only where it must be operated more urgently than an options menu allows.</td></tr>
+      <tr><td class="n">Options</td><td>Only on Sections that have options.</td></tr>
+      <tr><td class="n">Collapse</td><td>Always present, always rightmost.</td></tr>
+    </table>
+
+    <div class="wf-canvas" style="margin-top:14px;background:var(--fill-1)">
+<pre class="flow" style="background:none;border:0;padding:0">degradation order
+
+1.  source truncates, tooltip carries the full value
+2.  units drop from status            "91 games" → "91"
+3.  title falls back to a short form  (a label token, not a runtime abbreviation)</pre>
+    </div>
+    <div class="callouts">
+      <span class="co">Right cluster is right-anchored, so controls align across every Section</span>
+      <span class="co">Step 3 exists for long translations — it is not a responsive behaviour</span>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-07</span><h3>Floors and scrolling</h3></div>
+  <p class="wf-sub">Content is never rendered below its floor. When floors cannot all be honoured, the
+     shell scrolls. <span class="ref">§5.4.2, §3.1.1</span></p>
+  <div class="wf-canvas">
+    <div class="two">
+      <div>
+        <p class="caption">Fits — no scrolling</p>
+        <div class="gd" style="border:1.5px solid var(--rule-strong);height:340px">
+          <div class="stack">
+            <div class="sec-blk" style="height:70px"><div class="sec-hd"><span class="ttl">A</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>floor 40</span></div></div>
+            <div class="sec-blk" style="height:70px"><div class="sec-hd"><span class="ttl">B</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>floor 40</span></div></div>
+            <div class="sec-blk absorb"><div class="sec-hd"><span class="ttl">C</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>absorbs</span></div></div>
+          </div>
+          <div class="toolbar"><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></div><div class="gap"></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 3-5 5-5-5h10"/><path d="m17 21-5-5-5 5h10"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/></svg> Flip</div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></div></div>
+        </div>
+      </div>
+      <div>
+        <p class="caption">Floors exceed the height — the shell scrolls</p>
+        <div class="gd" style="border:1.5px solid var(--rule-strong);height:340px;position:relative">
+          <div class="stack" style="overflow:hidden">
+            <div class="sec-blk" style="height:96px"><div class="sec-hd"><span class="ttl">A</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>at floor</span></div></div>
+            <div class="sec-blk" style="height:96px"><div class="sec-hd"><span class="ttl">B</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>at floor</span></div></div>
+            <div class="sec-blk" style="height:96px"><div class="sec-hd"><span class="ttl">C</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>at floor</span></div></div>
+            <div class="sec-blk" style="height:96px"><div class="sec-hd"><span class="ttl">D</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>at floor</span></div></div>
+          </div>
+          <div style="position:absolute;right:2px;top:2px;bottom:44px;width:5px;background:var(--rule-strong);border-radius:3px"></div>
+          <div class="toolbar"><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></div><div class="gap"></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 3-5 5-5-5h10"/><path d="m17 21-5-5-5 5h10"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/></svg> Flip</div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></div></div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:280px">
+<pre class="flow">Game Workspace   never scrolls
+Game Details     scrolls only when Section
+                 floors cannot be honoured
+Section          scrolls internally only if
+                 its own spec opts in</pre>
+        <ul class="wf-notes">
+          <li>The toolbar stays anchored while the stack scrolls behind it.</li>
+          <li>Sections render <b>at floor</b> rather than compressing below it.</li>
+          <li>This is the general rule of §3.1.1 applied to this shell — the same principle the
+              window-size notice applies at the shell level, where covering replaces scrolling.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  <div class="box">
+    <h4>The scrolling state is normal, not an error</h4>
+    <p>At the Application Window minimum with a full composition expanded, this condition is
+       reachable. The threshold is set by the absorbing Section's floor, which is a Section decision
+       and therefore still open. The shell defines only the mechanism.</p>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-08</span><h3>Collapse and hide are different</h3></div>
+  <p class="wf-sub">Collapsing leaves the Section in the panel; hiding removes it. Space released by
+     either goes to the absorbing Section. <span class="ref">§5.4.2</span></p>
+  <div class="wf-canvas">
+    <div class="two">
+      <div>
+        <p class="caption">All expanded</p>
+        <div class="gd" style="border:1.5px solid var(--rule-strong);height:300px">
+          <div class="stack">
+            <div class="sec-blk" style="height:72px"><div class="sec-hd"><span class="ttl">A</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span> </span></div></div>
+            <div class="sec-blk" style="height:72px"><div class="sec-hd"><span class="ttl">B</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span> </span></div></div>
+            <div class="sec-blk absorb"><div class="sec-hd"><span class="ttl">C</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>absorbs</span></div></div>
+          </div>
+          <div class="toolbar"><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></div><div class="gap"></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 3-5 5-5-5h10"/><path d="m17 21-5-5-5 5h10"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/></svg> Flip</div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></div></div>
+        </div>
+      </div>
+      <div>
+        <p class="caption">B collapsed — header stays</p>
+        <div class="gd" style="border:1.5px solid var(--rule-strong);height:300px">
+          <div class="stack">
+            <div class="sec-blk" style="height:72px"><div class="sec-hd"><span class="ttl">A</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span> </span></div></div>
+            <div class="sec-blk collapsed" style="height:30px"><div class="sec-hd"><span class="ttl">B</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg></span></div></div>
+            <div class="sec-blk absorb"><div class="sec-hd"><span class="ttl">C</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>absorbs +42</span></div></div>
+          </div>
+          <div class="toolbar"><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></div><div class="gap"></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 3-5 5-5-5h10"/><path d="m17 21-5-5-5 5h10"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/></svg> Flip</div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></div></div>
+        </div>
+      </div>
+      <div>
+        <p class="caption">B hidden — gone entirely</p>
+        <div class="gd" style="border:1.5px solid var(--rule-strong);height:300px">
+          <div class="stack">
+            <div class="sec-blk" style="height:72px"><div class="sec-hd"><span class="ttl">A</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span> </span></div></div>
+            <div class="sec-blk absorb"><div class="sec-hd"><span class="ttl">C</span><span class="sp"></span><span class="ic"><svg class="i" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span></div><div class="sec-body"><span>absorbs +72</span></div></div>
+          </div>
+          <div class="toolbar"><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></div><div class="gap"></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 3-5 5-5-5h10"/><path d="m17 21-5-5-5 5h10"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/></svg> Flip</div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">A Section may permit collapsing without permitting hiding</span>
+      <span class="co">Both states persist</span>
+      <span class="co">Section order is fixed in this revision — visibility is the only compositional control</span>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-09</span><h3>Game Controls Toolbar</h3></div>
+  <p class="wf-sub">Anchored to the bottom of Game Details, always visible, never scrolled away.
+     <span class="ref">§5.4.2, §5.3</span></p>
+  <div class="wf-canvas">
+    <div style="width:360px;border:1.5px solid var(--rule-strong)">
+      <div class="toolbar" style="border-top:0">
+        <div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M17.971 4.285A2 2 0 0 1 21 6v12a2 2 0 0 1-3.029 1.715l-9.997-5.998a2 2 0 0 1-.003-3.432z"/><path d="M3 20V4"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6"/></svg></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 4v16"/><path d="M6.029 4.285A2 2 0 0 0 3 6v12a2 2 0 0 0 3.029 1.715l9.997-5.998a2 2 0 0 0 .003-3.432z"/></svg></div>
+        <div class="gap"></div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m17 3-5 5-5-5h10"/><path d="m17 21-5-5-5 5h10"/><path d="M4 12H2"/><path d="M10 12H8"/><path d="M16 12h-2"/><path d="M22 12h-2"/></svg> Flip</div><div class="tb"><svg class="i" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.571" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg> More</div>
+      </div>
+    </div>
+    <table class="rules">
+      <tr><th>Control</th><th>Action</th><th>Key</th></tr>
+      <tr><td class="n">skip-back</td><td>First ply</td><td class="n">Home</td></tr>
+      <tr><td class="n">chevron-left</td><td>Previous ply</td><td class="n">←</td></tr>
+      <tr><td class="n">chevron-right</td><td>Next ply</td><td class="n">→</td></tr>
+      <tr><td class="n">skip-forward</td><td>Last ply</td><td class="n">End</td></tr>
+      <tr><td class="n">Flip</td><td>Change board orientation</td><td class="n">F</td></tr>
+      <tr><td class="n">ellipsis</td><td>Secondary game and analysis commands</td><td class="n">—</td></tr>
+      <tr><td class="n">—</td><td>Play / pause automatic advance</td><td class="n">Space</td></tr>
+    </table>
+    <div class="callouts">
+      <span class="co">Unmodified keys — no collision with the shell's modified bindings (§2.5)</span>
+      <span class="co">Secondary commands go under More rather than widening the toolbar</span>
+      <span class="co">Toolbar belongs to the Game Details shell, not the Game View</span>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">4 · Navigation</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">GW-10</span><h3>The current ply is the workspace's state</h3></div>
+  <p class="wf-sub">This workspace has no view-navigation. It presents one game, and navigation means
+     moving a cursor through its plies. <span class="ref">§5.3</span></p>
+  <div class="wf-canvas">
+<pre class="flow">                 ┌──────────────────────────┐
+  toolbar ─────► │                          │ ─────► Chess Board
+  keyboard ────► │      CURRENT PLY         │ ─────► Evaluation Bar
+  a Section ───► │                          │ ─────► every Section reporting on a position
+                 └──────────────────────────┘
+
+All three inputs are equivalent. Everything that reports on a position follows the ply;
+nothing holds its own idea of where the game is.</pre>
+    <div class="callouts">
+      <span class="co">A Game Workspace always has a game — there is no empty state</span>
+      <span class="co">Loading is the only pre-game state</span>
+      <span class="co">Each open Game Tab keeps its own ply, orientation and Section states (§2.3)</span>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">5 · Decisions and open items</h2>
+<figure class="wf">
+  <div class="wf-canvas tight">
+    <table class="rules">
+      <tr><th>Item</th><th>Decision</th></tr>
+      <tr><td>Game View floor</td><td class="n">427px = 16 + 27 + 8 + 360 + 16</td></tr>
+      <tr><td>Board at the 800 × 600 minimum</td><td class="n">373px</td></tr>
+      <tr><td>Board maximum</td><td><b>None.</b> The board is the focus of the workspace</td></tr>
+      <tr><td>Board placement</td><td>Centred in the Game View, both axes</td></tr>
+      <tr><td>Evaluation Bar width</td><td><b>Fixed 27px.</b> Never grows — not with the board, not with the window. Derived from the label's fit</td></tr>
+      <tr><td>Evaluation Bar height</td><td>Exactly the board's, top and bottom aligned</td></tr>
+      <tr><td>Evaluation Bar slot</td><td><b>Permanently reserved.</b> The board never moves because of the bar</td></tr>
+      <tr><td>Evaluation Bar label</td><td>One decimal. <b>Negatives signed with the hyphen-minus; positives bare.</b> Mate renders <code>M&lt;n&gt;</code></td></tr>
+      <tr><td>Evaluation Bar label type</td><td class="n">10px proportional sans — not the tabular monospace</td></tr>
+      <tr><td>Game Details width</td><td class="n">Fixed 360px; derived ceiling 373px</td></tr>
+      <tr><td>Game Details scrolling</td><td>Only when Section floors cannot be honoured</td></tr>
+      <tr><td>Game Controls Toolbar</td><td>Part of the Game Details shell, anchored to its bottom</td></tr>
+      <tr><td>Workspace scrolling</td><td>Never</td></tr>
+      <tr><td>Empty state</td><td>None — a Game Workspace always has a game</td></tr>
+      <tr><td>Section order</td><td>Fixed in this revision; visibility is the only compositional control</td></tr>
+    </table>
+
+    <div class="box">
+      <h4>Open — Game View padding</h4>
+      <p>Drawn as <b>16px on all four sides</b>. It reconciles the stated 424px floor exactly and sits
+         on the shell's spacing rhythm, but was not specified in the source document. <b>Every board
+         figure in GW-02 and GW-03 derives from it.</b></p>
+    </div>
+
+    <div class="box">
+      <h4>Not drawn — the Sections</h4>
+      <p>Game Info, Evaluation Timeline, Engine, Move List and Move Explorer are shown as placeholder
+         blocks. Their floors, height behaviour, scrolling, header contents and states are defined in
+         their own specifications.</p>
+      <p>Two shell values depend on them and are therefore still open: <b>which Section absorbs
+         surplus</b>, and <b>the threshold at which Game Details begins to scroll</b>, which is set by
+         that Section's floor.</p>
+    </div>
+  </div>
+</figure>
+
+</div>
+
+<script>
+(function () {
+  var DETAILS = 360, BAR = 27, GAP = 8, PAD = 16, TABBAR = 40;
+  var w = document.getElementById('w'), h = document.getElementById('h');
+  var ro = document.getElementById('ro'), demo = document.getElementById('demo');
+
+  function model(W, H) {
+    var wsH = H - TABBAR;
+    var view = W - DETAILS;
+    var wAvail = view - PAD * 2 - BAR - GAP;
+    var hAvail = wsH - PAD * 2;
+    var board = Math.min(wAvail, hAvail);
+    return {
+      wsH: wsH, view: view, board: board,
+      by: wAvail <= hAvail ? 'width' : 'height',
+      slackH: wAvail - board, slackV: hAvail - board
+    };
+  }
+
+  function render() {
+    var W = +w.value, H = +h.value, m = model(W, H);
+    var scale = Math.min(1, 1000 / W, 460 / m.wsH);
+
+    ro.textContent = W + '×' + H + '  ·  view ' + m.view + '  ·  board ' + m.board +
+      '  ·  ' + m.by + '-constrained  ·  slack ' +
+      (m.by === 'width' ? m.slackV + ' vertical' : m.slackH + ' horizontal');
+
+    var s = function (px) { return Math.round(px * scale); };
+    var asm = BAR + GAP + m.board;
+
+    demo.innerHTML =
+      '<div class="ws" style="width:' + s(W) + 'px;height:' + s(m.wsH) + 'px">' +
+        '<div class="gv" style="padding:' + s(PAD) + 'px">' +
+          '<div class="asm" style="height:' + s(m.board) + 'px;gap:' + s(GAP) + 'px">' +
+            '<div class="bar" style="width:' + Math.max(3, s(BAR)) + 'px">' +
+              '<div class="w" style="height:42%"></div><div class="b" style="height:58%"></div>' +
+              '<div class="even"></div></div>' +
+            '<div class="board" style="width:' + s(m.board) + 'px;background-size:' +
+              (s(m.board) / 4) + 'px ' + (s(m.board) / 4) + 'px;background-position:0 0,' +
+              (s(m.board) / 8) + 'px ' + (s(m.board) / 8) + 'px"></div>' +
+          '</div>' +
+        '</div>' +
+        '<div class="gd" style="width:' + s(DETAILS) + 'px">' +
+          '<div class="stack">' +
+            '<div class="sec-blk" style="height:' + s(80) + 'px"><div class="sec-body"><span></span></div></div>' +
+            '<div class="sec-blk" style="height:' + s(96) + 'px"><div class="sec-body"><span></span></div></div>' +
+            '<div class="sec-blk absorb"><div class="sec-body"><span>absorbs</span></div></div>' +
+          '</div>' +
+          '<div class="toolbar" style="height:' + s(40) + 'px"></div>' +
+        '</div>' +
+      '</div>' +
+      '<p class="caption" style="margin-top:10px">drawn at ' + (scale * 100).toFixed(0) + '% scale</p>';
+  }
+
+  w.oninput = render; h.oninput = render;
+  document.querySelectorAll('.ctl button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      w.value = b.dataset.w; h.value = b.dataset.h; render();
+    });
+  });
+  render();
+})();
+</script>
+</body>
+</html>

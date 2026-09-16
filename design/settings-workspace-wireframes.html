@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessgui — Settings Workspace Wireframes</title>
+<style>
+  :root{
+    --paper:#f7f7f5; --ink:#1b1b19; --muted:#6b6b66; --faint:#94948e;
+    --rule:#d6d6d1; --rule-strong:#adada6;
+    --fill-0:#ffffff; --fill-1:#ececea; --fill-2:#dededa; --fill-3:#cfcfc9;
+    --accent:#8a5a1c; --accent-bg:#f6ecdc; --accent-rule:#d9b478;
+    --warn:#8a2c2c; --warn-bg:#f8e9e9;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#141413; --ink:#eceae4; --muted:#a3a099; --faint:#7d7a73;
+      --rule:#333330; --rule-strong:#55554f;
+      --fill-0:#1e1e1c; --fill-1:#2a2a27; --fill-2:#353531; --fill-3:#43433d;
+      --accent:#d9a55f; --accent-bg:#2c2418; --accent-rule:#6b5326;
+      --warn:#e08a8a; --warn-bg:#2e1c1c;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans);}
+  .wrap{max-width:1040px;margin:0 auto;padding:56px 28px 120px;}
+
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:34px}
+  header.doc .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  header.doc h1{font-size:30px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+  header.doc p{margin:0;color:var(--muted);max-width:62ch}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+
+  h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:52px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+
+  figure.wf{margin:30px 0 0;padding:0}
+  .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px}
+  .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+  .wf-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:68ch}
+  .wf-canvas{background:var(--fill-0);border:1px solid var(--rule);border-radius:4px;padding:24px 20px;overflow-x:auto}
+  .wf-canvas.tight{padding:18px}
+
+  /* ---------- workspace primitives ---------- */
+  .ws{display:flex;border:1.5px solid var(--rule-strong);background:var(--fill-0);overflow:hidden}
+  .sidebar{flex:none;width:220px;border-right:1.5px solid var(--rule-strong);
+    background:var(--fill-1);padding:10px 0;display:flex;flex-direction:column;gap:1px}
+  .nav{display:flex;align-items:center;gap:9px;padding:8px 14px;font:12px/1 var(--mono);
+    color:var(--muted);position:relative;white-space:nowrap}
+  .nav .ic{flex:none;width:11px;height:11px;border:1.5px solid currentColor;border-radius:2px;opacity:.5}
+  .nav.on{background:var(--fill-0);color:var(--ink);font-weight:700}
+  .nav.on::before{content:"";position:absolute;left:0;top:4px;bottom:4px;width:3px;background:var(--ink)}
+  .nav.on .ic{opacity:1;background:var(--ink)}
+
+  .content{flex:1;min-width:0;padding:20px 22px;display:flex;flex-direction:column;gap:16px}
+  .chead{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding-bottom:11px;border-bottom:1px solid var(--rule)}
+  .chead h4{margin:0;font-size:15px;letter-spacing:-.01em}
+  .applied{font:10px/1 var(--mono);color:var(--muted);white-space:nowrap}
+  .addbtn{font:11px/1 var(--mono);padding:7px 11px;background:var(--fill-1);
+    border:1px solid var(--rule-strong);border-radius:3px;color:var(--ink);white-space:nowrap}
+
+  .grid{display:grid;gap:12px;grid-template-columns:repeat(auto-fill,minmax(210px,1fr))}
+  .card{border:1px solid var(--rule-strong);border-radius:4px;background:var(--fill-0);
+    padding:12px;display:flex;flex-direction:column;gap:7px;min-height:104px}
+  .card .nm{font:12px/1 var(--mono);color:var(--ink);font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .card .ln{height:7px;background:var(--fill-2);border-radius:2px}
+  .card .ln.s{width:52%} .card .ln.m{width:74%} .card .ln.l{width:88%}
+  .card .foot{margin-top:auto;display:flex;align-items:center;gap:6px;
+    font:10px/1 var(--mono);color:var(--muted)}
+  .pill{display:inline-flex;align-items:center;gap:5px;font:9px/1 var(--mono);
+    padding:4px 6px;border:1px solid var(--rule-strong);border-radius:99px;color:var(--muted)}
+  .pill::before{content:"";width:6px;height:6px;border-radius:50%;background:var(--rule-strong)}
+  .pill.ok::before{background:var(--ink)}
+  .pill.off{opacity:.55}
+
+  /* conventional settings controls */
+  .rows{display:flex;flex-direction:column;gap:0;border:1px solid var(--rule);border-radius:4px;overflow:hidden}
+  .row{display:flex;align-items:center;justify-content:space-between;gap:16px;
+    padding:11px 13px;border-bottom:1px solid var(--rule);background:var(--fill-0)}
+  .row:last-child{border-bottom:0}
+  .row .lbl{font-size:12.5px;color:var(--ink)}
+  .row .sub{font:10px/1.4 var(--mono);color:var(--faint);margin-top:3px}
+  .ctrl{flex:none;font:10px/1 var(--mono);color:var(--muted)}
+  .sel{border:1px solid var(--rule-strong);border-radius:3px;padding:6px 9px;background:var(--fill-1)}
+  .tog{width:32px;height:18px;border-radius:99px;border:1px solid var(--rule-strong);
+    background:var(--fill-2);position:relative}
+  .tog::after{content:"";position:absolute;top:2px;left:2px;width:12px;height:12px;
+    border-radius:50%;background:var(--fill-0);border:1px solid var(--rule-strong)}
+  .tog.on{background:var(--ink)}
+  .tog.on::after{left:auto;right:2px;background:var(--fill-0);border-color:var(--ink)}
+
+  .empty{border:1px dashed var(--rule-strong);border-radius:4px;padding:34px 20px;
+    display:flex;flex-direction:column;align-items:center;gap:11px;text-align:center}
+  .empty p{margin:0;font-size:12.5px;color:var(--muted);max-width:38ch}
+
+  .about-rows{display:flex;flex-direction:column;gap:0}
+  .about-row{display:flex;gap:14px;padding:9px 0;border-bottom:1px solid var(--rule);font:11px/1 var(--mono)}
+  .about-row:last-child{border-bottom:0}
+  .about-row dt{width:120px;flex:none;color:var(--muted)}
+  .about-row dd{margin:0;color:var(--ink)}
+
+  /* annotation */
+  .dim{position:relative;height:26px;margin-top:6px}
+  .dim .bar{position:absolute;top:9px;height:1px;background:var(--accent)}
+  .dim .bar::before,.dim .bar::after{content:"";position:absolute;top:-3px;width:1px;height:7px;background:var(--accent)}
+  .dim .bar::before{left:0}.dim .bar::after{right:0}
+  .dim .txt{position:absolute;top:14px;font:10px/1 var(--mono);color:var(--accent);transform:translateX(-50%);white-space:nowrap}
+
+  .callouts{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .co{font:10px/1.4 var(--mono);color:var(--accent);background:var(--accent-bg);
+    border:1px solid var(--accent-rule);border-radius:3px;padding:5px 8px}
+
+  .wf-notes{margin:14px 0 0;padding:0 0 0 18px}
+  .wf-notes li{margin:5px 0;color:var(--muted)}
+  .wf-notes li b{color:var(--ink);font-weight:600}
+  .wf-notes code,.wf-sub code{font:12px/1 var(--mono);background:var(--fill-1);padding:2px 4px;border-radius:2px;color:var(--ink)}
+  .ref{font:10px/1 var(--mono);color:var(--faint)}
+
+  table.rules{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  table.rules th,table.rules td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  table.rules th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  table.rules td:first-child{font-family:var(--mono);font-size:12px;white-space:nowrap}
+
+  .box{border:1px solid var(--rule-strong);border-left:3px solid var(--accent);
+    background:var(--accent-bg);border-radius:3px;padding:14px 16px;margin-top:16px}
+  .box.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .box h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .box.warn h4{color:var(--warn)}
+  .box p{margin:0 0 8px;color:var(--ink);font-size:13px}
+  .box p:last-child{margin-bottom:0}
+  .box ol,.box ul{margin:8px 0 0;padding-left:20px;font-size:13px}
+  .box li{margin:6px 0}
+
+  .flow{font:11px/1.7 var(--mono);color:var(--muted);white-space:pre;overflow-x:auto;
+    background:var(--fill-1);border:1px solid var(--rule);border-radius:3px;padding:14px 16px;margin:0}
+  .stack{display:flex;flex-direction:column;gap:22px}
+  .caption{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <div class="kicker">Chessgui · Settings Workspace · Wireframes Rev B · 3 Sep 2026</div>
+  <h1>Settings Workspace</h1>
+  <p>Wireframes for §3.4 only. The Application Shell is not drawn — everything below sits
+     <em>inside</em> the Workspace Area, and the Tab Bar remains the sole application-level
+     navigation. The Settings Sidebar navigates within this one tab and creates no tabs of its own.</p>
+  <div class="meta">
+    <span class="chip">Spec <b>§3.4</b></span>
+    <span class="chip">Sections <b>6</b></span>
+    <span class="chip">Sidebar <b>220px</b></span>
+    <span class="chip">Min window <b>800 × 600</b></span>
+    <span class="chip">Tabs created <b>0</b></span>
+  </div>
+</header>
+
+<!-- ============================================================ -->
+<h2 class="sec">1 · Layout</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">SW-01</span><h3>Two regions: Sidebar and Content Area</h3></div>
+  <p class="wf-sub">The Sidebar is fixed-width and persistent. The Content Area takes all remaining
+     width and is the only scrolling region. <span class="ref">§3.4.2</span></p>
+  <div class="wf-canvas">
+    <div class="ws" style="width:820px;height:330px">
+      <div class="sidebar">
+        <div class="nav"><span class="ic"></span>General</div>
+        <div class="nav"><span class="ic"></span>Appearance</div>
+        <div class="nav on"><span class="ic"></span>Engines</div>
+        <div class="nav"><span class="ic"></span>Subscriptions</div>
+        <div class="nav"><span class="ic"></span>Databases</div>
+        <div class="nav"><span class="ic"></span>About</div>
+      </div>
+      <div class="content">
+        <div class="chead">
+          <h4>Engines</h4>
+          <div class="addbtn">+ Add Engine</div>
+        </div>
+        <div class="grid">
+          <div class="card">
+            <div class="nm">Stockfish 16.1</div>
+            <div class="ln l"></div><div class="ln s"></div>
+            <div class="foot"><span class="pill ok">ready</span></div>
+          </div>
+          <div class="card">
+            <div class="nm">Leela Chess Zero</div>
+            <div class="ln m"></div><div class="ln s"></div>
+            <div class="foot"><span class="pill ok">ready</span></div>
+          </div>
+          <div class="card">
+            <div class="nm">Komodo Dragon 3</div>
+            <div class="ln l"></div><div class="ln s"></div>
+            <div class="foot"><span class="pill off">not installed</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="dim" style="width:820px">
+      <div class="bar" style="left:0;width:220px"></div>
+      <div class="txt" style="left:110px">Sidebar 220px — fixed</div>
+      <div class="bar" style="left:220px;right:0"></div>
+      <div class="txt" style="left:calc(220px + (100% - 220px)/2)">Content Area — all remaining width</div>
+    </div>
+    <div class="callouts">
+      <span class="co">Sidebar never scrolls horizontally with the content</span>
+      <span class="co">Content Area is the primary scrolling region, vertical only</span>
+      <span class="co">No second top-level nav bar — the shell's Tab Bar is the only one</span>
+      <span class="co">Active section marked by weight + rail + fill, not colour alone</span>
+    </div>
+  </div>
+  <ul class="wf-notes">
+    <li>The Sidebar is a <b>fixed 220px</b> (approved 3 Sep). Comfortably clears “Subscriptions”, the
+        longest label, and happens to match the Tab Strip's 220px minimum tab width — the two floors
+        are unrelated but the shared value keeps the app's horizontal rhythm consistent.
+        <span class="ref">§3.4.4, §3.4.12</span></li>
+    <li>Sidebar and Content Area <b>keep their horizontal relationship</b> at every window size —
+        the Sidebar never collapses to icons or a drawer in this release.</li>
+    <li>The workspace fills the Workspace Area exactly; it inherits its box from the shell.</li>
+  </ul>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">SW-02</span><h3>Sidebar anatomy and active state</h3></div>
+  <p class="wf-sub">Six sections in fixed order. Exactly one is active. The active state must not rely
+     on colour alone. <span class="ref">§3.4.3, §3.4.4</span></p>
+  <div class="wf-canvas">
+    <div style="display:flex;gap:28px;align-items:flex-start;flex-wrap:wrap">
+      <div>
+        <p class="caption">Order is fixed</p>
+        <div class="sidebar" style="border:1.5px solid var(--rule-strong);width:220px">
+          <div class="nav on"><span class="ic"></span>General</div>
+          <div class="nav"><span class="ic"></span>Appearance</div>
+          <div class="nav"><span class="ic"></span>Engines</div>
+          <div class="nav"><span class="ic"></span>Subscriptions</div>
+          <div class="nav"><span class="ic"></span>Databases</div>
+          <div class="nav"><span class="ic"></span>About</div>
+        </div>
+      </div>
+      <div style="flex:1;min-width:260px">
+        <p class="caption">Active state carries three redundant cues</p>
+        <table class="rules">
+          <tr><th>Cue</th><th>Why</th></tr>
+          <tr><td>Left rail</td><td>Positional — readable in monochrome and at a glance</td></tr>
+          <tr><td>Bold weight</td><td>Survives colour-blindness and forced-colours mode</td></tr>
+          <tr><td>Surface fill</td><td>Ties the active item to the Content Area beside it</td></tr>
+        </table>
+        <ul class="wf-notes" style="margin-top:12px">
+          <li>§3.4.4 requires indication “without relying solely on colour” — hence rail + weight before fill.</li>
+          <li>Implemented as a <code>listbox</code>/<code>tablist</code> with roving focus; ↑ ↓ move, Enter selects.</li>
+          <li>The Sidebar scrolls independently only if the height cannot fit six items — it will not at 600px.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">2 · Conventional settings sections</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">SW-03</span><h3>General and Appearance</h3></div>
+  <p class="wf-sub">Conventional settings controls, explicitly <em>not</em> the object-management card
+     pattern. The specific settings are defined elsewhere in the spec; these are placeholders showing
+     the control vocabulary. <span class="ref">§3.4.6, §3.4.7</span></p>
+  <div class="wf-canvas">
+    <div class="stack">
+      <div>
+        <p class="caption">General</p>
+        <div class="ws" style="width:820px">
+          <div class="sidebar">
+            <div class="nav on"><span class="ic"></span>General</div>
+            <div class="nav"><span class="ic"></span>Appearance</div>
+            <div class="nav"><span class="ic"></span>Engines</div>
+            <div class="nav"><span class="ic"></span>Subscriptions</div>
+            <div class="nav"><span class="ic"></span>Databases</div>
+            <div class="nav"><span class="ic"></span>About</div>
+          </div>
+          <div class="content">
+            <div class="chead"><h4>General</h4></div>
+            <div class="rows">
+              <div class="row">
+                <div><div class="lbl">Language</div><div class="sub">also in the Application Menu</div></div>
+                <div class="ctrl sel">English ▾</div>
+              </div>
+              <div class="row">
+                <div><div class="lbl">Restore open games on launch</div></div>
+                <div class="ctrl"><div class="tog on"></div></div>
+              </div>
+              <div class="row">
+                <div><div class="lbl">Default library location</div><div class="sub">~/Documents/Chessgui</div></div>
+                <div class="ctrl sel">Choose…</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="caption">Appearance</p>
+        <div class="ws" style="width:820px">
+          <div class="sidebar">
+            <div class="nav"><span class="ic"></span>General</div>
+            <div class="nav on"><span class="ic"></span>Appearance</div>
+            <div class="nav"><span class="ic"></span>Engines</div>
+            <div class="nav"><span class="ic"></span>Subscriptions</div>
+            <div class="nav"><span class="ic"></span>Databases</div>
+            <div class="nav"><span class="ic"></span>About</div>
+          </div>
+          <div class="content">
+            <div class="chead"><h4>Appearance</h4></div>
+            <div class="rows">
+              <div class="row">
+                <div><div class="lbl">Theme</div><div class="sub">also toggled from the Application Menu</div></div>
+                <div class="ctrl sel">Light ▾</div>
+              </div>
+              <div class="row">
+                <div><div class="lbl">Board style</div></div>
+                <div class="ctrl sel">Default ▾</div>
+              </div>
+              <div class="row">
+                <div><div class="lbl">Piece set</div></div>
+                <div class="ctrl sel">Merida ▾</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">Label left, control right — one row per setting</span>
+      <span class="co">Secondary line carries current value or scope, not help text</span>
+      <span class="co">No Add action and no cards in these two sections</span>
+    </div>
+  </div>
+  <div class="box">
+    <h4>Overlap worth deciding</h4>
+    <p>Language and Theme now appear in <b>both</b> the Application Menu (§2.2, plus the newly added
+       Full Screen and Quit) and here. That is a normal desktop pattern — menu for speed, settings for
+       discovery — but it means two surfaces must stay in step, and it is not stated in either §2.2 or
+       §3.4.</p>
+    <p>I have drawn them in both. Say if Settings should own them exclusively, in which case §2.2's
+       Language and Theme items would need removing.</p>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">3 · Object management</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">SW-04</span><h3>The shared pattern — Engines, Subscriptions, Databases</h3></div>
+  <p class="wf-sub">One pattern, three sections. Heading plus a section-appropriate Add action, then a
+     responsive grid of Cards. <span class="ref">§3.4.8, §3.4.10</span></p>
+  <div class="wf-canvas">
+    <div class="stack">
+      <div>
+        <p class="caption">Subscriptions</p>
+        <div class="ws" style="width:820px">
+          <div class="sidebar">
+            <div class="nav"><span class="ic"></span>General</div>
+            <div class="nav"><span class="ic"></span>Appearance</div>
+            <div class="nav"><span class="ic"></span>Engines</div>
+            <div class="nav on"><span class="ic"></span>Subscriptions</div>
+            <div class="nav"><span class="ic"></span>Databases</div>
+            <div class="nav"><span class="ic"></span>About</div>
+          </div>
+          <div class="content">
+            <div class="chead"><h4>Subscriptions</h4><div class="addbtn">+ Add Subscription</div></div>
+            <div class="grid">
+              <div class="card">
+                <div class="nm">Lichess Broadcasts</div>
+                <div class="ln m"></div><div class="ln s"></div>
+                <div class="foot"><span class="pill ok">syncing</span></div>
+              </div>
+              <div class="card">
+                <div class="nm">TWIC Weekly</div>
+                <div class="ln l"></div><div class="ln s"></div>
+                <div class="foot"><span class="pill off">offline</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="caption">Databases</p>
+        <div class="ws" style="width:820px">
+          <div class="sidebar">
+            <div class="nav"><span class="ic"></span>General</div>
+            <div class="nav"><span class="ic"></span>Appearance</div>
+            <div class="nav"><span class="ic"></span>Engines</div>
+            <div class="nav"><span class="ic"></span>Subscriptions</div>
+            <div class="nav on"><span class="ic"></span>Databases</div>
+            <div class="nav"><span class="ic"></span>About</div>
+          </div>
+          <div class="content">
+            <div class="chead"><h4>Databases</h4><div class="addbtn">+ Add Database</div></div>
+            <div class="grid">
+              <div class="card">
+                <div class="nm">Master Games</div>
+                <div class="ln l"></div><div class="ln m"></div>
+                <div class="foot"><span class="pill ok">indexed</span></div>
+              </div>
+              <div class="card">
+                <div class="nm">My Games</div>
+                <div class="ln m"></div><div class="ln s"></div>
+                <div class="foot"><span class="pill ok">indexed</span></div>
+              </div>
+              <div class="card">
+                <div class="nm">Opening Prep</div>
+                <div class="ln l"></div><div class="ln s"></div>
+                <div class="foot"><span class="pill">indexing…</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">Add action stays with the heading — always reachable, never scrolled away</span>
+      <span class="co">Add label names the object type, per §3.4.8</span>
+      <span class="co">Status shown as a pill so it reads without opening the object</span>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">SW-05</span><h3>Card anatomy</h3></div>
+  <p class="wf-sub">The card must carry enough to distinguish one object from another without opening it.
+     The exact fields belong to each object's own requirements. <span class="ref">§3.4.9</span></p>
+  <div class="wf-canvas">
+    <div style="display:flex;gap:26px;align-items:flex-start;flex-wrap:wrap">
+      <div style="width:230px">
+        <div class="card" style="min-height:126px">
+          <div class="nm">Stockfish 16.1</div>
+          <div class="ln l"></div>
+          <div class="ln m"></div>
+          <div class="foot"><span class="pill ok">ready</span><span>NNUE</span></div>
+        </div>
+        <div class="dim" style="width:230px"><div class="bar" style="left:0;right:0"></div>
+          <div class="txt" style="left:50%">min 210px — grid floor</div></div>
+      </div>
+      <div style="flex:1;min-width:280px">
+        <table class="rules">
+          <tr><th>Slot</th><th>Carries</th></tr>
+          <tr><td>Name</td><td>The identifying line. Truncates last, never wraps to three lines.</td></tr>
+          <tr><td>Detail lines</td><td>Type-specific: engine version and protocol, subscription provider, database type and location.</td></tr>
+          <tr><td>Status pill</td><td>State at a glance — ready / offline / indexing. Shape plus text, not colour alone.</td></tr>
+          <tr><td>Whole card</td><td>Click target — opens the Detail/Edit View (SW-06).</td></tr>
+        </table>
+        <ul class="wf-notes" style="margin-top:12px">
+          <li>The card is <b>one click target</b>, not a card with a separate “open” button. Any per-card
+              secondary action would need its own hit area and is not proposed here.</li>
+          <li>Cards are a <code>ul</code> of links/buttons so keyboard users tab through the collection.</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">SW-06</span><h3>Detail / Edit View</h3></div>
+  <p class="wf-sub">Replaces the collection <em>inside the Content Area only</em>. The Sidebar stays,
+     so the user can leave for another section directly. Changes <b>apply immediately</b> — there is no
+     Save button and nothing to lose on the way out. <span class="ref">§3.4.9</span></p>
+  <div class="wf-canvas">
+    <div class="ws" style="width:820px;height:300px">
+      <div class="sidebar">
+        <div class="nav"><span class="ic"></span>General</div>
+        <div class="nav"><span class="ic"></span>Appearance</div>
+        <div class="nav on"><span class="ic"></span>Engines</div>
+        <div class="nav"><span class="ic"></span>Subscriptions</div>
+        <div class="nav"><span class="ic"></span>Databases</div>
+        <div class="nav"><span class="ic"></span>About</div>
+      </div>
+      <div class="content">
+        <div class="chead">
+          <h4><span style="color:var(--muted);font-weight:400">‹ Engines&nbsp;&nbsp;/&nbsp;&nbsp;</span>Stockfish 16.1</h4>
+          <div style="display:flex;gap:9px;align-items:center">
+            <span class="applied">✓ All changes applied</span>
+            <div class="addbtn">Done</div>
+          </div>
+        </div>
+        <div class="rows">
+          <div class="row"><div class="lbl">Executable path</div><div class="ctrl sel">Choose…</div></div>
+          <div class="row"><div class="lbl">Hash size</div><div class="ctrl sel">256 MB ▾</div></div>
+          <div class="row"><div class="lbl">Threads</div><div class="ctrl sel">8 ▾</div></div>
+          <div class="row"><div class="lbl">Enabled</div><div class="ctrl"><div class="tog on"></div></div></div>
+        </div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">Auto-apply — each control commits on change, no Save step</span>
+      <span class="co">Breadcrumb ‹ Engines and Done both return to the collection</span>
+      <span class="co">Sidebar unchanged — leaving sideways is always safe, nothing is pending</span>
+      <span class="co">Creates no tab; §3.4.3 keeps all of this in the one Settings Tab</span>
+    </div>
+  </div>
+  <div class="wf-canvas" style="margin-top:12px">
+<pre class="flow">Collection ──click card──► Detail/Edit ──── Done ────► Collection
+     ▲                          │
+     └──── click ‹ Engines ─────┘
+
+     └──── click another Sidebar section ────► that section's Collection
+           (§3.4.9 — the Sidebar stays live throughout)
+
+Every control commits on change. There is no pending state, so no exit
+route needs a prompt — leaving by ANY of the three paths above is safe.</pre>
+  </div>
+  <div class="box">
+    <h4>Resolved — auto-apply, approved 3 Sep</h4>
+    <p>No Save, no Cancel, no prompt on exit. This is <b>consistent with §3.4.9</b>, not a deviation:
+       the clause reads “saving <em>or applying</em> changes”, and auto-apply is the second branch.</p>
+    <p>Three consequences that need designing rather than assuming, since removing Save removes the
+       moment where invalid input would normally have been caught:</p>
+    <ol>
+      <li><b>Validate before committing, per field.</b> An empty or bad executable path must not be
+          applied and must not silently disable the engine. Invalid fields show an inline error and
+          retain the last good value.</li>
+      <li><b>Debounce text fields.</b> Commit on blur or after a pause, not per keystroke — otherwise a
+          path is applied in a broken half-typed state on every character.</li>
+      <li><b>There is no Cancel, so destructive actions need their own confirmation.</b> Removing an
+          engine or database cannot be undone by walking away, so any such action gets an explicit
+          confirm step. Undo is not proposed for this release.</li>
+    </ol>
+    <p>The “✓ All changes applied” indicator exists because auto-apply removes the Save button that
+       normally tells the user their work is committed. Without it the surface is silent about state.</p>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">SW-07</span><h3>Empty state</h3></div>
+  <p class="wf-sub">A concise explanation plus the same Add action. The heading's Add action remains,
+     so the empty state's button is a second route, not the only one. <span class="ref">§3.4.10</span></p>
+  <div class="wf-canvas">
+    <div class="ws" style="width:820px;height:250px">
+      <div class="sidebar">
+        <div class="nav"><span class="ic"></span>General</div>
+        <div class="nav"><span class="ic"></span>Appearance</div>
+        <div class="nav on"><span class="ic"></span>Engines</div>
+        <div class="nav"><span class="ic"></span>Subscriptions</div>
+        <div class="nav"><span class="ic"></span>Databases</div>
+        <div class="nav"><span class="ic"></span>About</div>
+      </div>
+      <div class="content">
+        <div class="chead"><h4>Engines</h4><div class="addbtn">+ Add Engine</div></div>
+        <div class="empty">
+          <p>No engines have been added. An engine analyses positions and plays moves in a Game Workspace.</p>
+          <div class="addbtn">+ Add Engine</div>
+        </div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">Explains what the object is FOR, not just that the list is empty</span>
+      <span class="co">Heading Add action stays — §3.4.10 requires it regardless of object count</span>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">4 · About</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">SW-08</span><h3>About — informational, not cards</h3></div>
+  <p class="wf-sub">Conventional informational layout. This is the section the Application Menu's
+     <b>About</b> item jumps to. <span class="ref">§3.4.11, §2.2</span></p>
+  <div class="wf-canvas">
+    <div class="ws" style="width:820px;height:260px">
+      <div class="sidebar">
+        <div class="nav"><span class="ic"></span>General</div>
+        <div class="nav"><span class="ic"></span>Appearance</div>
+        <div class="nav"><span class="ic"></span>Engines</div>
+        <div class="nav"><span class="ic"></span>Subscriptions</div>
+        <div class="nav"><span class="ic"></span>Databases</div>
+        <div class="nav on"><span class="ic"></span>About</div>
+      </div>
+      <div class="content">
+        <div class="chead"><h4>About</h4></div>
+        <div style="display:flex;gap:18px;align-items:flex-start">
+          <div style="flex:none;width:52px;height:52px;border:1px solid var(--rule-strong);border-radius:9px;
+                      display:grid;place-items:center;font:18px var(--mono);color:var(--muted)">♞</div>
+          <dl class="about-rows" style="flex:1;min-width:0">
+            <div class="about-row"><dt>Application</dt><dd>Chessgui</dd></div>
+            <div class="about-row"><dt>Version</dt><dd>0.1.0 (prototype)</dd></div>
+            <div class="about-row"><dt>Licence</dt><dd>—</dd></div>
+            <div class="about-row"><dt>Data location</dt><dd>local</dd></div>
+          </dl>
+        </div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">Application Menu → About opens Settings AND selects this section</span>
+      <span class="co">Definition-list layout, no cards, no Add action</span>
+    </div>
+  </div>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">5 · Resizing and scrolling</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">SW-09</span><h3>Grid reflow — cards wrap, never scroll sideways</h3></div>
+  <p class="wf-sub">Cards grow and shrink within bounds; when width runs out they wrap to fewer columns.
+     Horizontal scrolling is never introduced. <span class="ref">§3.4.10, §3.4.12</span></p>
+  <div class="wf-canvas">
+    <div class="stack">
+      <div>
+        <p class="caption">Wide — 3 columns</p>
+        <div class="ws" style="width:900px">
+          <div class="sidebar" style="width:220px">
+            <div class="nav on"><span class="ic"></span>Engines</div>
+          </div>
+          <div class="content">
+            <div class="chead"><h4>Engines</h4><div class="addbtn">+ Add Engine</div></div>
+            <div class="grid">
+              <div class="card"><div class="nm">Stockfish 16.1</div><div class="ln l"></div><div class="foot"><span class="pill ok">ready</span></div></div>
+              <div class="card"><div class="nm">Leela Chess Zero</div><div class="ln m"></div><div class="foot"><span class="pill ok">ready</span></div></div>
+              <div class="card"><div class="nm">Komodo Dragon 3</div><div class="ln l"></div><div class="foot"><span class="pill off">off</span></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="caption">Minimum window — 800px total, 220px sidebar, 2 columns</p>
+        <div class="ws" style="width:800px">
+          <div class="sidebar" style="width:220px">
+            <div class="nav on"><span class="ic"></span>Engines</div>
+          </div>
+          <div class="content">
+            <div class="chead"><h4>Engines</h4><div class="addbtn">+ Add Engine</div></div>
+            <div class="grid" style="grid-template-columns:repeat(2,1fr)">
+              <div class="card"><div class="nm">Stockfish 16.1</div><div class="ln l"></div><div class="foot"><span class="pill ok">ready</span></div></div>
+              <div class="card"><div class="nm">Leela Chess Zero</div><div class="ln m"></div><div class="foot"><span class="pill ok">ready</span></div></div>
+              <div class="card"><div class="nm">Komodo Dragon 3</div><div class="ln l"></div><div class="foot"><span class="pill off">off</span></div></div>
+            </div>
+          </div>
+        </div>
+        <div class="dim" style="width:800px">
+          <div class="bar" style="left:0;width:220px"></div><div class="txt" style="left:110px">220</div>
+          <div class="bar" style="left:220px;right:0"></div><div class="txt" style="left:510px">580px content — 2 columns at a 210px card floor</div>
+        </div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co">grid-template-columns: repeat(auto-fill, minmax(210px, 1fr))</span>
+      <span class="co">580px − 44px padding = 536px usable → 2 columns (2×210 + 12 gap = 432)</span>
+      <span class="co">Cards wrap to new rows; the Content Area scrolls vertically only</span>
+    </div>
+  </div>
+  <ul class="wf-notes">
+    <li>The Content Area's vertical scroll is <b>independent of the Sidebar</b> — the Sidebar never moves.
+        <span class="ref">§3.4.12</span></li>
+    <li>Scrolling lives entirely inside the workspace. The Application Shell contributes no scrollbars,
+        consistent with the shell's own rule.</li>
+    <li>At 800 × 600 the Content Area is roughly <b>580 × 520</b> once the shell's 40px Tab Bar is
+        deducted — enough for the heading plus two card rows before scrolling. Three columns need
+        <b>918px</b> of window (3×210 + 2×12 gap + 44 padding + 220 sidebar), so 2 is the floor and
+        3 arrives at a comfortable working size.</li>
+  </ul>
+</figure>
+
+<!-- ============================================================ -->
+<h2 class="sec">6 · Decisions needed</h2>
+<figure class="wf">
+  <div class="wf-canvas tight">
+    <table class="rules">
+      <tr><th>#</th><th>Question</th><th>My default if you don't object</th></tr>
+      <tr><td>1 ✓</td><td>Unsaved changes when leaving a Detail/Edit View (SW-06)</td><td><b>Resolved 3 Sep</b> — auto-apply; no Save, no prompt</td></tr>
+      <tr><td>2</td><td>Language and Theme appear in both the Application Menu and Settings (SW-03)</td><td>Both, kept in sync</td></tr>
+      <tr><td>3 ✓</td><td>Sidebar width</td><td><b>Resolved 3 Sep</b> — fixed 220px, no collapse</td></tr>
+      <tr><td>4</td><td>Card minimum width, which sets the column count</td><td>210px → 2 columns at 800px, 3 from 918px</td></tr>
+      <tr><td>5</td><td>Per-card secondary actions, e.g. remove without opening</td><td>Omit — whole card is one target</td></tr>
+      <tr><td>7</td><td>Auto-apply needs per-field validation and a confirm step for destructive actions (SW-06)</td><td>Validate inline, debounce text, confirm removals</td></tr>
+      <tr><td>6</td><td>§3.4 vs §6 — your spec text numbers this section 3.4 but closes by referring to §6</td><td>Treating §3.4 as authoritative</td></tr>
+    </table>
+  </div>
+</figure>
+
+</div>
+</body>
+</html>

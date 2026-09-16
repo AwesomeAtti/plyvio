@@ -1,0 +1,133 @@
+/* ---------------------------------------------------------------
+   Chessgui — shell tokens. Light is the base; dark overrides only
+   the token values so every component stays theme-agnostic. (§1.1)
+   --------------------------------------------------------------- */
+:root {
+  --paper:        #f7f7f5;
+  --surface:      #ffffff;
+  --chrome:       #eceae7;
+  --chrome-2:     #e2dfdb;
+  --chrome-3:     #d5d1cc;
+  --ink:          #1b1b19;
+  --ink-2:        #55534e;
+  --muted:        #7a7770;
+  --faint:        #a5a29b;
+  --rule:         #d8d5d0;
+  --rule-strong:  #b8b4ae;
+  --focus:        #2f6f9e;
+  --danger:       #9a3434;
+  --shadow:       0 6px 20px rgba(0,0,0,.12), 0 1px 3px rgba(0,0,0,.10);
+
+  /* The two sides, for the Evaluation Bar (§5.4.1) and the Evaluation Timeline.
+     Deliberately NOT theme tokens and deliberately not overridden in dark: a
+     white piece is white in both themes, and the bar and the timeline have to
+     agree on which end is whose. */
+  --eval-white:   #f4f2ee;
+  --eval-black:   #26241f;
+
+  /* Explorer result bar. White means White: these are adjusted for each
+     theme's ground but NEVER swapped, because a segment that inverted in dark
+     mode would swap the two sides of every result in the Section. Black's stays
+     the darkest of the three in both. */
+  --res-white:      #f0eee9;
+  --res-draw:       #b4b0a9;
+  --res-black:      #3a3833;
+  --res-white-ink:  #2a2924;
+  --res-draw-ink:   #ffffff;
+  --res-black-ink:  #eceae4;
+
+  --tab-min:      220px;
+  --settings-sidebar-w: 220px;   /* §3.4.4 — keep in step with settings/layout.js */
+  --library-sidebar-w: 220px;    /* §3.2.2 — expanded Library sidebar */
+  --rail-w: 56px;                /* §3.2.2 — collapsed icon rail, shell-owned */
+  --tab-pref:     300px;
+  --bar-h:        40px;
+
+  /* Bundled — see fonts.css. The mono advance (0.600em) is load-bearing for
+     the Content Table's fixed column widths (§3.2.4.2). */
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --sans: 'IBM Plex Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+}
+
+:root[data-theme="dark"] {
+  --paper:        #171716;
+  --surface:      #201f1d;
+  --chrome:       #262523;
+  --chrome-2:     #2f2e2b;
+  --chrome-3:     #3b3a36;
+  --ink:          #ecebe6;
+  --ink-2:        #b9b6ae;
+  --muted:        #918d85;
+  --faint:        #6d6a63;
+  --rule:         #35342f;
+  --rule-strong:  #4d4b45;
+
+  --res-white:      #d6d2ca;
+  --res-draw:       #6e6a63;
+  --res-black:      #22211d;
+  --res-white-ink:  #23221e;
+  --res-draw-ink:   #f2f0ec;
+  --res-black-ink:  #d9d6d0;
+  --focus:        #6ea8d8;
+  --danger:       #d98a8a;
+  --shadow:       0 6px 20px rgba(0,0,0,.5), 0 1px 3px rgba(0,0,0,.4);
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--paper);
+  font-family: var(--sans);
+  color: var(--ink);
+  font: 13px/1.5 var(--sans);
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;              /* the Application Shell never scrolls */
+}
+
+/*
+  §2.4 — the shell fills the window exactly and never scrolls. It does NOT
+  carry a min-width/min-height: that would make the document overflow and
+  produce shell-level scrollbars, which the shell must not have. Window sizes
+  below the 800 x 600 minimum are handled by WindowFloorGate, which covers the
+  shell rather than letting it render degraded.
+
+  Scrolling is a workspace concern. The shell hands each workspace a fixed box
+  and the workspace decides what to do with overflow inside it.
+*/
+#app-root {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+:where(button) {
+  font: inherit;
+  color: inherit;
+  background: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
+}
+
+:focus-visible {
+  outline: 2px solid var(--focus);
+  outline-offset: -2px;
+  border-radius: 2px;
+}
+
+.visually-hidden {
+  position: absolute;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}

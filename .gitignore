@@ -1,0 +1,11 @@
+working/
+.DS_Store
+*.log
+samples/*.db
+samples/pgn/
+app/node_modules/
+app/.svelte-kit/
+app/build/
+app/standalone-dist/
+app/src-tauri/target/
+app/src-tauri/binaries/

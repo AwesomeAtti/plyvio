@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessgui — Engine · live analysis</title>
+<style>
+  :root{
+    --paper:#f7f7f5; --ink:#1b1b19; --muted:#6b6b66; --faint:#94948e;
+    --rule:#d6d6d1; --rule-strong:#adada6;
+    --fill-0:#ffffff; --fill-1:#ececea; --fill-2:#dededa; --fill-3:#cfcfc9;
+    --accent:#8a5a1c; --accent-bg:#f6ecdc; --accent-rule:#d9b478;
+    --warn:#8a2c2c; --warn-bg:#f8e9e9; --ok:#3f6b3f; --ok-bg:#e9f2ec;
+    --sel:#dfe7f2; --sel-rule:#93a9c8;
+    --head:#8a5a1c;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#141413; --ink:#eceae4; --muted:#a3a099; --faint:#7d7a73;
+      --rule:#333330; --rule-strong:#55554f;
+      --fill-0:#1e1e1c; --fill-1:#2a2a27; --fill-2:#353531; --fill-3:#43433d;
+      --accent:#d9a55f; --accent-bg:#2c2418; --accent-rule:#6b5326;
+      --warn:#e08a8a; --warn-bg:#2e1c1c; --ok:#8fb98f; --ok-bg:#1b2a20;
+      --sel:#25303f; --sel-rule:#42597a;
+      --head:#d9a55f;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans)}
+  .wrap{max-width:1120px;margin:0 auto;padding:56px 28px 120px}
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:34px}
+  .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  header.doc h1{font-size:30px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+  header.doc p{margin:0 0 10px;color:var(--muted);max-width:70ch}
+  header.doc p b{color:var(--ink)}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+  .chip.open{border-style:dashed;border-color:var(--accent);color:var(--accent)}
+  .chip.ok{border-color:var(--ok);color:var(--ok)}
+  h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:52px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+  .lede{color:var(--muted);max-width:74ch;margin:16px 0 0}
+  .lede b{color:var(--ink)}
+  figure.wf{margin:30px 0 0;padding:0}
+  .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+  .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+  .wf-id.open{background:var(--accent)}
+  .wf-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:76ch}
+  .wf-canvas{background:var(--fill-1);border:1px solid var(--rule);border-radius:4px;padding:24px 20px;overflow-x:auto}
+  .cols{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .cap{font:10px/1.4 var(--mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin:0 0 8px}
+  .capn{font:11px/1.5 var(--mono);color:var(--muted);margin:8px 0 0;max-width:44ch}
+  table.rules{width:100%;border-collapse:collapse;font-size:13px;margin-top:12px}
+  table.rules th,table.rules td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  table.rules th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  table.rules td.n{font-family:var(--mono);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  table.rules tr.open td{background:var(--accent-bg)}
+  .box{border:1px solid var(--rule-strong);border-left:3px solid var(--accent);
+    background:var(--accent-bg);border-radius:3px;padding:14px 16px;margin-top:18px}
+  .box.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .box.ok{border-left-color:var(--ok);background:transparent}
+  .box h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .box.warn h4{color:var(--warn)} .box.ok h4{color:var(--ok)}
+  .box p{margin:0 0 8px;font-size:13px;color:var(--ink);max-width:78ch}
+  .box p:last-child{margin-bottom:0}
+  code{font:11.5px/1 var(--mono);background:var(--fill-1);padding:2px 4px;border-radius:2px;color:var(--ink)}
+  .mono{font-family:var(--mono);font-size:12px}
+  ol.q{margin:14px 0 0;padding-left:0;list-style:none;display:flex;flex-direction:column;gap:16px}
+  ol.q li{border:1px solid var(--rule-strong);border-radius:6px;padding:14px 16px;background:var(--fill-0)}
+  ol.q .qn{display:flex;align-items:baseline;gap:10px;margin-bottom:6px}
+  ol.q .qtag{flex:none;font:10px/1 var(--mono);color:#fff;background:var(--accent);padding:3px 6px;border-radius:3px}
+  ol.q .qtag.x{background:var(--faint)}
+  ol.q li.x{opacity:.75}
+  ol.q li.x .qt{text-decoration:line-through;text-decoration-color:var(--faint)}
+  ol.q b.qt{font-size:14px}
+  /* A superseding note. The original answer is kept below it rather than
+     rewritten: this document is a dated record of what was decided when, and
+     editing the argument away would lose why the decision was reachable. */
+  ol.q .qtag.rev{background:var(--accent)}
+  ol.q .rev-note{border-left:3px solid var(--accent);background:var(--accent-bg);
+    padding:12px 14px;margin:0 0 14px;
+    /* 78ch is this document's measure for a paragraph in a question; the box
+       takes it too, plus its own padding, so the tint ends where the text does
+       rather than running on across empty space. */
+    max-width:calc(78ch + 28px)}
+  ol.q .rev-note p{margin:0 0 9px}
+  ol.q .rev-note p:last-child{margin-bottom:0}
+  ol.q .rev-was{font:10px/1 var(--mono);letter-spacing:.08em;text-transform:uppercase;
+    color:var(--faint);margin:0 0 8px}
+  ol.q p{margin:0 0 6px;font-size:13px;color:var(--muted);max-width:78ch}
+  ol.q ul{margin:6px 0 0;padding-left:18px;font-size:13px;color:var(--ink)}
+  ol.q ul li{margin-bottom:4px;border:0;padding:0;background:none}
+
+  /* ---------- the Section at its real 360px ---------- */
+  .sec-blk{width:360px;border:1.5px solid var(--rule-strong);background:var(--fill-0);
+    display:flex;flex-direction:column;overflow:hidden;font:13px/1.4 var(--sans);color:var(--ink)}
+  .sec-hd{flex:none;height:30px;display:flex;align-items:center;gap:6px;padding:0 6px 0 12px;
+    background:var(--fill-1);border-bottom:1px solid var(--rule)}
+  .sec-hd .ttl{font-size:11.5px;font-weight:600;color:var(--ink);white-space:nowrap;flex:none}
+  .sec-hd .src{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+    font:10px/1 var(--mono);color:var(--muted);display:inline-flex;align-items:center;gap:2px;padding:3px 2px}
+  .sec-hd .sp{flex:1;min-width:8px}
+  .sec-hd .st{flex:none;font:10px/1 var(--mono);color:var(--muted);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .sec-hd .ic{flex:none;width:26px;height:26px;display:grid;place-items:center;color:var(--muted);
+    border-radius:3px;font-size:11px}
+  .sec-hd .ic.hot{color:var(--ok);background:var(--ok-bg)}
+  .sec-hd .ic.dim{color:var(--faint)}
+  .tg{width:30px;height:18px;flex:none;border-radius:9px;background:var(--fill-3);position:relative;margin:0 2px}
+  .tg::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;
+    box-shadow:0 1px 2px rgba(0,0,0,.3)}
+  .tg.on{background:var(--ok)} .tg.on::after{left:14px}
+  .tg.dis{opacity:.4}
+
+  .body{padding:6px 0}
+  .row{display:flex;align-items:baseline;gap:0;padding:4px 10px;font:12px/1.3 var(--mono)}
+  .row + .row{border-top:1px solid var(--rule)}
+  .row .rk{flex:none;width:20px;font:10px/1 var(--mono);color:var(--faint)}
+  .row .sc{flex:none;width:46px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+  .row .sc.neg{color:var(--ink)}
+  .row .dp{flex:none;width:34px;color:var(--faint);font-size:10.5px}
+  .row .pv{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--muted)}
+  .row.top .pv{color:var(--ink)}
+  .row.hov{background:var(--fill-1)}
+  .body.stale{opacity:.5}
+  .quiet{padding:14px 12px;text-align:center;font:11.5px/1.5 var(--sans);color:var(--faint)}
+  .quiet .lnk{color:var(--accent);text-decoration:underline;text-underline-offset:2px}
+
+  .srcmenu{position:relative;margin:-1px 0 0 1px;width:220px;background:var(--fill-0);
+    border:1px solid var(--rule-strong);border-radius:6px;box-shadow:0 6px 18px rgba(0,0,0,.18);padding:4px}
+  .mi{display:flex;align-items:center;gap:6px;width:100%;padding:6px 8px;border:0;border-radius:4px;
+    background:none;font:11.5px/1 var(--sans);color:var(--ink);text-align:left}
+  .mi.cur{background:var(--sel)}
+  .mi .tick{flex:none;width:10px;color:var(--muted);font-size:10px}
+  .mi .sz{margin-left:auto;color:var(--muted);font:10px/1 var(--mono)}
+  .sep{height:1px;background:var(--rule);margin:4px 2px}
+
+  .optmenu{width:200px;background:var(--fill-0);border:1px solid var(--rule-strong);border-radius:6px;
+    box-shadow:0 6px 18px rgba(0,0,0,.18);padding:10px 12px;margin:-1px 2px 0 auto}
+  .optmenu .oh{font:9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--faint);margin-bottom:8px}
+  .optrow{display:flex;align-items:center;justify-content:space-between;padding:5px 0;font-size:12px;color:var(--ink)}
+  .stp{width:78px;height:22px;border:1px solid var(--rule-strong);border-radius:4px;display:flex;align-items:center;
+    justify-content:space-between;padding:0 6px;font:10px/1 var(--mono);color:var(--muted);background:var(--fill-0)}
+
+  .lab{position:absolute;font:9px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;
+    color:var(--accent);background:var(--accent-bg);border:1px solid var(--accent-rule);
+    border-radius:2px;padding:3px 5px;z-index:5}
+  .rel{position:relative}
+  a{color:var(--accent)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <p class="kicker">Chessgui &middot; Game Workspace &middot; Game Details &middot; Engine Section</p>
+  <h1>Live analysis, drawn from the concept</h1>
+  <p>The last Section without a wireframe. <span class="mono">spec/5-game-workspace.md</span> §5.6 still lists
+     Engine as <b>&ldquo;to be added&rdquo;</b>, and <span class="mono">GameSection.svelte</span> renders it through
+     the generic placeholder branch &mdash; the honest thing to do until a Section is actually designed. This reads
+     the concept you gave me against the shell contract already built (§5.4.2, and the header pattern already coded
+     in <span class="mono">GameSection.svelte</span>) and against what <span class="mono">sections.js</span> already
+     guessed about this Section before anyone drew it.</p>
+  <p><b>Nothing here has passed G1.</b> Six drawings and eight questions, every one now settled, withdrawn, or
+     answered &mdash; see §6. This is Rev A.</p>
+  <div class="meta">
+    <span class="chip">Width <b>360px</b> &middot; fixed</span>
+    <span class="chip">Floor &mdash; <b>60px, one PV line</b> &middot; settled 21 Sep</span>
+    <span class="chip">Height behaviour &mdash; <b>sized to content</b> &middot; settled 21 Sep</span>
+    <span class="chip">Ceiling &mdash; <b>108px, 3 lines</b> &middot; settled 21 Sep</span>
+    <span class="chip">Control &mdash; <b>switch, titlebar</b> &middot; exception, settled 21 Sep</span>
+    <span class="chip">Bar relationship &mdash; <b>loose, live wins while running</b> &middot; settled 21 Sep</span>
+    <span class="chip">Score format &mdash; <b>reuses <code>evalScore()</code></b></span>
+  </div>
+</header>
+
+<h2 class="sec">1 &middot; What the concept already lines up with the shell</h2>
+<p class="lede">Before drawing anything new, I read your screenshot against §5.4.2's Section Header contract and
+   against the code that already implements it. Most of it lines up cleanly &mdash; which is worth saying, because
+   it means the concept isn't fighting the shell.</p>
+
+<table class="rules">
+  <tr><th>Concept element</th><th>Header slot</th><th>Status</th></tr>
+  <tr><td class="mono">ENGINE</td><td>Title</td><td>Matches every other Section.</td></tr>
+  <tr><td class="mono">Stockfish 16 &#9662;</td><td>Source</td><td>Matches the shape §5.4.2 requires for a source
+      selector (current value + disclosure), but the menu itself needs drawing &mdash; see EN&#8209;03.</td></tr>
+  <tr><td>the on/off switch</td><td>Control</td><td><b>Settled 21 Sep &mdash; the switch, kept as a documented
+      exception.</b> <span class="mono">sections.js</span> already declares <code>control: true</code> for this
+      Section; <span class="mono">GameSection.svelte</span>'s generic 26px icon-button rendering (the
+      <code>power</code> glyph, <span class="mono">SectionToggle</span> in <span class="mono">icons.js</span>)
+      remains what every <i>other</i> Section's control would use, since Engine is the only one that needed the
+      slot enough to draw it. The switch is the exception, recorded here rather than slipped in silently &mdash;
+      see Q1. At G2, <span class="mono">GameSection.svelte</span> needs a per-Section override for it.
+      <br><b>Superseded &mdash; see Q1.</b> There is no override and no exception: the control is the shared
+      icon button with a <span class="mono">toggle-left</span>/<span class="mono">toggle-right</span> glyph,
+      and the <code>power</code> glyph is no longer what a control would use.</td></tr>
+  <tr><td>the two evaluation lines</td><td>Body</td><td>Not a header slot &mdash; this is the Section's content,
+      drawn in §2.</td></tr>
+  <tr><td>&mdash;</td><td>Status</td><td><span class="mono">sections.js</span> reserves this slot
+      (<code>status: true</code>), and the concept shows nothing here either. <b>Settled 14 Sep:</b> depth
+      is withdrawn from the header and stays per-row (EN-02). Left open in Q3: whether the slot is empty for
+      good, or <code>status: true</code> should come off this Section's declaration entirely.</td></tr>
+  <tr><td>&mdash;</td><td>Options (&#8943;)</td><td>Not drawn in the concept, but reserved in code.
+      <b>Settled 21 Sep (Q5):</b> lines and depth limit only, a convenience surface &mdash; not a second home
+      for engine settings that belong in Settings. See EN&#8209;05.</td></tr>
+</table>
+
+<h2 class="sec">2 &middot; Anatomy, at the Section's real 360px</h2>
+<p class="lede">Every drawing below is actual size. Score, depth and principal-variation formatting reuse
+   <span class="mono">evalScore()</span> and the <span class="mono">d&lt;depth&gt;</span> convention already
+   built for persisted evaluations in <span class="mono">CommentBanner.svelte</span> &mdash; the same number
+   should not gain a second notation just because it now arrives live.</p>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">EN-01</span><h3>Off</h3></div>
+  <p class="wf-sub">No search running. The header is fully populated &mdash; source, control, options, collapse
+     &mdash; and the body states plainly what pressing the control does, rather than sitting empty.</p>
+  <div class="wf-canvas">
+    <div class="sec-blk">
+      <div class="sec-hd">
+        <span class="ttl">ENGINE</span>
+        <span class="src">Stockfish 16<span style="font-size:8px">&#9662;</span></span>
+        <span class="sp"></span>
+        <span class="tg" title="Control, off"></span>
+        <span class="ic dim" title="Options">&#8943;</span>
+        <span class="ic dim" title="Collapse">&#9652;</span>
+      </div>
+      <div class="quiet">Off &middot; press the switch to analyze this position</div>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">EN-02</span><h3>Analyzing &mdash; MultiPV 2</h3></div>
+  <p class="wf-sub">Redrawn at true scale from your concept. Rank is a plain number, not a badge &mdash; a coloured
+     chip per row would compete with the score, which is the thing worth reading fastest. The PV truncates with
+     an ellipsis rather than wrapping, the same rule the Move List uses for a long comment.</p>
+  <div class="wf-canvas">
+    <div class="sec-blk">
+      <div class="sec-hd">
+        <span class="ttl">ENGINE</span>
+        <span class="src">Stockfish 16<span style="font-size:8px">&#9662;</span></span>
+        <span class="sp"></span>
+        <span class="tg on" title="Control, on"></span>
+        <span class="ic dim" title="Options">&#8943;</span>
+        <span class="ic dim" title="Collapse">&#9652;</span>
+      </div>
+      <div class="body">
+        <div class="row top"><span class="rk">1</span><span class="sc">+0.24</span><span class="dp">d28</span><span class="pv">19. Nd2 Bd8 20. Nb3 Bb6 21. Rc1</span></div>
+        <div class="row"><span class="rk">2</span><span class="sc">+0.18</span><span class="dp">d28</span><span class="pv">19. Qd2 h6 20. a4 bxa4 21. Rxa4</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="capn">The status slot is empty &mdash; depth stays per-row rather than repeating in the header.
+     Settled 14 Sep; see Q3.</p>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">EN-03</span><h3>Source open &mdash; the engine picker</h3><span class="chip ok" style="margin:0">approved 21 Sep</span></div>
+  <p class="wf-sub">Drawn to match the source-selector pattern §5.4.2 already requires and
+     <span class="mono">GameSection.svelte</span> already codes for Explorer's library menu, line for line:
+     current value marked, then the list, then a footer that names the destination rather than describing it.
+     Here that's <b>Settings</b>, and it jumps straight to the Engines section there (§3.4.8's
+     <span class="mono">settings-engines.html</span>) rather than landing on Settings' own front page &mdash;
+     the same shortcut behaviour, aimed one level deeper because there's only one place in Settings this menu
+     could mean. Q2 settles that analysis can't be on without an engine selected, which is a reason
+     &ldquo;None&rdquo; might belong leading this list too, the way Explorer's library source leads with it
+     &mdash; not drawn above, since nothing yet forces the choice between an explicit <i>None</i> row and simply
+     never having selected an engine.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+      <div class="rel" style="width:360px">
+        <div class="sec-blk">
+          <div class="sec-hd">
+            <span class="ttl">ENGINE</span>
+            <span class="src">Stockfish 16<span style="font-size:8px">&#9652;</span></span>
+            <span class="sp"></span>
+            <span class="tg on" title="Control, on"></span><span class="ic dim">&#8943;</span><span class="ic dim">&#9652;</span>
+          </div>
+          <div class="body">
+            <div class="row top"><span class="rk">1</span><span class="sc">+0.24</span><span class="dp">d28</span><span class="pv">19. Nd2 Bd8 20. Nb3 Bb6</span></div>
+            <div class="row"><span class="rk">2</span><span class="sc">+0.18</span><span class="dp">d28</span><span class="pv">19. Qd2 h6 20. a4 bxa4</span></div>
+          </div>
+        </div>
+        <div class="srcmenu">
+          <button class="mi cur"><span class="tick">&#10003;</span>Stockfish 16<span class="sz">UCI</span></button>
+          <button class="mi"><span class="tick"></span>Stockfish 17<span class="sz">UCI</span></button>
+          <button class="mi"><span class="tick"></span>Komodo Dragon<span class="sz">UCI</span></button>
+          <div class="sep"></div>
+          <button class="mi">Settings<span class="sz">&rsaquo;</span></button>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">EN-04</span><h3>No engine configured</h3></div>
+  <p class="wf-sub">Mirrors Move Explorer's &ldquo;No library selected&rdquo; state (§5.6.3): the body message sits
+     at the Section's floor, and the footer shortcut is the way out. Same shape, different destination. The
+     switch is drawn disabled and off &mdash; there's nothing to turn on &mdash; which is now Q2's settled rule,
+     not just this drawing's assumption.</p>
+  <div class="wf-canvas">
+    <div class="sec-blk">
+      <div class="sec-hd">
+        <span class="ttl">ENGINE</span>
+        <span class="src" style="color:var(--faint)">No engine<span style="font-size:8px">&#9662;</span></span>
+        <span class="sp"></span>
+        <span class="tg dis" title="Control, disabled"></span><span class="ic dim">&#8943;</span><span class="ic dim">&#9652;</span>
+      </div>
+      <div class="quiet">No engine configured &middot; <span class="lnk">Add one in Settings</span></div>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">EN-05</span><h3>Options &mdash; lines and depth</h3></div>
+  <p class="wf-sub">This opens from the Section's own options control (&#8943;) &mdash; the header's right cluster,
+     not a separate menu bar. It hangs the same way EN-03's source menu does: flush under the header, no gap,
+     rather than floating as a detached box. <span class="mono">GameSection.svelte</span>'s real
+     <span class="mono">.srcmenu</span> is the existing pattern this copies &mdash; positioned, tucked up
+     <span class="mono">-2px</span> against the header it drops from. The difference is which edge: the source
+     menu hangs left because the source control sits in the header's left cluster; this one hangs
+     <b>right</b>, under &#8943; itself, because the options control sits in the right cluster with status,
+     control and collapse. <b>Settled 21 Sep (Q5):</b> engine settings belong in Settings, not duplicated here
+     &mdash; this menu surfaces only the two worth changing while watching the Section itself, <b>lines</b> and
+     <b>depth</b>. Threads and hash are gone from the drawing; they're a Settings concern, touched rarely enough
+     that reaching this menu for them would be the wrong shortcut to build. <b>Settled 21 Sep:</b> the lines
+     stepper is bounded <b>1&ndash;3</b>, tied directly to this Section's own ceiling (Q5, Q6) &mdash; three
+     lines is as high as the Section ever grows, so the control can't ask for a fourth.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+      <div class="rel" style="width:360px">
+        <div class="sec-blk">
+          <div class="sec-hd">
+            <span class="ttl">ENGINE</span>
+            <span class="src">Stockfish 16<span style="font-size:8px">&#9662;</span></span>
+            <span class="sp"></span>
+            <span class="tg on" title="Control, on"></span><span class="ic dim optn" title="Options">&#8943;</span><span class="ic dim">&#9652;</span>
+          </div>
+          <div class="body">
+            <div class="row top"><span class="rk">1</span><span class="sc">+0.24</span><span class="dp">d28</span><span class="pv">19. Nd2 Bd8</span></div>
+            <div class="row"><span class="rk">2</span><span class="sc">+0.18</span><span class="dp">d28</span><span class="pv">19. Qd2 h6 20. a4 bxa4</span></div>
+          </div>
+        </div>
+        <div class="optmenu">
+          <div class="oh">Analysis</div>
+          <div class="optrow">Lines (MultiPV)<span class="stp">&#8722;&nbsp;&nbsp;2&nbsp;&nbsp;+</span></div>
+          <div class="optrow">Depth limit<span class="stp">&#8722;&nbsp;&nbsp;24&nbsp;&nbsp;+</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">EN-06</span><h3>Off, same position &mdash; retained, not cleared</h3></div>
+  <p class="wf-sub">Settled with Q8: switching off doesn't wipe what was just computed. The rows stay exactly
+     as last shown, dimmed to read as stopped rather than live &mdash; the switch position is the primary cue
+     (§9.3: never colour alone), dimming is the secondary one. This is a different state from EN&#8209;01, which
+     is off because nothing has ever run here. The Evaluation Bar, elsewhere in the Game View, does
+     <b>not</b> keep mirroring these rows once the switch is off &mdash; it's already back to
+     <span class="mono">[%eval]</span> or neutral by the time this is on screen (Q8).</p>
+  <div class="wf-canvas">
+    <div class="sec-blk">
+      <div class="sec-hd">
+        <span class="ttl">ENGINE</span>
+        <span class="src">Stockfish 16<span style="font-size:8px">&#9662;</span></span>
+        <span class="sp"></span>
+        <span class="tg" title="Control, off"></span>
+        <span class="ic dim" title="Options">&#8943;</span>
+        <span class="ic dim" title="Collapse">&#9652;</span>
+      </div>
+      <div class="body stale">
+        <div class="row top"><span class="rk">1</span><span class="sc">+0.24</span><span class="dp">d28</span><span class="pv">19. Nd2 Bd8 20. Nb3 Bb6 21. Rc1</span></div>
+        <div class="row"><span class="rk">2</span><span class="sc">+0.18</span><span class="dp">d28</span><span class="pv">19. Qd2 h6 20. a4 bxa4 21. Rxa4</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="capn">Step to a different ply from here and this clears &mdash; on or off makes no difference once
+     you've left the position. Come back to this exact position later and it's EN&#8209;01 again, not this: live
+     data never survives navigation, not even a round trip back to where it started.</p>
+</figure>
+
+<h2 class="sec">3 &middot; What settles quietly, and what doesn't</h2>
+<div class="box ok">
+  <h4>Already decided, not by this document</h4>
+  <p><span class="mono">sections.js</span> currently guesses this Section is <b>hideable</b>, uses the
+     <b>source</b>, <b>status</b>, <b>control</b> and <b>options</b> slots, and floors at <b>104px</b> as a
+     Fixed-height Section. I'm treating hideable, source, control and options as settled &mdash; they match the
+     concept and cost nothing to keep. <b>Status</b> is reserved but goes undrawn here (Q3): nothing in this
+     revision fills it, so it's a candidate to drop from the declaration rather than a slot I'm treating as
+     spoken for. The <b>104px / Fixed</b> pairing is superseded outright, not just provisional &mdash; see the
+     next paragraph.</p>
+  <p><b>Settled 21 Sep:</b> the control keeps your concept's switch, as a named exception to &ldquo;fill in
+     rather than reinvent&rdquo; rather than a silent one (Q1) &mdash; <b>since superseded: the control is the
+     shared icon button with a toggle glyph, and the exception is retired (see Q1)</b>; PV rows report only, no interaction, joining
+     Move Explorer's rule rather than carving a second exception to it (Q4); height is <b>sized to content</b>,
+     not Fixed (Q6) &mdash; floor 60px for one PV line, ceiling 108px capped at 3 lines, matching Explorer's
+     own floor and ceiling exactly (Q5, Q6); the
+     options menu (&#8943;) carries only <b>lines</b> and <b>depth limit</b> &mdash; engine settings otherwise
+     belong in Settings, not duplicated here (Q5), threads and hash are out of EN-05 entirely; and the
+     Evaluation Bar relationship is loose, not owned &mdash; live wins the bar while this Section is running for
+     the current position, <span class="mono">[%eval]</span> or neutral otherwise, never both, and turning the
+     switch off doesn't clear this Section's own rows the way leaving the position does (Q8, EN&#8209;06).</p>
+</div>
+<div class="box ok">
+  <h4>Nothing left open</h4>
+  <p>The ceiling was the last item &mdash; <b>settled 21 Sep, option A:</b> capped at <b>3 lines</b>,
+     <code>30 + 6 + 24&times;3 = 108px</code>, matching Move Explorer's own ceiling exactly. Every question
+     raised against the first draft now has a recorded resolution in §6 (Q7 withdrawn as a wrong premise, the
+     rest settled).</p>
+</div>
+
+<h2 class="sec">4 &middot; Scope &mdash; a live view, not a game-analysis feature</h2>
+<div class="box ok">
+  <h4>Corrected 21 Sep</h4>
+  <p>This Section shows a live evaluation of <b>the current position only</b>, for as long as it's on. It has
+     no write path to <span class="mono">[%eval]</span> and no relationship to whether one exists: it runs the
+     same way whether the game carries persisted evaluations or not, whether they came from the same engine
+     selected here or a different one, and whether they're stale or current. It doesn't read them to decide what
+     to show, and it doesn't produce them.</p>
+  <p>A feature that walks a whole game and computes or rewrites <span class="mono">[%eval]</span> for every move
+     &mdash; batch or on-demand game analysis &mdash; is a genuinely different feature. It isn't drawn here,
+     isn't proposed here, and this Section's design doesn't assume it's coming. Q7 asked a question shaped by
+     that other feature and has been withdrawn rather than answered as asked &mdash; see §6.</p>
+</div>
+
+<h2 class="sec">5 &middot; Reading the spec's own open thread</h2>
+<p class="lede">§5.4.1 (Evaluation Bar) doesn't just leave this Section undrawn &mdash; it explicitly hands it
+   three unresolved questions: <i>&ldquo;The bar's source priority, its retention behaviour when an engine stops,
+   and its relationship to any Section reporting evaluations are specified with the Engine Section.&rdquo;</i>
+   None of the three are decidable from your concept alone, so they're carried into §6 rather than guessed at
+   here. §4's scope correction bears directly on all three: whatever the Bar ends up doing, this Section is a
+   read-only, ephemeral source to it &mdash; never a writer of <span class="mono">[%eval]</span>, regardless of
+   how the questions below resolve.</p>
+
+<h2 class="sec">6 &middot; Questions &mdash; before this can pass G1</h2>
+<ol class="q">
+  <li style="border-color:var(--ok);background:var(--ok-bg)">
+    <div class="qn"><span class="qtag" style="background:var(--ok)">Q1 &middot; settled 21 Sep</span><span class="qtag rev">superseded</span><b class="qt">Does the control stay the shared icon button, or become a switch?</b></div>
+
+    <div class="rev-note">
+      <p><b>Superseded in the Game Info round &mdash; <span class="mono">game-info-g1.html</span>.</b>
+         The control is the <b>shared 26px icon button</b> after all, carrying Lucide&rsquo;s
+         <span class="mono">toggle-left</span> / <span class="mono">toggle-right</span>. The Section Header
+         now has <b>no exceptions</b>: every Section fills the same slot with the same widget.</p>
+      <p>The exception closed on its own argument rather than against it. What Q1 objected to below was the
+         <i>glyph</i> &mdash; a power symbol &ldquo;shows what pressing it does while showing nothing about
+         what it is doing now&rdquo; &mdash; and a toggle draws the state instead of describing it: the
+         knob&rsquo;s position <i>is</i> the answer. That was the one thing the icon button could not do, and
+         it can now do it. Everything the answer below says about why a watched state is not an action still
+         holds; it is why the glyph is a toggle rather than why the widget is a switch.</p>
+      <p>Built and verified. The button keeps <span class="mono">role=&quot;switch&quot;</span> and
+         <span class="mono">aria-checked</span> &mdash; the picture changed, not the semantics. Running is
+         drawn in <span class="mono">--ok</span>, keeping the across-the-panel reading the green switch gave.</p>
+      <p>The glyph is drawn at <b>20px</b> where the header&rsquo;s other icons are 13, decided after rendering
+         it at 13, 15, 16, 17, 18 and 20 on the real 360px header. <b>Not because it fails small</b> &mdash; at
+         13px the knob&rsquo;s position is distinguishable, and the colour carries it besides. Because this is
+         the only control in the panel that reports an <i>ongoing</i> state: the ellipsis and the chevron are
+         read when the reader goes looking for them, and this one is read while a search is running, at a
+         glance, from wherever the eye happens to be. Legibility at a glance is worth more here than uniformity
+         with glyphs that are only ever read on purpose. The 26px button is unchanged, so the control column
+         does not move; what differs is the mark inside it.</p>
+      <p><b>Still to do at G3:</b> &sect;5.4.2 names this exception in prose (&ldquo;One exception is
+         specified&hellip;&rdquo;) and &sect;5.6.4&rsquo;s derived table repeats it (&ldquo;Engine control &mdash;
+         <b>A switch</b>, and the only exception to the shared Section Header&rdquo;). Both need retiring, and
+         the reasoning is worth keeping as <i>why the glyph is a toggle</i> rather than deleted with the
+         exception it used to justify.</p>
+    </div>
+
+    <p class="rev-was">What was decided on 21 Sep, kept as the record:</p>
+    <p><b>Keeps the switch, documented as an exception.</b> It genuinely diverges from the pattern, and not in
+       the way hiding status does. Status being optional is variation the pattern already accounts for: §5.4.2
+       lists Source, Status and Control as each independently optional, and Explorer and Timeline already show
+       it's normal for one Section to use a slot and another not to, or for the same slot to carry different
+       content (a game count, an evaluation). That's presence and content varying. <b>The widget itself never
+       has</b> &mdash; every Section that has ever drawn a status shows it as the same muted mono text, every
+       source as the same truncating button-plus-chevron. The spec is explicit about why: the header is
+       &ldquo;a common Section Header&hellip; which Sections fill in <i>rather than reinvent</i>.&rdquo; A switch
+       is a second widget for a slot that has, so far, only ever had one shape.</p>
+    <p>The case for keeping it anyway: Control has no real precedent yet to diverge from &mdash; Engine is the
+       <i>first</i> Section to ever populate the slot. <span class="mono">GameSection.svelte</span>'s generic
+       icon-button rendering is a placeholder default, written before any Section asked for a control, not a
+       decision reached by designing one. And &ldquo;is this on&rdquo; is a different kind of control than
+       &ldquo;open this menu&rdquo; or &ldquo;collapse this Section,&rdquo; reading faster as a switch than as a
+       button with two icon states.</p>
+    <p>Treated the way §7.4 treats a Lucide exception: deliberate, named, and recorded here rather than slipped
+       in silently, so a future Section that also wants a control isn't left guessing which precedent it's
+       supposed to follow &mdash; the generic icon button remains the default for everyone else. At G2,
+       <span class="mono">GameSection.svelte</span> needs a per-Section override for Engine's control rather
+       than the one branch every other control renders through.</p>
+  </li>
+  <li style="border-color:var(--ok);background:var(--ok-bg)">
+    <div class="qn"><span class="qtag" style="background:var(--ok)">Q2 &middot; settled 21 Sep</span><b class="qt">Can the Section be &ldquo;on&rdquo; with no engine selected?</b></div>
+    <p><b>No.</b> The control is disabled whenever the source reads &ldquo;No engine&rdquo; &mdash; EN-04 already
+       drew it that way and turns out to have been right. If a future source list offers an explicit
+       <i>None</i> entry the way Explorer's library source does, selecting it forces the control off the same
+       way. If MultiPV/depth/etc. should persist per engine choice, that's still a live question for EN-05, but
+       it no longer blocks trusting this rule.</p>
+  </li>
+  <li style="border-color:var(--ok);background:var(--ok-bg)">
+    <div class="qn"><span class="qtag" style="background:var(--ok)">Q3 &middot; settled 14 Sep</span><b class="qt">What goes in the status slot?</b></div>
+    <p><b>Nothing.</b> I'd proposed the top line's depth (<code>d28</code>) so the search's progress was
+       readable without opening a row; withdrawn &mdash; depth stays where it already is, per row, and the
+       header shows title, source, control, options and collapse only (EN-02, EN-05). What's still open is
+       narrower: <span class="mono">sections.js</span> declares <code>status: true</code> for this Section, and
+       with nothing proposed to put there, that flag may want to come off entirely rather than stay reserved
+       for a slot that's always empty &mdash; a small G2 cleanup, not a wireframe question, unless something
+       else earns the slot first.</p>
+  </li>
+  <li style="border-color:var(--ok);background:var(--ok-bg)">
+    <div class="qn"><span class="qtag" style="background:var(--ok)">Q4 &middot; settled 21 Sep</span><b class="qt">Are PV rows interactive?</b></div>
+    <p><b>No &mdash; rows report, they don't do anything when pressed.</b> The current app is a viewer for
+       played moves: it doesn't edit or create them. Clicking a PV row to create a variation, or to play the
+       suggested move onto the board, belongs to interactive analysis &mdash; on the roadmap, not in scope now,
+       the same relationship Move Explorer already has with a future analysis board of its own spec. This
+       Section joins Explorer in &ldquo;reports; does not navigate&rdquo; rather than being a second, narrower
+       exception to it.</p>
+    <p>Concretely: no hover state, no cursor change, no board-arrow preview on a PV row. EN-02's rows are drawn
+       correctly as-is &mdash; nothing there implied interactivity, so nothing needed redrawing.</p>
+  </li>
+  <li style="border-color:var(--ok);background:var(--ok-bg)">
+    <div class="qn"><span class="qtag" style="background:var(--ok)">Q5 &middot; settled 21 Sep</span><b class="qt">Do MultiPV/threads/hash belong in this Section at all?</b></div>
+    <p><b>Engine settings belong in Settings.</b> This Section's options menu isn't a second configuration
+       surface &mdash; it surfaces the couple of settings worth reaching mid-analysis for convenience, and only
+       those. Named explicitly: <b>lines (MultiPV)</b> and <b>depth</b>. Threads and hash are dropped from
+       EN-05; they stay a Settings concern and aren't drawn here at all.</p>
+    <p>That leaves a real gap on the Settings side, worth naming rather than quietly working around:
+       <span class="mono">spec/database-schema.md</span> §5.3 is explicit that the <span class="mono">engines</span>
+       table stores only name, version, URL and binary path &mdash; &ldquo;analysis settings such as search
+       depth, threads, or hash size&rdquo; are named as out of scope for it, and reusable engine profiles are
+       floated only as a maybe, modeled separately if they happen at all. Wherever threads and hash end up
+       living, it isn't decided yet and it isn't this document's decision &mdash; it belongs to whatever draws
+       that part of Settings, not to this Section for lack of anywhere else to put them.</p>
+    <p>Depth is worth flagging as a name overloaded twice already. EN-02's rows already show <b>reached</b>
+       depth per line (<span class="mono">d28</span>, live, read-only). EN-05's <b>depth limit</b> is a
+       different thing &mdash; the search's configured ceiling, the <span class="mono">depth</span> in
+       <span class="mono">go depth N</span> and the same attribute the PGN Engine Evaluation Context Extension
+       calls <span class="mono">depth</span> for a stored analysis. Same word, two meanings already in this one
+       Section; the options row is labelled &ldquo;Depth limit&rdquo; rather than bare &ldquo;Depth&rdquo; so
+       the two don't get read as the same number.</p>
+    <p><b>Max lines &mdash; settled 21 Sep, option A:</b> capped at <b>3</b>, the same number and the same
+       reasoning Move Explorer already used for its own ceiling &mdash; a position has a point past which
+       another row stops earning its space, and three is where Explorer already drew that line for candidate
+       moves. Ties this Section's ceiling to Explorer's exactly: <b>108px</b> for both. See Q6 for the
+       arithmetic.</p>
+  </li>
+  <li style="border-color:var(--ok);background:var(--ok-bg)">
+    <div class="qn"><span class="qtag" style="background:var(--ok)">Q6 &middot; settled 21 Sep</span><b class="qt">Height behaviour &mdash; fixed, or sized to content?</b></div>
+    <p><b>Sized to content</b> &mdash; the same shape as Move Explorer, not Eval Timeline's fixed 110px. Its
+       arithmetic carries over directly, row for row:</p>
+    <table class="rules">
+      <tr><th>Part</th><th>Height</th><th>Composed as</th></tr>
+      <tr><td>Section header</td><td class="n">30</td><td>The shell's (<span class="mono">SECTION_HEADER_H</span>)</td></tr>
+      <tr><td>Body padding</td><td class="n">6</td><td>3px top and bottom, matching Explorer</td></tr>
+      <tr><td>Row</td><td class="n">24</td><td>Explorer's own row height &mdash; no reason for this Section's
+          rows to land on a different grid</td></tr>
+      <tr class="yes"><td>Floor</td><td class="n"><b>60</b></td><td>30 + 6 + 24 &mdash; one PV line, the least a
+          running search can show</td></tr>
+    </table>
+    <p>The floor lands on exactly Explorer's own 60px, which isn't a coincidence worth reading much into
+       &mdash; it's the same header, the same padding, and rows built to the same grid. <b>The ceiling matches
+       too, settled by Q5:</b> capped at <b>3 lines</b>, the same cap and the same reasoning Explorer already
+       used for its own ceiling. <code>30 + 6 + 24n</code> at n=3 is <b>108px</b> &mdash; identical to
+       Explorer's, not just the same shape.</p>
+    <p>Consequence for <span class="mono">sections.js</span>: the current placeholder (<code>floor: 104, height:
+       104</code>, i.e. Fixed) is the wrong shape now, not just the wrong number &mdash; it wants
+       <code>floor: 60, ceiling: 108</code>, the exact pair Explorer's own entry uses, with
+       <code>height</code> dropped rather than adjusted.</p>
+  </li>
+  <li class="x">
+    <div class="qn"><span class="qtag x">Q7 &middot; withdrawn 21 Sep, wrong premise</span><b class="qt">Does analysis restart on every ply, or only the current one?</b></div>
+    <p>This question assumed a feature that isn't this Section: something that walks the game and computes or
+       rewrites <span class="mono">[%eval]</span> across many moves, where &ldquo;does it restart per ply&rdquo;
+       would be a real cost/design tradeoff. <b>That's a game-analysis feature and it's a different thing
+       entirely</b> &mdash; not drawn here, not proposed here, not on this Section's roadmap as far as this
+       document goes.</p>
+    <p>What this Section actually is: a live view of the <b>current position</b>, full stop. It never writes an
+       <span class="mono">[%eval]</span>. It has no relationship to whether the game carries persisted
+       evaluations at all &mdash; it can run with none present, alongside ones from a different engine entirely,
+       or alongside ones from the same engine, and none of that changes what it shows, because it isn't reading
+       them either. Given that, the question this was reaching for isn't really open: the Section shows the
+       current position by definition, so when the current position changes &mdash; the transport steps to a
+       new ply &mdash; what it's live-analyzing changes with it, the same way the board itself does. There's no
+       separate &ldquo;hold still until pressed again&rdquo; mode to weigh against that; holding still would
+       mean it stops being a live view of the current position.</p>
+  </li>
+  <li style="border-color:var(--ok);background:var(--ok-bg)">
+    <div class="qn"><span class="qtag" style="background:var(--ok)">Q8 &middot; settled 21 Sep</span><b class="qt">The Evaluation Bar relationship (§5), concretely</b></div>
+    <p><b>Loose, not owned.</b> The bar and this Section stay two separate displays that happen to agree when
+       they can &mdash; the bar never becomes a mirror this Section drives, and this Section never reads the
+       bar's value either.</p>
+    <table class="rules">
+      <tr><th>Section state</th><th>Bar shows</th></tr>
+      <tr class="yes"><td>Running, for the current position</td><td>The live top-line evaluation &mdash; and it
+          may visibly move as the search deepens, the same way the bar already animates between plies (§5.4.1's
+          existing transition, not a new one).</td></tr>
+      <tr><td>Off (or never run here), <span class="mono">[%eval]</span> present</td><td>The persisted
+          evaluation, exactly as before this Section existed.</td></tr>
+      <tr><td>Off, no <span class="mono">[%eval]</span></td><td>The documented neutral fill (§5.4.1) &mdash;
+          unchanged.</td></tr>
+    </table>
+    <p><b>Never both.</b> Live and persisted are never shown together or blended &mdash; one or the other, by
+       whether this Section is actively running for the position on screen right now.</p>
+    <p><b>Retention has two different answers depending on what you're asking about,</b> which is exactly why it
+       needed spelling out:</p>
+    <ul>
+      <li>Turning the switch off <b>does not clear</b> this Section's rows. The last computed lines stay on
+          screen, same position, switch visibly off &mdash; EN-06. The <i>bar</i> still reverts to
+          <span class="mono">[%eval]</span>/neutral immediately per the table above; only the Section's own
+          display lingers.</li>
+      <li>Stepping to a different ply <b>does</b> clear it &mdash; on or off, the data belonged to the position
+          you left. Returning to that same position later shows nothing, not a recalled result:
+          <b>live data doesn't persist across navigation</b>, at all, ever. There's no per-position cache to
+          warm.</li>
+    </ul>
+  </li>
+</ol>
+
+<h2 class="sec">7 &middot; What this doesn't cover</h2>
+<p class="lede">Game Info is still undrawn too (§5.6 lists both placeholders together) and isn't touched here.
+   Nothing above proposes a data layer for live UCI analysis &mdash; that's implementation, and arrives at G2 once
+   the questions above are answered and the shape of this Section is agreed.</p>
+
+</div>
+</body>
+</html>

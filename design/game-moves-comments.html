@@ -1,0 +1,445 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chessgui — Moves · comment display</title>
+<style>
+  :root{
+    --paper:#f7f7f5; --ink:#1b1b19; --muted:#6b6b66; --faint:#94948e;
+    --rule:#d6d6d1; --rule-strong:#adada6;
+    --fill-0:#ffffff; --fill-1:#ececea; --fill-2:#dedeDA; --fill-3:#cfcfc9;
+    --accent:#8a5a1c; --accent-bg:#f6ecdc; --accent-rule:#d9b478;
+    --warn:#8a2c2c; --warn-bg:#f8e9e9; --ok:#3f6b3f;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Inter,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#141413; --ink:#eceae4; --muted:#a3a099; --faint:#7d7a73;
+      --rule:#333330; --rule-strong:#55554f;
+      --fill-0:#1e1e1c; --fill-1:#2a2a27; --fill-2:#353531; --fill-3:#43433d;
+      --accent:#d9a55f; --accent-bg:#2c2418; --accent-rule:#6b5326;
+      --warn:#e08a8a; --warn-bg:#2e1c1c; --ok:#8fb98f;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.55 var(--sans)}
+  .wrap{max-width:1120px;margin:0 auto;padding:56px 28px 120px}
+
+  header.doc{border-bottom:2px solid var(--ink);padding-bottom:22px;margin-bottom:34px}
+  .kicker{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  header.doc h1{font-size:30px;line-height:1.15;margin:12px 0 8px;letter-spacing:-.02em}
+  header.doc p{margin:0;color:var(--muted);max-width:66ch}
+  .meta{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}
+  .chip{font:11px/1 var(--mono);padding:6px 9px;border:1px solid var(--rule-strong);border-radius:3px;color:var(--muted)}
+  .chip b{color:var(--ink);font-weight:600}
+  .chip.open{border-style:dashed;border-color:var(--accent);color:var(--accent)}
+
+  h2.sec{font:11px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+    margin:52px 0 0;padding-bottom:8px;border-bottom:1px solid var(--rule)}
+
+  figure.wf{margin:30px 0 0;padding:0}
+  .wf-head{display:flex;align-items:baseline;gap:12px;margin-bottom:4px;flex-wrap:wrap}
+  .wf-id{font:11px/1 var(--mono);color:var(--paper);background:var(--ink);padding:5px 7px;border-radius:3px;letter-spacing:.06em}
+  .wf-id.rec{background:var(--accent)}
+  .wf-id.no{background:var(--warn)}
+  .wf-head h3{margin:0;font-size:17px;letter-spacing:-.01em}
+  .wf-sub{color:var(--muted);margin:0 0 14px;font-size:13px;max-width:72ch}
+  .wf-canvas{background:var(--fill-0);border:1px solid var(--rule);border-radius:4px;padding:24px 20px;overflow-x:auto}
+
+  /* ---- the Section, alone, at its real width ---- */
+  .sec-blk{width:360px;border:1.5px solid var(--rule-strong);background:var(--fill-0);
+    display:flex;flex-direction:column;overflow:hidden}
+  .sec-hd{flex:none;height:30px;display:flex;align-items:center;gap:8px;padding:0 8px 0 12px;
+    background:var(--fill-1);border-bottom:1px solid var(--rule);font:11px/1 var(--sans)}
+  .sec-hd .ttl{color:var(--ink);font-weight:600;white-space:nowrap}
+  .sec-hd .sp{flex:1}
+  .sec-hd .ic{flex:none;width:16px;height:16px;display:grid;place-items:center;color:var(--muted)}
+  .sec-hd .ic svg{display:block}
+  .ml{flex:1;min-height:0;overflow-y:auto;background:var(--fill-0);padding:2px 0;position:relative}
+
+  .row{display:grid;grid-template-columns:30px 1fr 1fr;align-items:stretch}
+  .no{padding:5px 6px 5px 12px;text-align:right;font:12px/1.35 var(--mono);
+    font-variant-numeric:tabular-nums;color:var(--faint)}
+  .mv{font:12px/1.35 var(--mono);padding:5px 8px;color:var(--ink)}
+  .mv.on{background:var(--ink);color:var(--fill-0);border-radius:3px}
+  .mv .mk{color:var(--accent);font-size:10px}
+
+  /* A — comment on its own full-width row */
+  .cmt{grid-column:1 / -1;padding:3px 8px 5px 42px;font:11px/1.4 var(--mono);color:var(--muted);
+    border-left:2px solid var(--rule);margin-left:30px}
+
+  /* B — flowing */
+  .flowlist{font:12px/1.85 var(--mono);padding:6px 12px;color:var(--ink)}
+  .flowlist .n{color:var(--faint)}
+  .flowlist .m{padding:1px 2px;border-radius:2px}
+  .flowlist .m.on{background:var(--ink);color:var(--fill-0)}
+  .flowlist .c{color:var(--muted);font-size:11px}
+
+  .scrollbar{position:absolute;right:0;top:0;bottom:0;width:12px;background:var(--fill-1);border-left:1px solid var(--rule)}
+  .scrollbar i{position:absolute;left:2px;right:2px;border-radius:4px;background:var(--rule-strong)}
+
+  .cols{display:flex;gap:26px;flex-wrap:wrap;align-items:flex-start}
+  .caption{font:10px/1.4 var(--mono);color:var(--muted);margin:0 0 8px}
+
+  .callouts{display:flex;flex-wrap:wrap;gap:6px;margin-top:14px}
+  .co{font:10px/1.4 var(--mono);color:var(--accent);background:var(--accent-bg);
+    border:1px solid var(--accent-rule);border-radius:3px;padding:5px 8px}
+  .co.good{color:var(--ok);background:transparent;border-color:var(--ok)}
+  .co.bad{color:var(--warn);background:var(--warn-bg);border-color:var(--warn)}
+
+  table.rules{width:100%;border-collapse:collapse;font-size:13px;margin-top:8px}
+  table.rules th,table.rules td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--rule);vertical-align:top}
+  table.rules th{font:10px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+  table.rules td.n{font-family:var(--mono);font-size:12px;white-space:nowrap;font-variant-numeric:tabular-nums}
+  table.rules tr.yes td.v{color:var(--ink);font-weight:600}
+  table.rules tr.no td{color:var(--warn)}
+
+  .box{border:1px solid var(--rule-strong);border-left:3px solid var(--accent);
+    background:var(--accent-bg);border-radius:3px;padding:14px 16px;margin-top:16px}
+  .box.warn{border-left-color:var(--warn);background:var(--warn-bg)}
+  .box h4{margin:0 0 6px;font:11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;color:var(--accent)}
+  .box.warn h4{color:var(--warn)}
+  .box p{margin:0 0 8px;font-size:13px;color:var(--ink)}
+  .box p:last-child{margin-bottom:0}
+  .box ol{margin:8px 0 0;padding-left:20px;font-size:13px}
+  .box li{margin:6px 0;color:var(--ink)}
+  .q{margin:0 0 4px;font-weight:600}
+  code{font:11.5px/1 var(--mono);background:var(--fill-1);padding:2px 4px;border-radius:2px;color:var(--ink)}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header class="doc">
+  <p class="kicker">Chessgui · Game Workspace · §5.4.2 · Moves</p>
+  <h1>Comments in the Moves Section</h1>
+  <p>Three ways to put a comment in the move list. NAGs are a later question, and how an
+     individual command is <i>rendered</i> is a later question — here a comment is simply its text,
+     drawn exactly as the data holds it.</p>
+  <div class="meta">
+    <span class="chip">Rev <b>A</b></span>
+    <span class="chip">Section <b>360px</b></span>
+    <span class="chip">Comment = <b>text</b></span>
+    <span class="chip">Direction <b>MC-A</b></span>
+    <span class="chip open">G1 — not passed</span>
+  </div>
+</header>
+
+<h2 class="sec">1 · What the data actually looks like</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MC-00</span><h3>Measured before drawing</h3></div>
+  <p class="wf-sub">The annotated corpus is the only real annotated data in the project. Counted across
+     its first 40 games.</p>
+  <div class="wf-canvas">
+    <table class="rules">
+      <tr><th>Measure</th><th>Value</th><th>Why it decides the drawing</th></tr>
+      <tr class="yes"><td class="v">Plies carrying a comment</td><td class="n v">3,446 of 3,446 — 100%</td><td>Not "some moves are annotated". <b>Every</b> move is. A design that is comfortable with one comment in a game is not the design being chosen.</td></tr>
+      <tr><td>Comment length</td><td class="n">31 min · 46 median · 48 max</td><td>At 12px mono a 46-character comment is 331px against 328px of content width, so it wraps to two lines. At 11px it is 304px and fits on one.</td></tr>
+      <tr><td>Typical comment</td><td class="n">[%clk 0:02:50.1] [%eval 0.07] [%bestmove e2e4]</td><td>Commands, no prose. Drawn here as text, as agreed.</td></tr>
+      <tr><td>A 35-move game</td><td class="n">70 plies · 70 comments</td><td>Whatever a comment costs vertically, it is paid 70 times.</td></tr>
+    </table>
+    <div class="box warn">
+      <h4>The consequence, stated once</h4>
+      <p>Each option is drawn <b>twice</b>: with a single comment, which is what a hand-annotated game
+         looks like, and with a comment on every move, which is what the only real annotated data in
+         the project looks like. An option that survives the first and not the second has not survived.</p>
+    </div>
+  </div>
+</figure>
+
+<h2 class="sec">2 · The three options</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id rec">MC-A</span><h3>A · A row of its own, beneath the move — <b>chosen</b></h3></div>
+  <p class="wf-sub">The move grid is untouched; a comment takes a full-width row under the pair it
+     belongs to, indented past the number gutter and marked with a rule.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+      <div>
+        <p class="caption">One comment — the hand-annotated case</p>
+        <div class="sec-blk" style="height:250px">
+          <div class="sec-hd"><span class="ttl">Moves</span><span class="sp"></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+          </div>
+          <div class="ml">
+            <div class="row"><span class="no">1.</span><span class="mv">e4</span><span class="mv">e5</span></div>
+            <div class="row"><span class="no">2.</span><span class="mv">Nf3</span><span class="mv">d6</span></div>
+            <div class="row"><span class="no">3.</span><span class="mv">d4</span><span class="mv on">Bg4</span>
+              <span class="cmt">The move that loses the game.</span></div>
+            <div class="row"><span class="no">4.</span><span class="mv">dxe5</span><span class="mv">Bxf3</span></div>
+            <div class="row"><span class="no">5.</span><span class="mv">Qxf3</span><span class="mv">dxe5</span></div>
+            <div class="row"><span class="no">6.</span><span class="mv">Bc4</span><span class="mv">Nf6</span></div>
+            <div class="row"><span class="no">7.</span><span class="mv">Qb3</span><span class="mv">Qe7</span></div>
+            <div class="row"><span class="no">8.</span><span class="mv">Nc3</span><span class="mv">c6</span></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">Reads beautifully — the comment is exactly where it belongs</span></div>
+      </div>
+
+      <div>
+        <p class="caption">A comment on every move — the real corpus</p>
+        <div class="sec-blk" style="height:250px">
+          <div class="sec-hd"><span class="ttl">Moves</span><span class="sp"></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+          </div>
+          <div class="ml">
+            <div class="row"><span class="no">1.</span><span class="mv">e4</span><span class="mv">e5</span>
+              <span class="cmt">[%clk 0:02:57.8] [%eval 0.45]<br>[%bestmove e2e4]</span></div>
+            <div class="row"><span class="no"></span><span class="mv"></span><span class="mv"></span>
+              <span class="cmt">[%clk 0:02:50.1] [%eval 0.07]<br>[%bestmove d7d5]</span></div>
+            <div class="row"><span class="no">2.</span><span class="mv">Nf3</span><span class="mv">d6</span>
+              <span class="cmt">[%clk 0:02:45.9] [%eval 0.02]<br>[%bestmove c2c4]</span></div>
+            <div class="row"><span class="no"></span><span class="mv"></span><span class="mv"></span>
+              <span class="cmt">[%clk 0:02:44.7] [%eval 0.13]<br>[%bestmove e2e4]</span></div>
+            <div class="scrollbar"><i style="top:2px;height:12px"></i></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co bad">3 moves visible where the bare list showed 24</span></div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co good">Grid survives · comment sits with its move · no truncation</span>
+      <span class="co bad">A comment on every move needs a row per <b>ply</b>, not per move pair — the pairing collapses</span>
+      <span class="co bad">Two wrapped lines each: a 70-ply game becomes ~210 rows against 35</span>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MC-B</span><h3>B · Flowing notation</h3></div>
+  <p class="wf-sub">The Section stops being a table and becomes running text, the way a PGN reads.
+     Moves and comments interleave in one paragraph.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+      <div>
+        <p class="caption">One comment</p>
+        <div class="sec-blk" style="height:250px">
+          <div class="sec-hd"><span class="ttl">Moves</span><span class="sp"></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+          </div>
+          <div class="ml">
+            <div class="flowlist"><span class="n">1.</span> <span class="m">e4</span> <span class="m">e5</span> <span class="n">2.</span> <span class="m">Nf3</span> <span class="m">d6</span> <span class="n">3.</span> <span class="m">d4</span> <span class="m on">Bg4</span> <span class="c">The move that loses the game.</span> <span class="n">4.</span> <span class="m">dxe5</span> <span class="m">Bxf3</span> <span class="n">5.</span> <span class="m">Qxf3</span> <span class="m">dxe5</span> <span class="n">6.</span> <span class="m">Bc4</span> <span class="m">Nf6</span> <span class="n">7.</span> <span class="m">Qb3</span> <span class="m">Qe7</span> <span class="n">8.</span> <span class="m">Nc3</span> <span class="m">c6</span></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">Densest of the three; the comment costs only its own width</span></div>
+      </div>
+
+      <div>
+        <p class="caption">A comment on every move</p>
+        <div class="sec-blk" style="height:250px">
+          <div class="sec-hd"><span class="ttl">Moves</span><span class="sp"></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+          </div>
+          <div class="ml">
+            <div class="flowlist"><span class="n">1.</span> <span class="m">e4</span> <span class="c">[%clk 0:02:57.8] [%eval 0.45] [%bestmove e2e4]</span> <span class="m">e5</span> <span class="c">[%clk 0:02:50.1] [%eval 0.07] [%bestmove d7d5]</span> <span class="n">2.</span> <span class="m on">Nf3</span> <span class="c">[%clk 0:02:45.9] [%eval 0.02] [%bestmove c2c4]</span></div>
+            <div class="scrollbar"><i style="top:2px;height:16px"></i></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co bad">The moves are lost in the commentary — 3 of them on screen</span></div>
+      </div>
+    </div>
+    <div class="callouts">
+      <span class="co good">The only option where a comment needs no structure built for it</span>
+      <span class="co bad">Nothing aligns; finding move 24 means reading</span>
+      <span class="co bad">Click targets shrink to the width of the move text</span>
+      <span class="co bad">At 100% density the moves are a minority of the characters on screen</span>
+    </div>
+  </div>
+</figure>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MC-C</span><h3>C · A mark on the move; the text is not in the list</h3></div>
+  <p class="wf-sub">The grid is untouched and stays at its bare density. A move carrying a comment is
+     marked, and the text is read somewhere else — on selection, or in a Section of its own.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+      <div>
+        <p class="caption">One comment</p>
+        <div class="sec-blk" style="height:250px">
+          <div class="sec-hd"><span class="ttl">Moves</span><span class="sp"></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+          </div>
+          <div class="ml">
+            <div class="row"><span class="no">1.</span><span class="mv">e4</span><span class="mv">e5</span></div>
+            <div class="row"><span class="no">2.</span><span class="mv">Nf3</span><span class="mv">d6</span></div>
+            <div class="row"><span class="no">3.</span><span class="mv">d4</span><span class="mv on">Bg4 <span class="mk">●</span></span></div>
+            <div class="row"><span class="no">4.</span><span class="mv">dxe5</span><span class="mv">Bxf3</span></div>
+            <div class="row"><span class="no">5.</span><span class="mv">Qxf3</span><span class="mv">dxe5</span></div>
+            <div class="row"><span class="no">6.</span><span class="mv">Bc4</span><span class="mv">Nf6</span></div>
+            <div class="row"><span class="no">7.</span><span class="mv">Qb3</span><span class="mv">Qe7</span></div>
+            <div class="row"><span class="no">8.</span><span class="mv">Nc3</span><span class="mv">c6</span></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">Costs one glyph; density is untouched</span></div>
+      </div>
+
+      <div>
+        <p class="caption">A comment on every move</p>
+        <div class="sec-blk" style="height:250px">
+          <div class="sec-hd"><span class="ttl">Moves</span><span class="sp"></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+          </div>
+          <div class="ml">
+            <div class="row"><span class="no">1.</span><span class="mv">e4 <span class="mk">●</span></span><span class="mv">e5 <span class="mk">●</span></span></div>
+            <div class="row"><span class="no">2.</span><span class="mv on">Nf3 <span class="mk">●</span></span><span class="mv">d6 <span class="mk">●</span></span></div>
+            <div class="row"><span class="no">3.</span><span class="mv">d4 <span class="mk">●</span></span><span class="mv">Bg4 <span class="mk">●</span></span></div>
+            <div class="row"><span class="no">4.</span><span class="mv">dxe5 <span class="mk">●</span></span><span class="mv">Bxf3 <span class="mk">●</span></span></div>
+            <div class="row"><span class="no">5.</span><span class="mv">Qxf3 <span class="mk">●</span></span><span class="mv">dxe5 <span class="mk">●</span></span></div>
+            <div class="row"><span class="no">6.</span><span class="mv">Bc4 <span class="mk">●</span></span><span class="mv">Nf6 <span class="mk">●</span></span></div>
+            <div class="row"><span class="no">7.</span><span class="mv">Qb3 <span class="mk">●</span></span><span class="mv">Qe7 <span class="mk">●</span></span></div>
+            <div class="row"><span class="no">8.</span><span class="mv">Nc3 <span class="mk">●</span></span><span class="mv">c6 <span class="mk">●</span></span></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co bad">A mark on every move marks nothing</span></div>
+      </div>
+    </div>
+    <div class="box warn">
+      <h4>The same failure the collapsed rail had</h4>
+      <p>The Library switcher was removed from the collapsed rail because one glyph was identical for
+         every library, so it could offer a way to change scope without being able to show it. A comment
+         mark present on 100% of moves is that failure exactly: it distinguishes nothing, and it costs a
+         glyph on every row to do it. It works only where annotation is sparse, and the project's only
+         annotated data is not sparse.</p>
+    </div>
+  </div>
+</figure>
+
+<h2 class="sec">2b · A, as built — one control per row</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id rec">MC-A2</span><h3>A row is a move, which is two plies</h3></div>
+  <p class="wf-sub">The control belongs to the <b>row</b>, not to either ply. One glyph says the move
+     carries commentary — White's, Black's or both — and opening it shows everything the move has to
+     say, each comment named by the ply it belongs to.</p>
+  <div class="wf-canvas">
+    <div class="cols">
+      <div>
+        <p class="caption">Collapsed — the default, and what the corpus looks like</p>
+        <div class="sec-blk" style="height:210px">
+          <div class="sec-hd"><span class="ttl">Moves</span><span class="sp"></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+          </div>
+          <div class="ml">
+            <div class="row" style="grid-template-columns:30px 1fr 1fr 26px"><span class="no">1.</span><span class="mv">e4</span><span class="mv">c5</span><span class="mv" style="padding:0;color:var(--muted);font-size:10px">&#128172;&#8964;</span></div>
+            <div class="row" style="grid-template-columns:30px 1fr 1fr 26px"><span class="no">2.</span><span class="mv">a3</span><span class="mv">g6</span><span class="mv" style="padding:0;color:var(--muted);font-size:10px">&#128172;&#8964;</span></div>
+            <div class="row" style="grid-template-columns:30px 1fr 1fr 26px"><span class="no">3.</span><span class="mv">Nc3</span><span class="mv">Bg7</span><span class="mv" style="padding:0;color:var(--muted);font-size:10px">&#128172;&#8964;</span></div>
+            <div class="row" style="grid-template-columns:30px 1fr 1fr 26px"><span class="no">4.</span><span class="mv on">Bc4</span><span class="mv">Nc6</span><span class="mv" style="padding:0;color:var(--muted);font-size:10px">&#128172;&#8964;</span></div>
+            <div class="row" style="grid-template-columns:30px 1fr 1fr 26px"><span class="no">5.</span><span class="mv">d3</span><span class="mv">e6</span><span class="mv" style="padding:0;color:var(--muted);font-size:10px">&#128172;&#8964;</span></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">Density unchanged — the cost is a glyph, not a row</span></div>
+      </div>
+
+      <div>
+        <p class="caption">One row open — both plies shown, each named</p>
+        <div class="sec-blk" style="height:210px">
+          <div class="sec-hd"><span class="ttl">Moves</span><span class="sp"></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg></span>
+            <span class="ic"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.769" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m18 15-6-6-6 6"/></svg></span>
+          </div>
+          <div class="ml">
+            <div class="row" style="grid-template-columns:30px 1fr 1fr 26px"><span class="no">1.</span><span class="mv">e4</span><span class="mv">c5</span><span class="mv" style="padding:0;color:var(--muted);font-size:10px">&#128172;&#8964;</span></div>
+            <div class="row" style="grid-template-columns:30px 1fr 1fr 26px"><span class="no">2.</span><span class="mv">a3</span><span class="mv">g6</span><span class="mv" style="padding:0;color:var(--muted);font-size:10px">&#128172;&#8963;</span></div>
+            <div style="margin:0 8px 4px 42px;padding-left:8px;border-left:2px solid var(--rule)">
+              <p style="margin:2px 0;font:11px/1.45 var(--mono);color:var(--muted)"><b style="color:var(--ink)">a3</b> [%clk 0:00:59.3] [%eval −0.01] [%bestmove g1f3]</p>
+              <p style="margin:2px 0;font:11px/1.45 var(--mono);color:var(--muted)"><b style="color:var(--ink)">g6</b> [%clk 0:00:58.5] [%eval −0.04] [%bestmove g7g6]</p>
+            </div>
+            <div class="row" style="grid-template-columns:30px 1fr 1fr 26px"><span class="no">3.</span><span class="mv">Nc3</span><span class="mv">Bg7</span><span class="mv" style="padding:0;color:var(--muted);font-size:10px">&#128172;&#8964;</span></div>
+          </div>
+        </div>
+        <div class="callouts"><span class="co good">The pairing is never disturbed</span></div>
+      </div>
+    </div>
+
+    <table class="rules" style="margin-top:20px">
+      <tr><th>Rule</th><th></th></tr>
+      <tr><td class="n">One control per row</td><td>A row is a move and a move is two plies. A control per ply would put two on most annotated rows and leave the reader working out which half each belonged to.</td></tr>
+      <tr><td class="n">Shown when either ply has one</td><td>The glyph says this move carries commentary, not which side wrote it.</td></tr>
+      <tr><td class="n">Opening shows both</td><td>In ply order, each named by its move, so a reader meets them the way the game played them.</td></tr>
+      <tr><td class="n">Collapsed by default</td><td>Every ply in the corpus carries a comment. Open by default would leave three moves on screen.</td></tr>
+      <tr class="yes"><td class="n v">The pairing never breaks</td><td class="v">The comments follow both moves, so nothing has to move aside for them. <b>No split, and no ellipsis</b> — see the note below.</td></tr>
+      <tr><td class="n">Fixed trailing slot</td><td>26px, reserved on every row, so the controls sit on one vertical line and a row without a comment is exactly as wide as one with.</td></tr>
+    </table>
+
+    <div class="box">
+      <h4>Why there is no <code>1… e5</code> split here</h4>
+      <p>An earlier revision of this drawing borrowed PGN's <code>1... e5</code> notation, because both
+         reference designs show it: chess.com breaks the pair around a comment, and the dark concept
+         puts <code>32. … Bxe4</code> on its own row. That is the right answer when a comment belongs to
+         <b>one ply</b> and must sit immediately after it.</p>
+      <p>It is not the answer once the control belongs to the row and opens both plies at once. The
+         comments then follow the whole move, nothing needs to move aside, and the ellipsis would be
+         marking an absence that no longer exists. <b>Recorded rather than deleted</b>, because if a
+         per-ply control is ever wanted, the split rule is what comes back with it.</p>
+    </div>
+  </div>
+</figure>
+
+<h2 class="sec">3 · Side by side</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MC-D</span><h3>What each costs</h3></div>
+  <div class="wf-canvas">
+    <table class="rules">
+      <tr><th></th><th>A · own row</th><th>B · flowing</th><th>C · mark only</th></tr>
+      <tr><td class="n">Moves visible, no comments</td><td class="n">24</td><td class="n">~30</td><td class="n">24</td></tr>
+      <tr><td class="n">Moves visible, every move commented</td><td class="n">3</td><td class="n">3</td><td class="n">24</td></tr>
+      <tr><td class="n">Grid survives</td><td>Yes, but pairing collapses to one ply per row</td><td>No</td><td>Yes</td></tr>
+      <tr><td class="n">Comment readable in place</td><td>Yes</td><td>Yes</td><td><b>No</b></td></tr>
+      <tr><td class="n">Needs somewhere else built</td><td>No</td><td>No</td><td><b>Yes</b> — a reader for the text</td></tr>
+      <tr><td class="n">Behaves at 100% density</td><td>No</td><td>No</td><td>Density yes, meaning no</td></tr>
+      <tr><td class="n">Click target</td><td>149 × 22px</td><td>as narrow as the move</td><td>149 × 22px</td></tr>
+    </table>
+    <div class="box">
+      <h4>What the table is really saying</h4>
+      <p>No option is good at both densities, because the two densities are different products. A and B
+         are built for a game a person annotated. C is built for a game a machine annotated, and pays for
+         it by putting the text somewhere that does not exist yet.</p>
+      <p>Which suggests the question underneath: <b>is a comment on every move a comment at all,</b> or is
+         it per-move data that belongs in columns rather than in prose? That is the command-rendering
+         conversation, and it is the one that decides this.</p>
+    </div>
+  </div>
+</figure>
+
+<h2 class="sec">4 · What is being asked</h2>
+
+<figure class="wf">
+  <div class="wf-head"><span class="wf-id">MC-E</span><h3>Open</h3></div>
+  <div class="wf-canvas">
+    <div class="box">
+      <h4>Three questions</h4>
+      <ol>
+        <li><p class="q">A, confirmed.</p>
+          Chosen, with the split rule in MC-A2 above. B and C stay recorded as the alternatives that
+          were weighed.</li>
+        <li><p class="q">Does the choice hold for both kinds of game, or does the Section switch?</p>
+          A list that changes layout depending on what it is showing is a real option and an
+          uncomfortable one. Worth deciding on purpose rather than discovering later.</li>
+        <li><p class="q">At 100% density, is it still a comment?</p>
+          Every one of the 3,446 is commands only — no prose. If they end up rendered as columns,
+          none of A, B or C is what governs them, and this drawing only governs the sentence a person
+          writes.</li>
+      </ol>
+    </div>
+    <div class="box warn">
+      <h4>Not drawn here</h4>
+      <p>NAGs, variations, and how any individual command is rendered. A comment is its literal text
+         throughout, as agreed.</p>
+    </div>
+  </div>
+</figure>
+
+</div>
+</body>
+</html>
