@@ -1,11 +1,11 @@
-# chessgui — Database Schema Reference (v010)
+# Plyvio — Database Schema Reference (v010)
 
 SQLite 3 · target schema
 
 This document defines two kinds of SQLite database:
 
-- A **game database** stores chess games (§1–§4) and may carry a derived table of position statistics (§6). It is any SQLite file conforming to that schema, of any name, whether created by chessgui, supplied by another application, or populated independently.
-- **`config.db`** stores chessgui configuration: Libraries, subscriptions to online chess sources, and chess engines (§5).
+- A **game database** stores chess games (§1–§4) and may carry a derived table of position statistics (§6). It is any SQLite file conforming to that schema, of any name, whether created by Plyvio, supplied by another application, or populated independently.
+- **`config.db`** stores Plyvio configuration: Libraries, subscriptions to online chess sources, and chess engines (§5).
 
 A game database is independent of `config.db` and remains usable without it.
 
@@ -242,26 +242,26 @@ NAGs, comments, and variations are preserved on every read and write. They need 
 
 #### Engine context
 
-`%engine` follows the PGN Engine Evaluation Context Extension v1.0 (§7), which defines its syntax, attributes, and parsing rules. They are not restated here. Its attributes are `name` (engine name and version), `timestamp` (when the analysis was performed, not when the game was played), `depth`, `hash`, `threads`, `multipv`, and `options`; all are optional.
+`%engine` follows the PGN Extension: Evaluation Context v1.0 (§7), which defines its syntax, attributes, and parsing rules. They are not restated here. Its attributes are `name` (engine name and version), `timestamp` (when the analysis was performed, not when the game was played), `depth`, `hash`, `threads`, `multipv`, and `options`; all are optional.
 
 ```text
 {[%engine name="Stockfish 18.1" timestamp="2026-09-08T13:49:00Z" depth=24 hash=4096 threads=8 multipv=1]}
 1. e4 {[%eval +0.20,24]} e5 {[%eval +0.15,24]}
 ```
 
-A game's `movetext` carries one engine context, in the comment before the first move. chessgui writes `timestamp` in UTC with the `Z` designator (Conventions).
+A game's `movetext` carries one engine context, in the comment before the first move. Plyvio writes `timestamp` in UTC with the `Z` designator (Conventions).
 
 Because every write replaces the whole of `movetext` (§3.1), the extension's rule that unrecognized attributes are preserved applies to every write.
 
 #### Best move
 
-`%bestmove` follows the PGN Engine Best Move Extension v1.1 (§7). It applies from the first move onward.
+`%bestmove` follows the PGN Extension: Best Move v1.1 (§7). It applies from the first move onward.
 
 The value is the engine's best move **in the position the move was played from** — the move the engine would have chosen instead, and so a move for the side that played the move the comment follows. A `%bestmove` and a `%eval` in the same comment therefore describe two different positions: the evaluation is of the position the move led to, the recommendation is for the position it was played from. Neither is the other's principal variation.
 
 The application converts it to display notation and interprets castling according to the game's `variant` (§2.3). A one-move variation must not be manufactured to represent it.
 
-The persisted engine result assumes a single principal variation, so multiple PVs are not represented. A later revision may extend `movetext` if chessgui persists multiple engine variations.
+The persisted engine result assumes a single principal variation, so multiple PVs are not represented. A later revision may extend `movetext` if Plyvio persists multiple engine variations.
 
 ### 3.4 Example
 
@@ -333,10 +333,10 @@ A `.pgn` file from any program can be imported. Only fields represented by PGN t
 
 ## 5. Configuration database
 
-`config.db` is a separate SQLite database for chessgui configuration. It contains no games. Its three concepts are:
+`config.db` is a separate SQLite database for Plyvio configuration. It contains no games. Its three concepts are:
 
-- **Libraries** — game collections the user has added to chessgui.
-- **Subscriptions** — online sources the user wants chessgui to monitor.
+- **Libraries** — game collections the user has added to Plyvio.
+- **Subscriptions** — online sources the user wants Plyvio to monitor.
 - **Engines** — chess engines configured for use by the application.
 
 The relationship between `config.db` and game databases is one-way:
@@ -356,7 +356,7 @@ config.db
 
 - `config.db` stores references to game databases; it does not embed or attach them.
 - A game database contains no reference to `config.db` or to any subscription, and remains valid and usable without it.
-- `config.db` may reference a game database that is currently unavailable, moved, disconnected, or deleted. That affects chessgui's ability to open the Library or import into it, including for a subscription whose destination cannot be reached, but does not alter the game database schema.
+- `config.db` may reference a game database that is currently unavailable, moved, disconnected, or deleted. That affects Plyvio's ability to open the Library or import into it, including for a subscription whose destination cannot be reached, but does not alter the game database schema.
 
 ### 5.1 `libraries` table
 
@@ -369,14 +369,14 @@ Master Games
 Opening Studies
 ```
 
-A Library need not have been created or populated by chessgui. Adding a pre-existing game database as a Library neither imports nor modifies its games.
+A Library need not have been created or populated by Plyvio. Adding a pre-existing game database as a Library neither imports nor modifies its games.
 
 | #   | Column           | Type    | Description                               |
 | --- | ---------------- | ------- | ----------------------------------------- |
 | 1   | `id`             | INTEGER | Primary key                               |
 | 2   | `name`           | TEXT    | User-facing Library name                  |
 | 3   | `game_db_path`   | TEXT    | Path to the game database file            |
-| 4   | `created_at`     | TEXT    | When the Library was added to chessgui    |
+| 4   | `created_at`     | TEXT    | When the Library was added to Plyvio    |
 | 5   | `last_opened_at` | TEXT    | When the Library was most recently opened |
 
 Suggested DDL:
@@ -401,15 +401,15 @@ The filesystem path to the game database implementing the Library. It is not a f
 
 #### `created_at`
 
-When the Library was added to chessgui. Timestamp. It is distinct from `games.created_at`: a Library added today may contain games imported years earlier.
+When the Library was added to Plyvio. Timestamp. It is distinct from `games.created_at`: a Library added today may contain games imported years earlier.
 
 #### `last_opened_at`
 
-When chessgui most recently opened the Library. Timestamp. NULL means it has not yet been opened.
+When Plyvio most recently opened the Library. Timestamp. NULL means it has not yet been opened.
 
 ### 5.2 `subscriptions` table
 
-A subscription is the user's request for chessgui to monitor an online source and import newly discovered games. The term does not imply payment, credentials, or an account connection; a subscription may simply identify a publicly accessible source such as a Chess.com player.
+A subscription is the user's request for Plyvio to monitor an online source and import newly discovered games. The term does not imply payment, credentials, or an account connection; a subscription may simply identify a publicly accessible source such as a Chess.com player.
 
 ```text
 Subscribe to AwesomeAtti on Chess.com and add new games to
@@ -505,7 +505,7 @@ Optional human-readable detail, for example `3 new games imported`, `Source temp
 
 #### Status while offline
 
-Subscription status is persistent configuration data, not transient application state. When chessgui starts without network access it displays the last recorded name, source, destination Library, check time, status, and message, and does not replace the status merely because it is offline:
+Subscription status is persistent configuration data, not transient application state. When Plyvio starts without network access it displays the last recorded name, source, destination Library, check time, status, and message, and does not replace the status merely because it is offline:
 
 ```text
 AwesomeAtti
@@ -522,7 +522,7 @@ A subscription does not own the games it discovers. They become ordinary rows in
 
 ### 5.3 `engines` table
 
-An engine record identifies an executable that chessgui can invoke using the UCI protocol.
+An engine record identifies an executable that Plyvio can invoke using the UCI protocol.
 
 | #   | Column        | Type    | Description                           |
 | --- | ------------- | ------- | ------------------------------------- |
@@ -531,7 +531,7 @@ An engine record identifies an executable that chessgui can invoke using the UCI
 | 3   | `version`     | TEXT    | Engine version                        |
 | 4   | `url`         | TEXT    | URL for information about the engine  |
 | 5   | `binary_path` | TEXT    | Path to the UCI engine executable     |
-| 6   | `created_at`  | TEXT    | When the engine was added to chessgui |
+| 6   | `created_at`  | TEXT    | When the engine was added to Plyvio |
 
 Suggested DDL:
 
@@ -564,13 +564,13 @@ For example, `/Applications/Stockfish/stockfish`. Named `binary_path` rather tha
 
 #### `created_at`
 
-When the engine was added to chessgui. Timestamp.
+When the engine was added to Plyvio. Timestamp.
 
 #### Engines and persisted evaluations
 
 The engine record describes an engine that is available. The engine and settings that produced a game's persisted evaluations and best moves are recorded in that game's engine context (§3.3). Different games can therefore be analyzed with different engines, versions, or settings without changing the engine's configuration record.
 
-The `engines` table does not store analysis settings such as search depth, threads, or hash size. If chessgui later supports reusable user-defined engine profiles, they may be modeled separately from the engine itself.
+The `engines` table does not store analysis settings such as search depth, threads, or hash size. If Plyvio later supports reusable user-defined engine profiles, they may be modeled separately from the engine itself.
 
 ---
 
@@ -648,12 +648,12 @@ The position key identifies a position for lookup. It is the **first four fields
   https://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
   — §8.1.1 (Seven Tag Roster), §9 (Supplemental tag names).
 
-- PGN Engine Evaluation Context Extension, v1.0 (2026-09-11):
-  `pgn-engine-evaluation-context-extension.md`
+- PGN Extension: Evaluation Context, v1.0 (2026-09-11):
+  `pgn-extension-evaluation-context.md`
   — The `[%engine]` comment command (§3.3).
 
-- PGN Engine Best Move Extension, v1.1 (2026-09-12):
-  `pgn-engine-best-move-extension.md`
+- PGN Extension: Best Move, v1.1 (2026-09-12):
+  `pgn-extension-bestmove.md`
   — The `[%bestmove]` comment command (§3.3).
 
 - SQLite documentation:

@@ -1,4 +1,4 @@
-# PGN Engine Evaluation Context Extension
+# PGN Extension: Evaluation Context (`[%engine]`)
 
 **Status:** Proposed Extension  
 **Version:** 1.0  
