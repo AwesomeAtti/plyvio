@@ -1,4 +1,4 @@
-# PGN Engine Best Move Extension
+# PGN Extension: Best Move (`[%bestmove]`)
 
 **Status:** Proposed Extension  
 **Version:** 1.1  
