@@ -1,5 +1,10 @@
 # Plyvio — a chess library and analysis tool
 
+[![License: GPL v3](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![Live Demo](https://img.shields.io/badge/demo-live-brightgreen)](https://awesomeatti.github.io/plyvio/)
+[![Last Commit](https://img.shields.io/github/last-commit/AwesomeAtti/plyvio)](https://github.com/AwesomeAtti/plyvio/commits)
+[![Svelte](https://img.shields.io/badge/svelte-5.57.0-ff3e00)](https://svelte.dev)
+
 Plyvio is a cross-platform chess application for browsing and analyzing your
 games. It's available today as an installable Progressive Web App (PWA),
 with a native desktop version currently under development.
