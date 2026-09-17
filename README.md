@@ -29,7 +29,17 @@ these tests were run against:
 See `docs/architecture/` for how the app is built, `docs/spec/` for what it
 implements, and `docs/decisions/` for why the project is laid out as it is.
 
-## Run it
+## Run it from source
+
+For most people, the browser install above is all you need. This is for
+building and running the app from source — for development, or to try
+changes before they're deployed.
+
+**Easiest way to run Plyvio:** install it straight from your browser — no
+build required. Works in Chrome, Edge, or Safari, on macOS, Windows, or
+Linux.
+
+**Launch it:** [awesomeatti.github.io/plyvio](https://awesomeatti.github.io/plyvio/)
 
 From `app/`:
 
