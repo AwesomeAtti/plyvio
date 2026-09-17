@@ -1,4 +1,4 @@
-# Chessgui — Application Shell Prototype
+# Plyvio — Application Shell Prototype
 
 SvelteKit progressive web app implementing the Application Shell (§1.3, §2),
 the Library Workspace (§3.2), the Settings Workspace (§3.4) and the Game
@@ -33,10 +33,14 @@ npm run dev        # http://localhost:5173
 ```
 
 ```bash
-npm run build      # static output in build/
-npm run preview    # serve the production build
-npm test           # vitest, 16 files
+npm run build      # vite build, then scripts/assemble-site.mjs assembles
+                    # build/ to match the deployed layout: the project page
+                    # (from ../site/) at the root, the app nested under build/app/
+npm run preview     # serves build/ via scripts/serve-site.mjs, reproducing
+                    # GitHub Pages' behaviour (directory index files, trailing-
+                    # slash redirects, site-root 404.html) — http://localhost:4173
+npm test            # vitest, 16 files
 ```
 
 `build/` is gitignored: it is a build artifact, not a source, and is
-regenerated in seconds. Any static file server will serve it.
+regenerated in seconds.
