@@ -20,6 +20,14 @@
     document.documentElement.setAttribute('data-theme', t);
   } catch (e) {}
 </script>
+<!-- Google Analytics — this page only. Never included in the app bundle under app/. -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-Q59FVVXNBH"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+  gtag('js', new Date());
+  gtag('config', 'G-Q59FVVXNBH');
+</script>
 <style>
   /*
     The app's tokens (src/lib/styles/app.css). Duplicated rather than imported:
@@ -122,6 +130,7 @@
 
  footer{margin-top:44px;padding-top:18px;border-top:1px solid var(--rule);
   font:10px/1.8 var(--mono);color:var(--faint)}
+ footer a{color:var(--ink-2)}
  @media(max-width:560px){.heroline h1{font-size:25px}.page{padding:0 16px 50px}}
 
  /* acts: a titled movement, not a stack of equal bands */
@@ -247,7 +256,7 @@
     <div class="shotwrap">
       <img class="shot" src="assets/library-light.png" alt="The Library workspace: sidebar of collections, tags and subscriptions at the left, a search field and a table of games at the right." width="1600" height="1000">
       <div class="overlay">
-        <a class="cta" href="./app/">Launch the preview &rarr;</a>
+        <a class="cta" href="./app/" onclick="gtag(&#39;event&#39;, &#39;launch_preview_click&#39;)">Launch the preview &rarr;</a>
         <span class="sp"></span>
         <p class="cta-note">Opens in this browser · no download, no account · runs on sample data</p>
       </div>
@@ -431,6 +440,10 @@
       </div>
     </div>
   </div>
+
+  <footer>
+    <a href="https://github.com/AwesomeAtti/plyvio" target="_blank" rel="noopener">Source on GitHub</a>
+  </footer>
 
 </div>
 
