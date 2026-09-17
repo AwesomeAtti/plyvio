@@ -11,7 +11,7 @@ cross-cutting enough that other workspaces reference them directly (the Game
 Workspace's floor arithmetic in particular), so they are documented together
 in [Layout and window floor](layout.md) rather than repeated here.
 
-Where the shell's build has drifted from `docs/spec/1-2-application-shell.md`,
+Where the shell's build has drifted from the spec (§1.3, §2 of `docs/spec/0-product-specification.md`),
 see [Deviations from the specification](deviations.md).
 
 Accepted wireframe: `design/shell-wireframes.html`.
