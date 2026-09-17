@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Chessgui — a chess library and analysis tool</title>
-<meta name="description" content="Chessgui is a chess library and analysis tool that installs from your browser and runs on your desktop without the internet. This is the technology preview." />
+<title>Plyvio — a chess library and analysis tool</title>
+<meta name="description" content="Plyvio is a chess library and analysis tool that installs from your browser and runs on your desktop without the internet. This is the technology preview." />
 <link rel="icon" href="./app/favicon.ico" sizes="16x16 32x32 48x48" />
 <link rel="icon" type="image/png" sizes="192x192" href="./app/icon-192.png" />
 <link rel="apple-touch-icon" sizes="180x180" href="./app/apple-touch-icon.png" />
@@ -13,7 +13,7 @@
   // Match the app: honour a stored choice, else follow the system. Applied
   // before first paint so the page does not flash the wrong theme.
   try {
-    var t = localStorage.getItem('chessgui.theme');
+    var t = localStorage.getItem('plyvio.theme');
     if (t !== 'light' && t !== 'dark') {
       t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     }
@@ -239,7 +239,7 @@
 
   <div class="hero">
     <div class="heroline">
-      <h1>Chessgui</h1>
+      <h1>Plyvio</h1>
       <span class="badge">Technology preview · 0.1.0</span>
       <span class="sp"></span>
       <span class="meta">GPL-3.0-or-later</span>
@@ -308,7 +308,7 @@
   <!-- ============ ACT II — a modern application ============ -->
   <div class="act">
     <div class="act-hd"><span class="r">Act II</span><h2>A modern application</h2><span class="sp"></span><span class="r">the same on every platform</span></div>
-    <p class="act-lede">Chessgui behaves like the applications you already use. Nothing here has to be learned twice.</p>
+    <p class="act-lede">Plyvio behaves like the applications you already use. Nothing here has to be learned twice.</p>
 
     <div class="split" style="grid-template-columns:minmax(0,1fr) minmax(0,1fr);align-items:center;margin-bottom:26px">
       <div>
