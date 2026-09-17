@@ -1,4 +1,4 @@
-# Plyvio — Application Shell Prototype
+# Plyvio — a chess library and analysis tool
 
 Plyvio is a cross-platform chess application for browsing and analyzing your
 games. It's available today as an installable Progressive Web App (PWA),
@@ -10,8 +10,6 @@ signup.
 
 This build implements the Application Shell (§1.3, §2), the Library
 Workspace (§3.2), the Settings Workspace (§3.4) and the Game Workspace (§5).
-The Game Details Sections are placeholders, deliberately — they are not
-specified yet.
 
 Built on **Svelte 5** with runes. Every dependency is pinned to an exact
 version rather than a caret range, so a fresh `npm install` reproduces the tree
