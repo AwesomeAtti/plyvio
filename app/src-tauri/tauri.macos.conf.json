@@ -1,0 +1,16 @@
+{
+  "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
+  "app": {
+    "windows": [
+      {
+        "title": "Plyvio",
+        "width": 800,
+        "height": 632,
+        "minWidth": 800,
+        "minHeight": 632,
+        "resizable": true,
+        "fullscreen": false
+      }
+    ]
+  }
+}
