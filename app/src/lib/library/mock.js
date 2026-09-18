@@ -89,7 +89,7 @@ export function realRows() {
       favorite: false,
       addedDaysAgo: i,
       subscription: null,
-      collection: null,
+      collections: [],
       tags: [],
       trashed: false
     };
@@ -154,7 +154,7 @@ export function makeGames(count = 1248, seed = 20260903) {
       favorite: rnd() < 0.03,
       addedDaysAgo: Math.floor(rnd() * 400),
       subscription: rnd() < 0.42 ? Math.floor(rnd() * 7) : null,
-      collection: rnd() < 0.22 ? Math.floor(rnd() * 3) : null,
+      collections: rnd() < 0.22 ? [Math.floor(rnd() * 3)] : [],
       tags: rnd() < 0.12 ? [Math.floor(rnd() * 4)] : [],
       trashed: rnd() < 0.004
     });
@@ -211,7 +211,7 @@ export const TAGS = [
  * Recent by construction — `addedDaysAgo: 0` — so Recently Added is the view
  * that fills, which is where the workspace navigates when an import finishes.
  */
-export function makeImportedGames(count, { offset = 0, seed = 424242, tags = [], collection = null } = {}) {
+export function makeImportedGames(count, { offset = 0, seed = 424242, tags = [], collections = [] } = {}) {
   const rnd = mulberry32(seed + offset);
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
   const out = [];
@@ -239,7 +239,7 @@ export function makeImportedGames(count, { offset = 0, seed = 424242, tags = [],
       favorite: false,
       addedDaysAgo: 0,
       subscription: null,
-      collection,
+      collections: [...collections],
       tags: [...tags],
       trashed: false
     });

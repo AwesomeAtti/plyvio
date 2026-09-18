@@ -28,8 +28,7 @@ vi.mock('$lib/data/games.js', () => ({
   readTags: vi.fn(async () => tagRows),
   readCollections: vi.fn(async () => collectionRows),
   readTagIdsByGame: vi.fn(async () => ({ 1: [10] })),
-  // Game 2 belongs to two Collections — the "first one only" compromise
-  // stores/library.js's own comment describes.
+  // Game 2 belongs to two Collections at once, same as tags can be many.
   readCollectionIdsByGame: vi.fn(async () => ({ 2: [20, 21] }))
 }));
 
@@ -86,11 +85,12 @@ describe('loadGames', () => {
     expect(g2.tags).toEqual([]);
   });
 
-  it('files a multiply-collected game under its first Collection only', async () => {
+  it('carries every Collection a game belongs to, not just the first', async () => {
     gamesConnection.mockResolvedValue({});
     await loadGames();
-    const [, g2] = get(games);
-    expect(g2.collection).toBe(20);
+    const [g1, g2] = get(games);
+    expect(g1.collections).toEqual([]);
+    expect(g2.collections).toEqual([20, 21]);
   });
 
   it('leaves subscription null and addedDaysAgo unreachable, which have no read path yet', async () => {

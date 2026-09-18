@@ -72,15 +72,9 @@ export async function loadGames({ limit = 5000 } = {}) {
     trashed: trashed.has(g.id),
     favorite: favorite.has(g.id),
     tags: tagsByGame[g.id] ?? [],
-    /*
-      §7.3's membership is many-to-many; `collection` below is singular,
-      matching applySelection's existing 'collection' case (equality, not
-      membership) and the test suite built against it. A game that belongs
-      to more than one regular Collection is filed under the first one only,
-      until that contract is revisited — not decided quietly here, just not
-      re-decided either.
-    */
-    collection: (collectionsByGame[g.id] ?? [null])[0],
+    // §7.3's membership is many-to-many, same as tags — a game can carry
+    // several Collections at once, so this is an array, not a single id.
+    collections: collectionsByGame[g.id] ?? [],
     // subscription_games (§8) records which subscription a game arrived
     // through, in this same database — read path not added yet.
     subscription: null,
@@ -192,7 +186,7 @@ export function applySelection(all, sel) {
     case 'favorites':    return all.filter((g) => !g.trashed && g.favorite);
     case 'recent':       return recentlyAdded(all);
     case 'subscription': return all.filter((g) => !g.trashed && g.subscription === sel.id);
-    case 'collection':   return all.filter((g) => !g.trashed && g.collection === sel.id);
+    case 'collection':   return all.filter((g) => !g.trashed && g.collections.includes(sel.id));
     case 'tag':          return all.filter((g) => !g.trashed && g.tags.includes(sel.id));
     case 'all':
     default:             return all.filter((g) => !g.trashed);
@@ -229,7 +223,7 @@ export const counts = derived([games, subscriptions], ([$games, $subs]) => {
   const live = $games.filter((g) => !g.trashed);
   const byCollection = {}, byTag = {};
   for (const g of live) {
-    if (g.collection !== null) byCollection[g.collection] = (byCollection[g.collection] || 0) + 1;
+    for (const c of g.collections) byCollection[c] = (byCollection[c] || 0) + 1;
     for (const t of g.tags) byTag[t] = (byTag[t] || 0) + 1;
   }
   return {

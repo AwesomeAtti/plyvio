@@ -708,7 +708,7 @@ describe('§3.2.4.2 empty states', () => {
   });
 
   it('an empty collection explains rather than showing a blank table', async () => {
-    games.set(get(games).map((g) => ({ ...g, collection: null })));
+    games.set(get(games).map((g) => ({ ...g, collections: [] })));
     selectSidebar({ kind: 'collection', id: 0 });
     const { container } = render(AppShell);
     await tick();

@@ -150,7 +150,7 @@ function appendGames(p, from, count) {
     offset: from,
     seed: p.seed,
     tags: p.tags.map((t) => t.id),
-    collection: p.collections[0]?.id ?? null
+    collections: p.collections.map((c) => c.id)
   });
   games.update((all) => [...batch, ...all]);
 }

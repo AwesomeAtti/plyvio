@@ -340,9 +340,9 @@ describe('organising on import', () => {
   });
 
   it('imported games are recent, so Recently Added is the view that fills', () => {
-    const batch = makeImportedGames(3, { tags: [1], collection: 0 });
+    const batch = makeImportedGames(3, { tags: [1], collections: [0] });
     expect(batch.every((g) => g.addedDaysAgo === 0)).toBe(true);
-    expect(batch.every((g) => g.tags.includes(1) && g.collection === 0)).toBe(true);
+    expect(batch.every((g) => g.tags.includes(1) && g.collections.includes(0))).toBe(true);
   });
 });
 

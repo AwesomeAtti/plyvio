@@ -194,7 +194,7 @@ export const activeGame = derived(
   const collectionNames = ($libraryCollections ?? []);
   const chips = row
     ? [
-        ...(row.collections ?? (row.collection != null ? [row.collection] : []))
+        ...(row.collections ?? [])
           .map((id) => collectionNames.find((c) => c.id === id))
           .filter(Boolean)
           .map((c) => ({ kind: 'collection', id: c.id, name: c.name })),
@@ -309,7 +309,7 @@ export function saveGameInfo(tabId, v) {
             ...r,
             favorite: !!v.favorite,
             tags: (v.tags ?? []).map((x) => x.id),
-            collection: (v.collections ?? [])[0]?.id ?? null
+            collections: (v.collections ?? []).map((c) => c.id)
           }
         : r
     )
