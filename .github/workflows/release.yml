@@ -57,8 +57,8 @@ jobs:
         with:
           projectPath: app
           tagName: v__VERSION__
-          releaseName: 'Plyvio v__VERSION__'
-          releaseBody: 'See the assets below to download and install this version.\n\nmacOS builds are unsigned — on first launch, right-click the app and choose "Open" to bypass Gatekeeper.'
+          releaseName: 'Plyvio v__VERSION__ Technology Preview (AwesomeAtti)'
+          releaseBody: '**Technology Preview** — this release is still under active development and may contain bugs or incomplete features.\n\nSee the assets below to download and install this version.\n\nmacOS builds are unsigned — on first launch, right-click the app and choose "Open" to bypass Gatekeeper.'
           releaseDraft: true
-          prerelease: false
+          prerelease: true
           args: ${{ matrix.args }}
