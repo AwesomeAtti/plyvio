@@ -3,8 +3,8 @@ import { activeId } from './tabs.js';
 import { GAMES } from '$lib/game/games.js';
 import { pliesFor, engineFor, readGame } from '$lib/game/plies.js';
 import { SECTIONS, DEFAULT_VISIBILITY } from '$lib/game/sections.js';
-import { explorerRows, positionGames, explorerHeight } from '$lib/game/explorer.js';
-import { positionStats, explorerLibraries } from '$lib/game/explorerMock.js';
+import { explorerRows, positionGames, explorerHeight, positionKey } from '$lib/game/explorer.js';
+import { explorerLibraries } from '$lib/game/explorerMock.js';
 import {
   engineSources, engineHeight, clampLines, clampDepth,
   ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH
@@ -14,8 +14,8 @@ import { objects } from './settings.js';
 import { games as libraryGames, tags as libraryTags, collections as libraryCollections }
   from './library.js';
 import { known, ratingText, resultText, infoContentHeight } from '$lib/game/info.js';
-import { readMovetextFor } from '$lib/data/games.js';
-import { gamesConnection } from '$lib/data/session.js';
+import { readMovetextFor, readPositionStats } from '$lib/data/games.js';
+import { gamesConnection, libraryConnection } from '$lib/data/session.js';
 
 /**
  * Game Workspace state — §5.3, §2.3.
@@ -144,6 +144,79 @@ function pliesForState(st) {
   return pliesFor(gameById(st.gameId));
 }
 
+/**
+ * The Explorer Section's position statistics, real — §6 of the schema.
+ *
+ * Keyed by TAB, not by position: a session can visit thousands of distinct
+ * positions across a game, where it opens at most a few dozen real games, so
+ * unlike `realGames` above this does not accumulate one entry per position
+ * ever seen. Each tab holds only the one result its Explorer is currently
+ * showing; a new ply or a new library selection simply overwrites it.
+ *
+ * `{ key, status, rows }` — `key` is `${libraryId}|${posKey}`, what the
+ * fetch below was answering, so a stale response (ply navigation can outrun
+ * a query that hasn't returned) is recognisable and dropped rather than
+ * overwriting a newer, unrelated answer.
+ */
+export const explorerStats = writable({});
+
+/**
+ * Fetch one position's stats for a tab's selected library, into
+ * `explorerStats`. Same fire-and-forget shape as `loadRealGame`.
+ *
+ * A missing connection — outside Tauri, or a library id `data/session.js`'s
+ * `libraryConnection` has no path for — and a read against a database with
+ * no `positions` table both resolve the same way: `readPositionStats`
+ * itself returns `[]` for the latter (§6: "a game database without one is
+ * valid… any feature that needs them is unavailable until the table is
+ * present"), and this treats "no connection" identically rather than
+ * inventing a second empty shape.
+ */
+function loadExplorerStats(tabId, libraryId, posKey) {
+  const cacheKey = `${libraryId}|${posKey}`;
+  if (get(explorerStats)[tabId]?.key === cacheKey) return;
+
+  explorerStats.update((s) => ({ ...s, [tabId]: { key: cacheKey, status: 'loading', rows: [] } }));
+
+  (async () => {
+    let rows = [];
+    try {
+      const connection = await libraryConnection(libraryId);
+      rows = connection ? await readPositionStats(connection, posKey) : [];
+    } catch (err) {
+      console.error(`Plyvio: failed to load Explorer stats for ${libraryId}`, err);
+    }
+    /* The tab may by now be asking about a different position or library —
+       ply navigation is faster than a round trip. Only the still-wanted
+       answer is written. */
+    explorerStats.update((s) =>
+      s[tabId]?.key === cacheKey ? { ...s, [tabId]: { key: cacheKey, status: 'ready', rows } } : s
+    );
+  })();
+}
+
+/**
+ * Ask the Explorer to refetch: called whenever a tab's ply or its selected
+ * library changes (`ensureGameState`, `goToPly`, `setExplorerLibrary` — the
+ * only three places either one does). Reads current state fresh via `get`
+ * rather than taking it as a parameter, so it is correct however it is
+ * called: before or after the caller's own `patch`.
+ *
+ * No-ops when the selected library has nothing real behind it (an
+ * unconfigured Settings slot, an Available-for-download catalogue entry —
+ * `library` is mock-only for those) — `explorerStats` for the tab is left
+ * exactly as it was rather than cleared to an empty flash for a selection
+ * that was never going to answer.
+ */
+function refreshExplorerStats(tabId) {
+  const st = get(gameStates)[tabId];
+  if (!st || !st.explorerLibraryId) return;
+  const fen = pliesForState(st)[st.ply]?.f;
+  const key = fen ? positionKey(fen) : null;
+  if (!key) return;
+  loadExplorerStats(tabId, st.explorerLibraryId, key);
+}
+
 export function ensureGameState(tabId, libraryGameId = null) {
   const existing = get(gameStates)[tabId];
   if (existing) return existing;
@@ -193,6 +266,7 @@ export function ensureGameState(tabId, libraryGameId = null) {
     sections: structuredClone(DEFAULT_VISIBILITY)
   };
   gameStates.update((s) => ({ ...s, [tabId]: state }));
+  refreshExplorerStats(tabId);
   return state;
 }
 
@@ -215,9 +289,9 @@ export const gameById = (id) => GAMES.find((g) => g.id === id) || GAMES[0];
  */
 export const activeGame = derived(
   [gameStates, activeId, objects, libraryGames, libraryTags, libraryCollections, gameEdits,
-    realGames],
+    realGames, explorerStats],
   ([$s, $id, $objects, $libraryGames, $libraryTags, $libraryCollections, $gameEdits,
-    $realGames]) => {
+    $realGames, $explorerStats]) => {
   const st = $s[$id];
   if (!st) return null;
   /* The row, with any edits made this session laid over it. `pgn` is never in
@@ -243,18 +317,23 @@ export const activeGame = derived(
   const ply = Math.min(st.ply, plies.length - 1);
 
   /*
-    The Explorer's rows for the position on the board. Computed here so the
-    Section's height is known before the shell allocates — it is sized to content,
-    so the row count is a layout input rather than something the component
-    discovers after it renders.
-
-    `positionStats` is mock (see explorerMock.js). Everything from `explorerRows`
-    down treats it as §6 rows and does not know or care.
+    The Explorer's rows for the position on the board. Real — §6 of the
+    schema, read through `data/games.js`'s `readPositionStats` —
+    `refreshExplorerStats` (called from `ensureGameState`, `goToPly` and
+    `setExplorerLibrary`, the only three places a tab's ply or library
+    selection changes) keeps `explorerStats` current for the tab; this only
+    reads it. `explorerCacheKey` not matching what's stored means the fetch
+    for the position now on the board hasn't landed (or there's nothing to
+    fetch — no library selected, or no FEN yet), and `stats` is `[]` either
+    way — the Section's already-established empty state, not a new one.
   */
   const libraries = explorerLibraries($objects?.databases ?? []);
   const library = libraries.find((l) => l.id === st.explorerLibraryId) ?? null;
   const played = plies[ply + 1]?.s ?? null;
-  const stats = library ? positionStats(plies[ply]?.f, ply, library, played) : [];
+  const fen = plies[ply]?.f;
+  const explorerCacheKey = library && fen ? `${library.id}|${positionKey(fen)}` : null;
+  const explorerEntry = explorerCacheKey ? $explorerStats[$id] : null;
+  const stats = explorerEntry?.key === explorerCacheKey ? explorerEntry.rows : [];
   const rows = explorerRows(stats);
 
   /*
@@ -445,6 +524,7 @@ export const explorerContentHeight = (rows) => explorerHeight(rows.length);
 
 export function setExplorerLibrary(tabId, libraryId) {
   patch(tabId, () => ({ explorerLibraryId: libraryId }));
+  refreshExplorerStats(tabId);
 }
 
 /**
@@ -505,6 +585,7 @@ export function goToPly(tabId, ply) {
     reappeared on a round trip would be indistinguishable from a live one.
   */
   patch(tabId, () => ({ ply: Math.max(0, Math.min(max, ply)), engineHold: null }));
+  refreshExplorerStats(tabId);
 }
 
 export const nextPly = (tabId) => goToPly(tabId, (get(gameStates)[tabId]?.ply ?? 0) + 1);
@@ -565,4 +646,5 @@ export function composition(state, contentHeights = {}) {
 export function resetGameState() {
   gameStates.set({});
   realGames.set(new Map());
+  explorerStats.set({});
 }

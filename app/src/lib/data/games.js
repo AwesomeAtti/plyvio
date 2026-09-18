@@ -129,6 +129,42 @@ export const derivePlyCount = async (connection, id, count) => {
 };
 
 /* ============================================================================
+ * §6 — the `positions` table. Derived data: every row in it is
+ * reconstructible from `games`, built offline (`samples/build_positions.py`)
+ * rather than aggregated by the application at read time.
+ * ========================================================================= */
+
+/**
+ * A position's statistics — the Explorer Section's rows.
+ *
+ * One indexed lookup, not an aggregation: `positions` is `WITHOUT ROWID`,
+ * clustered by `(pos, move)` (§6.1), so this is a single B-tree seek and a
+ * short sequential run. `posKey` is what `game/explorer.js`'s `positionKey()`
+ * already computes for the board — the first four FEN fields, per §6.2 —
+ * and is passed in rather than recomputed here, so there is one function in
+ * the application that knows what a position key is.
+ *
+ * Resolves to `[]` when `positions` doesn't exist, rather than throwing: §6
+ * says plainly that "a game database without one is valid — it simply
+ * cannot answer position queries, and any feature that needs them is
+ * unavailable until the table is present." A library database nothing has
+ * run `build_positions.py`-equivalent tooling against is exactly that case,
+ * not an error.
+ *
+ * @returns {Promise<{move: string, games: number, white: number, draws: number, black: number}[]>}
+ */
+export const readPositionStats = async (connection, posKey) => {
+  try {
+    return await connection.all(
+      'select move, games, white, draws, black from positions where pos = ?',
+      [posKey]
+    );
+  } catch {
+    return [];
+  }
+};
+
+/* ============================================================================
  * Library features — §7. Favorites and Trash are presence tables (a row
  * means the game is a favorite / in the trash); Tags and Collections are
  * many-to-many through a membership table. None of these add a column to
