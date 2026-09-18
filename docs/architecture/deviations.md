@@ -29,9 +29,28 @@ Application Shell, Library, Game or Settings Workspace alike.
      verifies afterwards and raises a dismissible notice if the window is still
      open, rather than appearing to do nothing.
 
+   **Tauri build (Phase 2, 17 Sep):** both workarounds above are specific to
+   running as a web page. The Tauri build now calls the native window APIs
+   instead — real `setFullscreen`/`isFullscreen`, and a `close()` the OS
+   honors unconditionally — so neither the Fullscreen API's gesture
+   requirement nor Quit's attempt-and-verify dance applies there; the
+   `quitBlocked`/`QuitNotice.svelte` refusal path exists only to serve the
+   web backend and is expected to stay inert (never raised) in the Tauri
+   build. The behavior described above is unchanged for the browser/PWA
+   target — this note describes the desktop target only. See
+   `app/src/lib/stores/appCommands.tauri.js` and `working/tauri/PROGRESS.md`.
+
 4. **§2 — Keyboard interaction is unspecified.** The map in `AppShell.svelte`
    (WF-10) is a proposal, not a requirement. `Ctrl/⌘+T` and `Ctrl/⌘+W` are
    intercepted by the host browser in a normal tab. `⌘T` is free in an
    installed PWA window (no tab strip), but **`⌘W` still closes the PWA window**
    on macOS and never reaches the handler — it needs remapping to `⌘⇧W` or a
    `Ctrl`-based binding to be testable there.
+
+   **Tauri build (Phase 2, 17 Sep):** a native window has no browser chrome to
+   intercept `⌘W` before it reaches the page, so in the Tauri build the
+   existing binding in `AppShell.svelte` (`mod+w` → `closeActive()`) reaches
+   the handler and works as written — tab-close, not quit. This is confirmed
+   as the intended binding for the desktop target; the remapping this item
+   flags is still relevant only for the browser/PWA target, where the OS
+   interception described above remains unchanged.
