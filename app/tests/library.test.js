@@ -13,7 +13,7 @@ import {
   sectionCollapsed, toggleSection, expandSection, SECTIONS, collections, tags
 } from '../src/lib/stores/library.js';
 import { layoutColumns, widths, COLUMNS, TABLE_MIN, FIXED_TOTAL, NAME_MIN, NAME_MAX, EVENT_MIN, cellValue } from '../src/lib/library/columns.js';
-import { makeGames, realRows, SUBSCRIPTIONS } from '../src/lib/library/mock.js';
+import { makeGames, realRows, SUBSCRIPTIONS, COLLECTIONS, TAGS } from '../src/lib/library/mock.js';
 import { GAMES } from '../src/lib/game/games.js';
 import { readFileSync } from 'node:fs';
 
@@ -28,6 +28,11 @@ beforeEach(() => {
   locale.set('en');
   games.set(makeGames());
   subscriptions.set(SUBSCRIPTIONS);
+  // tags/collections now start empty (loadGames() fills them from the real
+  // database — see stores/library.js); tests seed the mock data explicitly,
+  // the same way tests/addGames.test.js already does.
+  collections.set(COLLECTIONS);
+  tags.set(TAGS);
   sidebarCollapsed.set(false);
   resetLibrary();
 });

@@ -1,7 +1,10 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
-import { SUBSCRIPTIONS, COLLECTIONS, TAGS } from '$lib/library/mock.js';
-import { readGames } from '$lib/data/games.js';
+import { SUBSCRIPTIONS } from '$lib/library/mock.js';
+import {
+  readGames, readFavoriteIds, readTrashedIds, readTags, readCollections,
+  readTagIdsByGame, readCollectionIdsByGame
+} from '$lib/data/games.js';
 import { gamesConnection } from '$lib/data/session.js';
 
 /**
@@ -27,8 +30,10 @@ import { gamesConnection } from '$lib/data/session.js';
  */
 export const games = writable([]);
 export const subscriptions = writable(SUBSCRIPTIONS);
-export const collections = writable(COLLECTIONS);
-export const tags = writable(TAGS);
+/** Filled by `loadGames()`, from the real database's `collections` table (§7.3). */
+export const collections = writable([]);
+/** Filled by `loadGames()`, from the real database's `tags` table (§7.2). */
+export const tags = writable([]);
 
 /**
  * Replace `games` with rows read from the real game database, through the
@@ -47,22 +52,45 @@ export const tags = writable(TAGS);
 export async function loadGames({ limit = 5000 } = {}) {
   const connection = await gamesConnection();
   if (!connection) return;
-  const rows = await readGames(connection, { limit });
-  // Phase 2 (favorites/trash/tags/collections, §7) has no read path yet, so a
-  // real row carries none of those fields. Filling them in here — rather than
-  // teaching applySelection/counts to check for `undefined` — keeps every
-  // filter below exactly as it reads today; this is the one place that knows
-  // a real row is missing them, and it is temporary in the same way the rest
-  // of this file's Phase 2 fields are.
+
+  const [rows, favoriteIds, trashedIds, tagRows, collectionRows, tagsByGame, collectionsByGame] =
+    await Promise.all([
+      readGames(connection, { limit }),
+      readFavoriteIds(connection),
+      readTrashedIds(connection),
+      readTags(connection),
+      readCollections(connection),
+      readTagIdsByGame(connection),
+      readCollectionIdsByGame(connection)
+    ]);
+
+  const favorite = new Set(favoriteIds);
+  const trashed = new Set(trashedIds);
+
   games.set(rows.map((g) => ({
     ...g,
-    trashed: false,
-    favorite: false,
-    tags: [],
-    collection: null,
+    trashed: trashed.has(g.id),
+    favorite: favorite.has(g.id),
+    tags: tagsByGame[g.id] ?? [],
+    /*
+      §7.3's membership is many-to-many; `collection` below is singular,
+      matching applySelection's existing 'collection' case (equality, not
+      membership) and the test suite built against it. A game that belongs
+      to more than one regular Collection is filed under the first one only,
+      until that contract is revisited — not decided quietly here, just not
+      re-decided either.
+    */
+    collection: (collectionsByGame[g.id] ?? [null])[0],
+    // subscription_games (§8) records which subscription a game arrived
+    // through, in this same database — read path not added yet.
     subscription: null,
+    // addedDaysAgo has no column yet (no import timestamp is stored); Infinity
+    // keeps a real row out of Recently Added rather than crashing recentlyAdded.
     addedDaysAgo: Infinity
   })));
+
+  tags.set(tagRows);
+  collections.set(collectionRows);
 }
 
 /** { kind: 'all'|'favorites'|'recent'|'trash'|'subscription'|'collection'|'tag', id?: number } */

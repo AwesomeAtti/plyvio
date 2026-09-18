@@ -127,3 +127,196 @@ export const derivePlyCount = async (connection, id, count) => {
   const { movetext } = await readMovetextFor(connection, id);
   return movetext ? count(movetext) : 0;
 };
+
+/* ============================================================================
+ * Library features — §7. Favorites and Trash are presence tables (a row
+ * means the game is a favorite / in the trash); Tags and Collections are
+ * many-to-many through a membership table. None of these add a column to
+ * `games` — see §7's own header for why.
+ *
+ * The tag membership table is `tag_games` (`tag_id, game_id`, per
+ * database-schema.md §7.2) — samples/build_samples.py agrees. Sample .db
+ * files built before that table was renamed still had the old `tag_games`
+ * name; that was a stale-fixture problem, not a schema question, and it was
+ * fixed by rebuilding the samples rather than by this file following the
+ * old name.
+ * ========================================================================= */
+
+/** Every game id that is a favorite. §7.1 */
+export const readFavoriteIds = async (connection) =>
+  (await connection.all('select game_id from favorites')).map((r) => r.game_id);
+
+/** Every game id in the Trash. §7.1 */
+export const readTrashedIds = async (connection) =>
+  (await connection.all('select game_id from trash')).map((r) => r.game_id);
+
+/**
+ * Mark a game as a favorite, or unmark it. Presence, not a flag: `on`
+ * inserts the row if it is missing, `off` deletes it if it is there —
+ * either way idempotent, so a caller never has to check first.
+ */
+export const setFavorite = async (connection, gameId, on) => {
+  if (on) await connection.run('insert or ignore into favorites (game_id) values (?)', [gameId]);
+  else await connection.run('delete from favorites where game_id = ?', [gameId]);
+};
+
+/** Move a game to the Trash, or restore it. Same presence-table shape as `setFavorite`. */
+export const setTrashed = async (connection, gameId, on) => {
+  if (on) await connection.run('insert or ignore into trash (game_id) values (?)', [gameId]);
+  else await connection.run('delete from trash where game_id = ?', [gameId]);
+};
+
+/** Every Tag in this game database, in the order the Sidebar lists them. §7.2 */
+export const readTags = async (connection) =>
+  connection.all('select id, name from tags order by name collate nocase');
+
+/** The tag ids a game carries. */
+export const readTagIdsForGame = async (connection, gameId) =>
+  (await connection.all('select tag_id from tag_games where game_id = ?', [gameId]))
+    .map((r) => r.tag_id);
+
+/** The game ids carrying a tag — what the Sidebar's Tag row filters to. */
+export const readGameIdsForTag = async (connection, tagId) =>
+  (await connection.all('select game_id from tag_games where tag_id = ?', [tagId]))
+    .map((r) => r.game_id);
+
+/**
+ * Every game's tag ids, as a map keyed by game id. One query rather than one
+ * per game — what a caller filling in a whole Content Table's worth of rows
+ * needs, without an N+1 fetch.
+ */
+export const readTagIdsByGame = async (connection) => {
+  const rows = await connection.all('select game_id, tag_id from tag_games');
+  const byGame = {};
+  for (const row of rows) (byGame[row.game_id] ??= []).push(row.tag_id);
+  return byGame;
+};
+
+/** Every tag's game count in one query, for the Sidebar's trailing-count slots. */
+export const readTagCounts = async (connection) => {
+  const rows = await connection.all('select tag_id, count(*) as n from tag_games group by tag_id');
+  return Object.fromEntries(rows.map((r) => [r.tag_id, r.n]));
+};
+
+/**
+ * Find a Tag by name, or create it. `tags.name` is unique ignoring case
+ * (§7.2), so applying "Blunder" when "blunder" already exists must reuse the
+ * existing row rather than fail or fork the Sidebar into two rows for one tag.
+ *
+ * @returns {Promise<number>} the tag's id, existing or newly created.
+ */
+export const findOrCreateTag = async (connection, name) => {
+  const clean = String(name ?? '').trim();
+  const existing = await connection.get(
+    'select id from tags where name = ? collate nocase',
+    [clean]
+  );
+  if (existing) return existing.id;
+  await connection.run('insert into tags (name) values (?)', [clean]);
+  return connection.value('select id from tags where name = ? collate nocase', [clean]);
+};
+
+/** Apply a tag to a game. Idempotent — applying an already-carried tag is a no-op. */
+export const addTagToGame = async (connection, tagId, gameId) => {
+  await connection.run(
+    'insert or ignore into tag_games (game_id, tag_id) values (?, ?)',
+    [gameId, tagId]
+  );
+};
+
+/** Remove a tag from a game. Idempotent in the same way `addTagToGame` is. */
+export const removeTagFromGame = async (connection, tagId, gameId) => {
+  await connection.run(
+    'delete from tag_games where game_id = ? and tag_id = ?',
+    [gameId, tagId]
+  );
+};
+
+/**
+ * Every Collection in this game database — regular and Smart alike, in the
+ * order the Sidebar lists them. §7.3
+ *
+ * `smart` comes back as a boolean (the schema stores it as 0/1, per the
+ * convention `database-schema.md` states once for every such column); a
+ * Smart Collection's `criteria` is returned exactly as stored — parsing it is
+ * not this function's job, since §7.3 leaves the format unspecified.
+ */
+export const readCollections = async (connection) =>
+  (await connection.all(
+    'select id, name, smart, criteria from collections order by name collate nocase'
+  )).map((row) => ({ ...row, smart: row.smart === 1 }));
+
+/**
+ * The game ids in a regular Collection. Not meaningful for a Smart
+ * Collection — §7.3 says its membership is computed from `criteria` at query
+ * time, not stored in `collection_games` — so this returns `[]` for one
+ * rather than silently answering a different question.
+ */
+export const readGameIdsForCollection = async (connection, collectionId) =>
+  (await connection.all(
+    'select game_id from collection_games where collection_id = ?',
+    [collectionId]
+  )).map((r) => r.game_id);
+
+/**
+ * Every regular Collection's game count in one query. A Smart Collection is
+ * absent from the result (see `readGameIdsForCollection`) rather than
+ * reported as zero, so a caller can tell "empty" apart from "not this kind
+ * of count."
+ */
+export const readCollectionCounts = async (connection) => {
+  const rows = await connection.all(
+    'select collection_id, count(*) as n from collection_games group by collection_id'
+  );
+  return Object.fromEntries(rows.map((r) => [r.collection_id, r.n]));
+};
+
+/**
+ * Every regular Collection's member game ids, as a map keyed by game id. Same
+ * shape and reason as `readTagIdsByGame`; a Smart Collection contributes no
+ * entries, for the reason given on `readGameIdsForCollection`.
+ */
+export const readCollectionIdsByGame = async (connection) => {
+  const rows = await connection.all('select game_id, collection_id from collection_games');
+  const byGame = {};
+  for (const row of rows) (byGame[row.game_id] ??= []).push(row.collection_id);
+  return byGame;
+};
+
+/**
+ * Create a regular Collection. Smart Collections are not built here —
+ * `criteria`'s format is unspecified (§7.3) and inventing one as a side
+ * effect of this function would be the kind of decision this file avoids
+ * making silently, same as the `tag_games`/`tag_games` naming above.
+ *
+ * `collections.name` is unique ignoring case, like `tags.name`; creating a
+ * Collection that only differs in case reuses the existing row.
+ *
+ * @returns {Promise<number>} the collection's id, existing or newly created.
+ */
+export const findOrCreateCollection = async (connection, name) => {
+  const clean = String(name ?? '').trim();
+  const existing = await connection.get(
+    'select id from collections where name = ? collate nocase',
+    [clean]
+  );
+  if (existing) return existing.id;
+  await connection.run('insert into collections (name, smart) values (?, 0)', [clean]);
+  return connection.value('select id from collections where name = ? collate nocase', [clean]);
+};
+
+/** Add a game to a regular Collection. Idempotent, same shape as `addTagToGame`. */
+export const addGameToCollection = async (connection, collectionId, gameId) => {
+  await connection.run(
+    'insert or ignore into collection_games (collection_id, game_id) values (?, ?)',
+    [collectionId, gameId]
+  );
+};
+
+/** Remove a game from a regular Collection. Idempotent, same shape as `removeTagFromGame`. */
+export const removeGameFromCollection = async (connection, collectionId, gameId) => {
+  await connection.run(
+    'delete from collection_games where collection_id = ? and game_id = ?',
+    [collectionId, gameId]
+  );
+};

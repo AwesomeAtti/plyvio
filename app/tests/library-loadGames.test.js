@@ -1,7 +1,8 @@
 /**
  * `loadGames()` — the Library Content Table's read path onto the real game
- * database (Phase 1 of the SQLite migration; see stores/library.js and
- * data/session.js for what this deliberately does not yet do).
+ * database (Phases 1-2 of the SQLite migration: games, then favorites/
+ * trash/tags/collections; see stores/library.js and data/session.js for
+ * what this deliberately does not yet do).
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -9,24 +10,39 @@ import { get } from 'svelte/store';
 
 const rows = [
   { id: 1, date: '2026.01.01', white: 'Alpha', whiteElo: 2400, black: 'Beta',
-    blackElo: 2380, event: 'Test Open', result: '1-0', plyCount: null }
+    blackElo: 2380, event: 'Test Open', result: '1-0', plyCount: null },
+  { id: 2, date: '2026.01.02', white: 'Gamma', whiteElo: 2200, black: 'Delta',
+    blackElo: 2210, event: 'Test Open', result: '0-1', plyCount: null }
 ];
+
+const tagRows = [{ id: 10, name: 'Blunder' }];
+const collectionRows = [{ id: 20, name: 'Opening Prep', smart: false, criteria: null }];
 
 vi.mock('$lib/data/session.js', () => ({
   gamesConnection: vi.fn()
 }));
 vi.mock('$lib/data/games.js', () => ({
-  readGames: vi.fn(async () => rows)
+  readGames: vi.fn(async () => rows),
+  readFavoriteIds: vi.fn(async () => [1]),
+  readTrashedIds: vi.fn(async () => []),
+  readTags: vi.fn(async () => tagRows),
+  readCollections: vi.fn(async () => collectionRows),
+  readTagIdsByGame: vi.fn(async () => ({ 1: [10] })),
+  // Game 2 belongs to two Collections — the "first one only" compromise
+  // stores/library.js's own comment describes.
+  readCollectionIdsByGame: vi.fn(async () => ({ 2: [20, 21] }))
 }));
 
-const { games, loadGames } = await import('../src/lib/stores/library.js');
+const { games, tags, collections, loadGames } = await import('../src/lib/stores/library.js');
 const { gamesConnection } = await import('$lib/data/session.js');
-const { readGames } = await import('$lib/data/games.js');
+const dataGames = await import('$lib/data/games.js');
 
 beforeEach(() => {
   games.set([]);
+  tags.set([]);
+  collections.set([]);
   gamesConnection.mockReset();
-  readGames.mockClear();
+  for (const fn of Object.values(dataGames)) fn.mockClear?.();
 });
 
 describe('loadGames', () => {
@@ -35,34 +51,60 @@ describe('loadGames', () => {
     games.set([{ id: 'placeholder' }]);
     await loadGames();
     expect(get(games)).toEqual([{ id: 'placeholder' }]);
-    expect(readGames).not.toHaveBeenCalled();
+    expect(dataGames.readGames).not.toHaveBeenCalled();
   });
 
   it('replaces games with rows read through the seam', async () => {
     const connection = {};
     gamesConnection.mockResolvedValue(connection);
     await loadGames();
-    expect(readGames).toHaveBeenCalledWith(connection, { limit: 5000 });
-    expect(get(games)).toHaveLength(1);
+    expect(dataGames.readGames).toHaveBeenCalledWith(connection, { limit: 5000 });
+    expect(get(games)).toHaveLength(2);
     expect(get(games)[0].white).toBe('Alpha');
   });
 
   it('passes a caller-supplied limit through to readGames', async () => {
     gamesConnection.mockResolvedValue({});
     await loadGames({ limit: 50 });
-    expect(readGames).toHaveBeenCalledWith(expect.anything(), { limit: 50 });
+    expect(dataGames.readGames).toHaveBeenCalledWith(expect.anything(), { limit: 50 });
   });
 
-  it('fills in the Phase 2 fields a real row does not carry yet, so the ' +
-     'existing filters (counts, tag/collection selection) never see undefined', async () => {
+  it('marks favorites and trash from the real presence tables', async () => {
+    gamesConnection.mockResolvedValue({});
+    await loadGames();
+    const [g1, g2] = get(games);
+    expect(g1.favorite).toBe(true);
+    expect(g1.trashed).toBe(false);
+    expect(g2.favorite).toBe(false);
+  });
+
+  it('attaches each game’s real tag ids', async () => {
+    gamesConnection.mockResolvedValue({});
+    await loadGames();
+    const [g1, g2] = get(games);
+    expect(g1.tags).toEqual([10]);
+    expect(g2.tags).toEqual([]);
+  });
+
+  it('files a multiply-collected game under its first Collection only', async () => {
+    gamesConnection.mockResolvedValue({});
+    await loadGames();
+    const [, g2] = get(games);
+    expect(g2.collection).toBe(20);
+  });
+
+  it('leaves subscription null and addedDaysAgo unreachable, which have no read path yet', async () => {
     gamesConnection.mockResolvedValue({});
     await loadGames();
     const [game] = get(games);
-    expect(game.trashed).toBe(false);
-    expect(game.favorite).toBe(false);
-    expect(game.tags).toEqual([]);
-    expect(game.collection).toBeNull();
     expect(game.subscription).toBeNull();
     expect(game.addedDaysAgo).toBe(Infinity);
+  });
+
+  it('populates the tags and collections stores from the real database', async () => {
+    gamesConnection.mockResolvedValue({});
+    await loadGames();
+    expect(get(tags)).toEqual(tagRows);
+    expect(get(collections)).toEqual(collectionRows);
   });
 });

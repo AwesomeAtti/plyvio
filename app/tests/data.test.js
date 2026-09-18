@@ -16,18 +16,37 @@ import { openMemoryDatabase } from '../src/lib/data/backends/memory.js';
 import {
   CONFIG_TABLES,
   SCHEMA_USER_VERSION,
+  addGameToCollection,
+  addTagToGame,
   countGames,
   describe as describeIdentity,
+  findOrCreateCollection,
+  findOrCreateTag,
   identify,
   isConnection,
   movetextOf,
+  readCollections,
+  readFavoriteIds,
+  readGameIdsForCollection,
+  readGameIdsForTag,
   readGames,
+  readTagIdsByGame,
+  readCollectionIdsByGame,
   readLibraries,
   readMovetextFor,
   readPgn,
   readPreference,
   readPreferences,
+  readCollectionCounts,
+  readTagCounts,
+  readTagIdsForGame,
+  readTags,
+  readTrashedIds,
   readUiState,
+  removeGameFromCollection,
+  removeTagFromGame,
+  setFavorite,
+  setTrashed,
   writeMovetextFor,
   writePreference
 } from '../src/lib/data/index.js';
@@ -224,5 +243,192 @@ suite('an annotation round trip through the database', () => {
     const count = plyCount(readMovetext(movetext));
     expect(count).toBeGreaterThan(0);
     expect(await games.value('select ply_count from games where id = ?', [id])).toBeNull();
+  });
+});
+
+/* ===================== §7 — Library features, read side ================= */
+
+suite('favorites, trash, tags and collections — reading', () => {
+  let games;
+  beforeAll(async () => {
+    games = await openMemoryDatabase(bytesOf('my-games.db'));
+  });
+  afterAll(async () => games?.close());
+
+  it('reads which games are favorited or trashed', async () => {
+    const favorites = await readFavoriteIds(games);
+    const trashed = await readTrashedIds(games);
+    expect(favorites).toHaveLength(1);
+    expect(trashed).toHaveLength(1);
+  });
+
+  it('reads the tags, ordered by name', async () => {
+    const tags = await readTags(games);
+    expect(tags).toHaveLength(4);
+    expect(tags.map((t) => t.name)).toEqual([...tags.map((t) => t.name)].sort(
+      (a, b) => a.localeCompare(b, undefined, { sensitivity: 'base' })
+    ));
+    expect(tags.map((t) => t.name)).toContain('Blunder');
+  });
+
+  it('reads a tag membership both directions', async () => {
+    const [{ id: tagId }] = await readTags(games);
+    const gameIds = await readGameIdsForTag(games, tagId);
+    expect(gameIds.length).toBeGreaterThan(0);
+    const tagIds = await readTagIdsForGame(games, gameIds[0]);
+    expect(tagIds).toContain(tagId);
+  });
+
+  it('counts every tag in one query, matching a per-tag count', async () => {
+    const counts = await readTagCounts(games);
+    const [{ id: tagId }] = await readTags(games);
+    const gameIds = await readGameIdsForTag(games, tagId);
+    expect(counts[tagId]).toBe(gameIds.length);
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(13);
+  });
+
+  it('reads the collections, including the Smart one, with smart as a boolean', async () => {
+    const collections = await readCollections(games);
+    expect(collections).toHaveLength(3);
+    const smart = collections.find((c) => c.smart);
+    expect(smart).toBeTruthy();
+    expect(smart.criteria).toContain('MagnusCarlsen');
+    for (const c of collections) expect(typeof c.smart).toBe('boolean');
+  });
+
+  it('reads a regular Collection’s membership, and nothing for the Smart one', async () => {
+    const collections = await readCollections(games);
+    const regular = collections.find((c) => !c.smart);
+    const smart = collections.find((c) => c.smart);
+    expect((await readGameIdsForCollection(games, regular.id)).length).toBeGreaterThan(0);
+    expect(await readGameIdsForCollection(games, smart.id)).toEqual([]);
+  });
+
+  it('counts regular collections only, omitting the Smart one rather than reporting it as zero', async () => {
+    const counts = await readCollectionCounts(games);
+    const collections = await readCollections(games);
+    const smart = collections.find((c) => c.smart);
+    expect(smart.id in counts).toBe(false);
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(7);
+  });
+});
+
+/* ==================== §7 — Library features, write side ================= */
+
+suite('favorites, trash, tags and collections — writing', () => {
+  const fresh = async () => openMemoryDatabase(bytesOf('my-games.db'));
+
+  it('favoriting and unfavoriting a game is idempotent either way', async () => {
+    const db = await fresh();
+    const id = (await db.get('select id from games order by id limit 1')).id;
+    const before = await readFavoriteIds(db);
+    expect(before).not.toContain(id);
+
+    await setFavorite(db, id, true);
+    await setFavorite(db, id, true); // idempotent
+    expect(await readFavoriteIds(db)).toContain(id);
+
+    await setFavorite(db, id, false);
+    await setFavorite(db, id, false); // idempotent
+    expect(await readFavoriteIds(db)).not.toContain(id);
+    await db.close();
+  });
+
+  it('trashing and restoring a game leaves the count where it started', async () => {
+    const db = await fresh();
+    const id = (await db.get('select id from games order by id limit 1')).id;
+    const before = (await readTrashedIds(db)).length;
+
+    await setTrashed(db, id, true);
+    expect(await readTrashedIds(db)).toContain(id);
+
+    await setTrashed(db, id, false);
+    expect(await readTrashedIds(db)).toHaveLength(before);
+    await db.close();
+  });
+
+  it('finds an existing tag by name ignoring case, rather than forking it', async () => {
+    const db = await fresh();
+    const [existing] = await readTags(db);
+    const found = await findOrCreateTag(db, existing.name.toUpperCase());
+    expect(found).toBe(existing.id);
+    expect(await readTags(db)).toHaveLength(4); // no new row
+    await db.close();
+  });
+
+  it('creates a new tag, then reuses it on a second call', async () => {
+    const db = await fresh();
+    const id = await findOrCreateTag(db, 'Endgame Blunder');
+    expect(await readTags(db)).toHaveLength(5);
+    expect(await findOrCreateTag(db, 'endgame blunder')).toBe(id);
+    expect(await readTags(db)).toHaveLength(5); // still five
+    await db.close();
+  });
+
+  it('applies and removes a tag from a game, idempotently', async () => {
+    const db = await fresh();
+    const id = (await db.get('select id from games order by id limit 1')).id;
+    const tagId = await findOrCreateTag(db, 'Temp Tag');
+
+    await addTagToGame(db, tagId, id);
+    await addTagToGame(db, tagId, id); // idempotent
+    expect(await readTagIdsForGame(db, id)).toEqual([tagId]);
+
+    await removeTagFromGame(db, tagId, id);
+    await removeTagFromGame(db, tagId, id); // idempotent
+    expect(await readTagIdsForGame(db, id)).toEqual([]);
+    await db.close();
+  });
+
+  it('creates a regular Collection, never a Smart one', async () => {
+    const db = await fresh();
+    const id = await findOrCreateCollection(db, 'New Collection');
+    const created = (await readCollections(db)).find((c) => c.id === id);
+    expect(created.smart).toBe(false);
+    expect(created.criteria).toBeNull();
+    await db.close();
+  });
+
+  it('adds and removes a game from a Collection, idempotently', async () => {
+    const db = await fresh();
+    const id = (await db.get('select id from games order by id limit 1')).id;
+    const collectionId = await findOrCreateCollection(db, 'Temp Collection');
+
+    await addGameToCollection(db, collectionId, id);
+    await addGameToCollection(db, collectionId, id); // idempotent
+    expect(await readGameIdsForCollection(db, collectionId)).toEqual([id]);
+
+    await removeGameFromCollection(db, collectionId, id);
+    await removeGameFromCollection(db, collectionId, id); // idempotent
+    expect(await readGameIdsForCollection(db, collectionId)).toEqual([]);
+    await db.close();
+  });
+});
+
+/* =============== §7 — bulk membership maps (no N+1 per row) ============= */
+
+suite('tag and collection membership, as bulk maps', () => {
+  let games;
+  beforeAll(async () => {
+    games = await openMemoryDatabase(bytesOf('my-games.db'));
+  });
+  afterAll(async () => games?.close());
+
+  it('maps every game to its tag ids, matching the per-tag query summed', async () => {
+    const byGame = await readTagIdsByGame(games);
+    const total = Object.values(byGame).reduce((a, ids) => a + ids.length, 0);
+    expect(total).toBe(13);
+    const [gameId] = Object.keys(byGame);
+    const tagIds = await readTagIdsForGame(games, Number(gameId));
+    expect(byGame[gameId]).toEqual(tagIds);
+  });
+
+  it('maps every game to its regular-Collection ids, omitting the Smart one', async () => {
+    const byGame = await readCollectionIdsByGame(games);
+    const total = Object.values(byGame).reduce((a, ids) => a + ids.length, 0);
+    expect(total).toBe(7);
+    const collections = await readCollections(games);
+    const smart = collections.find((c) => c.smart);
+    for (const ids of Object.values(byGame)) expect(ids).not.toContain(smart.id);
   });
 });
