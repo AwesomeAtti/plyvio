@@ -1,7 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import { activeId } from './tabs.js';
 import { GAMES } from '$lib/game/games.js';
-import { pliesFor, engineFor } from '$lib/game/plies.js';
+import { pliesFor, engineFor, readGame } from '$lib/game/plies.js';
 import { SECTIONS, DEFAULT_VISIBILITY } from '$lib/game/sections.js';
 import { explorerRows, positionGames, explorerHeight } from '$lib/game/explorer.js';
 import { positionStats, explorerLibraries } from '$lib/game/explorerMock.js';
@@ -14,6 +14,8 @@ import { objects } from './settings.js';
 import { games as libraryGames, tags as libraryTags, collections as libraryCollections }
   from './library.js';
 import { known, ratingText, resultText, infoContentHeight } from '$lib/game/info.js';
+import { readMovetextFor } from '$lib/data/games.js';
+import { gamesConnection } from '$lib/data/session.js';
 
 /**
  * Game Workspace state — §5.3, §2.3.
@@ -53,9 +55,99 @@ function gameForLibraryId(libraryId) {
   return GAMES[Math.abs(h) % GAMES.length];
 }
 
+/**
+ * Does this tab's `libraryGameId` name a row in the REAL game database?
+ *
+ * A real `games.id` is a SQLite integer (`readGames()`'s rows, and the
+ * library rows built from them) — a `number`. The test suite's fixture
+ * tabs, and any tab opened with no library row at all, use a string
+ * sentinel or `null`, which is also what `gameForLibraryId`'s hash was
+ * built for. `typeof` is the whole test: no games.js row and no test
+ * fixture happens to produce a number today except a genuine database id.
+ */
+const isRealGameId = (libraryGameId) => typeof libraryGameId === 'number';
+
+/**
+ * A REAL game's movetext, read and parsed — §5.3's other half.
+ *
+ * The Info card reads its identity fields off the library row directly
+ * (`activeGame` below, `record = row ?? game`), because those columns are
+ * already loaded by `loadGames()`. The board, move list and engine banner
+ * need the full movetext, which is not: `games.movetext`/`games.pgn` are not
+ * columns `readGames()` selects (§3.2.4.2's eight are list columns, not the
+ * document), so they need their own fetch, once per game, on demand rather
+ * than up front for every row the Library lists.
+ *
+ * Keyed by libraryGameId — the real `games.id` — never by tab: two tabs
+ * opened on the same game share one fetch and one parse, the same sharing
+ * `plies.js`'s WeakMap gives mock rows for free (a `Map` here because a real
+ * game has no row object to hang a WeakMap entry off until this resolves it).
+ *
+ * NOT a Svelte store on its own; `realGames` below is, and this module holds
+ * only the fetch that fills it in.
+ */
+
+/** What an absent or not-yet-loaded real game looks like: the starting
+ *  position and nothing else — the same shape `readGame()` already produces
+ *  for a blank movetext, reused rather than hand-written a second time. */
+const EMPTY_REAL_GAME = readGame('');
+
+export const realGames = writable(new Map());
+
+/**
+ * Fetch and parse a real game's movetext, once, into `realGames`.
+ *
+ * Fire-and-forget: `ensureGameState` calls this without awaiting, so a tab's
+ * state exists synchronously as it always has, and `activeGame` — which
+ * depends on `realGames` — recomputes on its own once this settles.
+ *
+ * A missing connection (outside Tauri) or a read/parse failure lands on the
+ * same `EMPTY_REAL_GAME` shape as a blank movetext would, under
+ * `status: 'error'` so nothing retries it on the next ply move. The board
+ * then shows the starting position and nothing else — sparse rather than
+ * wrong, the same call the Info card's `known()` already makes for a field
+ * it doesn't have. The failure itself is not silent: it goes to the console
+ * for whoever is debugging, even though the UI stays quiet.
+ */
+function loadRealGame(libraryGameId) {
+  if (get(realGames).has(libraryGameId)) return;
+  realGames.update((m) => new Map(m).set(libraryGameId, { status: 'loading', ...EMPTY_REAL_GAME }));
+  (async () => {
+    try {
+      const connection = await gamesConnection();
+      /* No connection (outside Tauri, or before one opens) is not "this game
+         has no moves" — it is "there is no way to know yet", the same as a
+         read that throws. Treating it as ready-with-nothing would tell a
+         caller the fetch succeeded when it never ran. */
+      if (!connection) throw new Error('no database connection');
+      const { movetext } = await readMovetextFor(connection, libraryGameId);
+      const parsed = readGame(movetext);
+      realGames.update((m) => new Map(m).set(libraryGameId, { status: 'ready', ...parsed }));
+    } catch (err) {
+      console.error(`Plyvio: failed to load game ${libraryGameId}`, err);
+      realGames.update((m) =>
+        new Map(m).set(libraryGameId, { status: 'error', ...EMPTY_REAL_GAME })
+      );
+    }
+  })();
+}
+
+/**
+ * The plies behind a tab's game, real or mock — what `activeGame` and the
+ * imperative ply-navigation functions below both need, kept in one place so
+ * the two do not each grow their own idea of where a game's moves come from.
+ */
+function pliesForState(st) {
+  if (isRealGameId(st.libraryGameId)) {
+    return (get(realGames).get(st.libraryGameId) ?? EMPTY_REAL_GAME).plies;
+  }
+  return pliesFor(gameById(st.gameId));
+}
+
 export function ensureGameState(tabId, libraryGameId = null) {
   const existing = get(gameStates)[tabId];
   if (existing) return existing;
+  if (isRealGameId(libraryGameId)) loadRealGame(libraryGameId);
   const game = gameForLibraryId(libraryGameId);
   const state = {
     gameId: game.id,
@@ -122,15 +214,32 @@ export const gameById = (id) => GAMES.find((g) => g.id === id) || GAMES[0];
  * downstream indexes the same array instead of parsing its own.
  */
 export const activeGame = derived(
-  [gameStates, activeId, objects, libraryGames, libraryTags, libraryCollections, gameEdits],
-  ([$s, $id, $objects, $libraryGames, $libraryTags, $libraryCollections, $gameEdits]) => {
+  [gameStates, activeId, objects, libraryGames, libraryTags, libraryCollections, gameEdits,
+    realGames],
+  ([$s, $id, $objects, $libraryGames, $libraryTags, $libraryCollections, $gameEdits,
+    $realGames]) => {
   const st = $s[$id];
   if (!st) return null;
   /* The row, with any edits made this session laid over it. `pgn` is never in
      the overlay: the document as received is not editable, by design. */
   const base = gameById(st.gameId);
   const game = { ...base, ...($gameEdits?.[st.gameId] ?? {}) };
-  const plies = pliesFor(game);
+
+  /*
+    THE FIX: a real library game's board, move list and engine banner read
+    the movetext `loadRealGame` fetched for it, not the mock row's — the mock
+    row is still consulted for `gameId`/edits and the Info card's
+    not-yet-a-real-column fields (`site`, `round`), which is a separate,
+    already-noted gap, not this one. `real` is null for a tab with no
+    library row (a sandbox tab, or a test), which keeps the mock path exactly
+    as it was for those.
+  */
+  const real = isRealGameId(st.libraryGameId)
+    ? ($realGames.get(st.libraryGameId) ?? { status: 'loading', ...EMPTY_REAL_GAME })
+    : null;
+  const loading = !!real && real.status !== 'ready';
+  const plies = real ? real.plies : pliesFor(game);
+  const gameEngine = real ? real.engine : engineFor(game);
   const ply = Math.min(st.ply, plies.length - 1);
 
   /*
@@ -206,17 +315,10 @@ export const activeGame = derived(
     : [];
 
   /*
-    BUG FIX, pending the bigger one: `game` is still always GAMES[0] for a
-    real library game (see gameForLibraryId below — its hash is built for a
-    string id, and a real id is a number, so the loop it depends on never
-    runs and every real game hashes to the same one). The record fields the
-    Info card can get from the already-loaded library row it uses instead,
-    when `row` exists — `site` and `round` are not columns readGames() carries
-    yet, so those still come from the wrong mock game until they are. The
-    board, moves and engine analysis below (`plies`, `engine`) are NOT fixed
-    by this: they still read `game.movetext`/`game.pgn`, which is the mock
-    record's, not the real one's — that needs an async per-game fetch this
-    derived store does not do yet, and is tracked separately.
+    Record fields the Info card draws. `site`/`round` still come from the
+    mock row for a real game — `readGames()` does not select those columns
+    yet — which is the one part of the earlier `gameForLibraryId` bug this
+    file does not close; everything else `row` can answer, it does.
   */
   const record = row ?? game;
   const info = {
@@ -235,7 +337,15 @@ export const activeGame = derived(
   };
 
   return {
-    tabId: $id, state: st, game, plies, ply, position: plies[ply], engine: engineFor(game),
+    tabId: $id, state: st, game, plies, ply, position: plies[ply], engine: gameEngine,
+    /*
+      True while a real game's movetext hasn't landed yet (or failed to).
+      Nothing reads this today — the board/move list/engine sections render
+      the starting position underneath it either way, deliberately, rather
+      than carrying loading chrome for a local read that is normally a few
+      milliseconds — but it is here for a component that later wants to.
+    */
+    loading,
     info,
     engineView: {
       sources: engineList,
@@ -387,7 +497,7 @@ export function setEngineDepth(tabId, n) {
 export function goToPly(tabId, ply) {
   const st = get(gameStates)[tabId];
   if (!st) return;
-  const max = pliesFor(gameById(st.gameId)).length - 1;
+  const max = pliesForState(st).length - 1;
   /*
     Leaving the position clears the Engine Section, on or off alike — and
     returning does not bring it back. What an engine said about a position it is
@@ -404,7 +514,7 @@ export const lastPly = (tabId) => goToPly(tabId, Number.MAX_SAFE_INTEGER);
 
 export function atLastPly(tabId) {
   const st = get(gameStates)[tabId];
-  return !!st && st.ply >= pliesFor(gameById(st.gameId)).length - 1;
+  return !!st && st.ply >= pliesForState(st).length - 1;
 }
 
 /* --------------------------------- board -------------------------------- */
@@ -454,4 +564,5 @@ export function composition(state, contentHeights = {}) {
 
 export function resetGameState() {
   gameStates.set({});
+  realGames.set(new Map());
 }

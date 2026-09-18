@@ -1,0 +1,129 @@
+/**
+ * A real library game's board, move list and engine banner — the async half
+ * of the SQLite migration `game.test.js`'s Info-card fix left open. See
+ * `stores/game.js`'s `loadRealGame`/`isRealGameId`/`realGames`.
+ *
+ * Mocks `$lib/data/session.js` and `$lib/data/games.js` the same way
+ * `library-loadGames.test.js` does for `loadGames()` — a real connection is
+ * never available under Vitest (`gamesConnection()` only resolves non-null
+ * inside Tauri), so the fetch itself has to be faked to exercise anything
+ * past "no connection".
+ */
+
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { get } from 'svelte/store';
+
+const REAL_MOVETEXT = '1. e4 e5 2. Nf3 Nc6 3. Bb5 *';
+
+vi.mock('$lib/data/session.js', () => ({
+  gamesConnection: vi.fn()
+}));
+/*
+ * A partial mock: `movetextFromRow` is real, because the MOCK game path
+ * (`game/plies.js`'s `pliesFor`) uses it too, and the last test below
+ * exercises exactly that path — a tab with no library row must still work.
+ */
+vi.mock('$lib/data/games.js', async (importOriginal) => ({
+  ...(await importOriginal()),
+  readMovetextFor: vi.fn(async () => ({ movetext: REAL_MOVETEXT, source: 'pgn' }))
+}));
+
+const {
+  gameStates, activeGame, ensureGameState, resetGameState, goToPly, atLastPly
+} = await import('../src/lib/stores/game.js');
+const { activeId } = await import('../src/lib/stores/tabs.js');
+const { gamesConnection } = await import('$lib/data/session.js');
+const { readMovetextFor } = await import('$lib/data/games.js');
+const { readGame } = await import('../src/lib/game/plies.js');
+
+/** One microtask/macrotask turn — enough for the fire-and-forget fetch's
+ *  `await`s and the derived store's recompute to settle. */
+const flush = () => new Promise((r) => setTimeout(r, 0));
+
+beforeEach(() => {
+  resetGameState();
+  activeId.set('library');
+  gamesConnection.mockReset();
+  readMovetextFor.mockReset();
+  readMovetextFor.mockResolvedValue({ movetext: REAL_MOVETEXT, source: 'pgn' });
+});
+
+describe('a real game’s movetext, fetched for the board/moves/engine', () => {
+  it('fetches once by the numeric library id, shared across tabs on the same game', async () => {
+    gamesConnection.mockResolvedValue({});
+    ensureGameState('t1', 42);
+    ensureGameState('t2', 42);
+    await flush();
+    expect(readMovetextFor).toHaveBeenCalledTimes(1);
+    expect(readMovetextFor).toHaveBeenCalledWith({}, 42);
+  });
+
+  it('shows the starting position while the fetch is in flight, then the real moves', async () => {
+    let resolveFetch;
+    gamesConnection.mockResolvedValue({});
+    readMovetextFor.mockReturnValue(new Promise((r) => { resolveFetch = r; }));
+
+    ensureGameState('t1', 42);
+    activeId.set('t1');
+
+    const before = get(activeGame);
+    expect(before.loading).toBe(true);
+    expect(before.plies).toHaveLength(1);
+    expect(before.position.s).toBeNull();
+
+    resolveFetch({ movetext: REAL_MOVETEXT, source: 'pgn' });
+    await flush();
+
+    const after = get(activeGame);
+    expect(after.loading).toBe(false);
+    expect(after.plies).toEqual(readGame(REAL_MOVETEXT).plies);
+    expect(after.engine).toEqual(readGame(REAL_MOVETEXT).engine);
+  });
+
+  it('falls back to the starting position, not a wrong game, with no connection', async () => {
+    gamesConnection.mockResolvedValue(null);
+    ensureGameState('t1', 42);
+    activeId.set('t1');
+    await flush();
+
+    const g = get(activeGame);
+    expect(g.loading).toBe(true);
+    expect(g.plies).toHaveLength(1);
+    expect(g.plies[0].f).toBe(readGame('').plies[0].f);
+  });
+
+  it('falls back the same way, and logs, when the read itself throws', async () => {
+    gamesConnection.mockResolvedValue({});
+    readMovetextFor.mockRejectedValue(new Error('boom'));
+    const spy = vi.spyOn(console, 'error').mockImplementation(() => {});
+
+    ensureGameState('t1', 42);
+    activeId.set('t1');
+    await flush();
+
+    const g = get(activeGame);
+    expect(g.loading).toBe(true);
+    expect(g.plies).toHaveLength(1);
+    expect(spy).toHaveBeenCalled();
+    spy.mockRestore();
+  });
+
+  it('clamps ply navigation to the real game’s length once it has loaded', async () => {
+    gamesConnection.mockResolvedValue({});
+    ensureGameState('t1', 42);
+    activeId.set('t1');
+    await flush();
+
+    goToPly('t1', 99999);
+    expect(atLastPly('t1')).toBe(true);
+    expect(get(gameStates).t1.ply).toBe(readGame(REAL_MOVETEXT).plies.length - 1);
+  });
+
+  it('leaves a tab with no library row on the mock table, untouched', () => {
+    ensureGameState('t1', null);
+    activeId.set('t1');
+    const g = get(activeGame);
+    expect(g.loading).toBe(false);
+    expect(readMovetextFor).not.toHaveBeenCalled();
+  });
+});
