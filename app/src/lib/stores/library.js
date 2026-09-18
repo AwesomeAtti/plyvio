@@ -1,6 +1,8 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
-import { makeGames, SUBSCRIPTIONS, COLLECTIONS, TAGS } from '$lib/library/mock.js';
+import { SUBSCRIPTIONS, COLLECTIONS, TAGS } from '$lib/library/mock.js';
+import { readGames } from '$lib/data/games.js';
+import { gamesConnection } from '$lib/data/session.js';
 
 /**
  * Library Workspace state. §3.2
@@ -11,10 +13,57 @@ import { makeGames, SUBSCRIPTIONS, COLLECTIONS, TAGS } from '$lib/library/mock.j
  * search. They are therefore separate stores combined in one derived view.
  */
 
-export const games = writable(makeGames());
+/**
+ * The Content Table's rows.
+ *
+ * Starts empty and is filled by `loadGames()` — see there for why this is a
+ * single generous fetch rather than true incremental paging, and what a real
+ * row does NOT yet carry (`trashed`, `favorite`, `tags`, `collection`,
+ * `addedDaysAgo` are Phase 2; a real row simply lacks them, and every filter
+ * below that reads one degrades to treating it as unset rather than throwing).
+ *
+ * Tests set this directly (`games.set(makeGames())`) and are unaffected by
+ * `loadGames()`, which they never call.
+ */
+export const games = writable([]);
 export const subscriptions = writable(SUBSCRIPTIONS);
 export const collections = writable(COLLECTIONS);
 export const tags = writable(TAGS);
+
+/**
+ * Replace `games` with rows read from the real game database, through the
+ * seam in `$lib/data`.
+ *
+ * A generous single page, not true incremental fetching: `readGames` is
+ * already query-shaped for `limit`/`offset`, but `ContentTable.svelte`
+ * still virtualises DOM rows over an already-loaded array — it does not yet
+ * fetch on scroll. Swapping that is a separate change; this one proves the
+ * read path without it, which is why `limit` defaults well above the
+ * sample database's size rather than to `readGames`'s own default page.
+ *
+ * A no-op outside Tauri (`gamesConnection()` resolves `null` in a browser/
+ * PWA visit or a test) — `games` is left exactly as whatever set it last.
+ */
+export async function loadGames({ limit = 5000 } = {}) {
+  const connection = await gamesConnection();
+  if (!connection) return;
+  const rows = await readGames(connection, { limit });
+  // Phase 2 (favorites/trash/tags/collections, §7) has no read path yet, so a
+  // real row carries none of those fields. Filling them in here — rather than
+  // teaching applySelection/counts to check for `undefined` — keeps every
+  // filter below exactly as it reads today; this is the one place that knows
+  // a real row is missing them, and it is temporary in the same way the rest
+  // of this file's Phase 2 fields are.
+  games.set(rows.map((g) => ({
+    ...g,
+    trashed: false,
+    favorite: false,
+    tags: [],
+    collection: null,
+    subscription: null,
+    addedDaysAgo: Infinity
+  })));
+}
 
 /** { kind: 'all'|'favorites'|'recent'|'trash'|'subscription'|'collection'|'tag', id?: number } */
 export const selection = writable({ kind: 'all' });

@@ -9,6 +9,7 @@
   import { enforceWindowFloor } from '$lib/windowFloor.js';
   import { watchFullscreen } from '$lib/stores/appCommands.js';
   import { selectSection } from '$lib/stores/settings.js';
+  import { loadGames } from '$lib/stores/library.js';
 
   let aboutFocus = $state(false);
 
@@ -18,6 +19,11 @@
   // Keep the menu's Full Screen state in step with the host, including exits
   // the user triggers with Esc or F11 rather than through the menu.
   $effect(() => watchFullscreen());
+
+  // Replaces the Library's mock corpus with the real game database,
+  // once, on mount (Phase 1 of the SQLite migration — games only, not
+  // config). A no-op outside Tauri; see stores/library.js.
+  $effect(() => { loadGames(); });
 
   function onNavigate(detail) {
     if (detail?.section === 'about') {
