@@ -1,10 +1,10 @@
-# Plyvio — Database Schema Reference (v010)
+# Plyvio — Database Schema Reference (v011)
 
 SQLite 3 · target schema
 
 This document defines two kinds of SQLite database:
 
-- A **game database** stores chess games (§1–§4) and may carry a derived table of position statistics (§6). It is any SQLite file conforming to that schema, of any name, whether created by Plyvio, supplied by another application, or populated independently.
+- A **game database** stores chess games (§1–§4); carries Library features such as Favorites, Tags and Collections (§7) and subscription tracking (§8); and may carry a derived table of position statistics (§6). It is any SQLite file conforming to that schema, of any name, whether created by Plyvio, supplied by another application, or populated independently.
 - **`config.db`** stores Plyvio configuration: Libraries, subscriptions to online chess sources, and chess engines (§5).
 
 A game database is independent of `config.db` and remains usable without it.
@@ -19,7 +19,7 @@ These apply throughout and are not repeated per field.
 - **Primary keys.** Every `id` column is an INTEGER primary key and an alias for SQLite's rowid, assigned on insert. It has no meaning outside its own database.
 - **Booleans.** SQLite has no boolean type. Boolean fields are INTEGER with permitted values `1` and `0`.
 - **Timestamps.** Timestamp fields hold an ISO 8601 UTC timestamp, for example `2026-08-31T14:23:17Z`.
-- **PGN references.** Section references §8.x and §9.x, including those in §1's PGN tag column, refer to the PGN standard (§7). This document has no sections with those numbers.
+- **PGN references.** Section references §8.x and §9.x, including those in §1's PGN tag column, refer to the PGN standard (§9). This document has no sections with those numbers.
 
 ---
 
@@ -222,7 +222,7 @@ and `pgn` is unchanged.
 
 NAGs, comments, and variations are preserved on every read and write. They need no database columns of their own, and no proprietary move-tree representation is required. Variations are part of the move tree, not independent games; the user may add, modify, or remove them without modifying `pgn`.
 
-**Comment commands.** Structured data is written inside comments using the bracketed command convention common to chess annotation, `[%command value]`. A PGN viewer that does not recognize a command still sees an ordinary comment. Each command is either adopted from common usage or defined by an extension cited in §7; this specification does not redefine them.
+**Comment commands.** Structured data is written inside comments using the bracketed command convention common to chess annotation, `[%command value]`. A PGN viewer that does not recognize a command still sees an ordinary comment. Each command is either adopted from common usage or defined by an extension cited in §9; this specification does not redefine them.
 
 ### 3.3 Comment commands
 
@@ -242,7 +242,7 @@ NAGs, comments, and variations are preserved on every read and write. They need 
 
 #### Engine context
 
-`%engine` follows the PGN Extension: Evaluation Context v1.0 (§7), which defines its syntax, attributes, and parsing rules. They are not restated here. Its attributes are `name` (engine name and version), `timestamp` (when the analysis was performed, not when the game was played), `depth`, `hash`, `threads`, `multipv`, and `options`; all are optional.
+`%engine` follows the PGN Extension: Evaluation Context v1.0 (§9), which defines its syntax, attributes, and parsing rules. They are not restated here. Its attributes are `name` (engine name and version), `timestamp` (when the analysis was performed, not when the game was played), `depth`, `hash`, `threads`, `multipv`, and `options`; all are optional.
 
 ```text
 {[%engine name="Stockfish 18.1" timestamp="2026-09-08T13:49:00Z" depth=24 hash=4096 threads=8 multipv=1]}
@@ -255,7 +255,7 @@ Because every write replaces the whole of `movetext` (§3.1), the extension's ru
 
 #### Best move
 
-`%bestmove` follows the PGN Extension: Best Move v1.1 (§7). It applies from the first move onward.
+`%bestmove` follows the PGN Extension: Best Move v1.1 (§9). It applies from the first move onward.
 
 The value is the engine's best move **in the position the move was played from** — the move the engine would have chosen instead, and so a move for the side that played the move the comment follows. A `%bestmove` and a `%eval` in the same comment therefore describe two different positions: the evaluation is of the position the move led to, the recommendation is for the position it was played from. Neither is the other's principal variation.
 
@@ -642,7 +642,125 @@ The position key identifies a position for lookup. It is the **first four fields
 
 ---
 
-## 7. Sources
+## 7. Library features
+
+A game database carries tables for per-Library organization: Favorites, Trash, Tags, and Collections. Each refers to a game by `games.id` (§1) and its row is removed when that game is removed. None of them adds a column to `games` — favoriting, trashing, tagging, and collecting a game are additive relations, not properties of the game row.
+
+Tags and Collections are scoped to the game database that holds them: a Tag or Collection created in one Library does not appear in another.
+
+A game database supplied by another application, or populated independently, may not have these tables; the features they support are then unavailable until they are added.
+
+### 7.1 `favorites` and `trash` tables
+
+Favorites and Trash are **presence tables**: a row means the game is a favorite, or, respectively, in the Trash. Neither is a boolean column on `games`.
+
+```sql
+CREATE TABLE favorites (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE
+);
+
+CREATE TABLE trash (
+    game_id INTEGER PRIMARY KEY REFERENCES games(id) ON DELETE CASCADE
+);
+```
+
+Neither table carries a timestamp. No specified view sorts or filters by when a game was favorited or trashed; one can be added when a view needs it.
+
+### 7.2 `tags` and `tag_games` tables
+
+A Tag is a user-defined label; a game may carry several.
+
+| #   | Column | Type    | Description |
+| --- | ------ | ------- | ------------ |
+| 1   | `id`   | INTEGER | Primary key |
+| 2   | `name` | TEXT    | Tag name    |
+
+```sql
+CREATE TABLE tags (
+    id   INTEGER PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE
+);
+
+CREATE TABLE tag_games (
+    tag_id  INTEGER NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    PRIMARY KEY (tag_id, game_id)
+) WITHOUT ROWID;
+CREATE INDEX tag_games_by_game ON tag_games (game_id);
+```
+
+`tag_games` is the many-to-many membership table between `tags` and `games`. Its primary key leads with `tag_id`, so — under the same `WITHOUT ROWID` clustering rule as `positions` (§6.1) — rows for one tag are physically contiguous, matching the primary access path: the Sidebar lists a Tag and filters to its games. `tag_games_by_game` is the reverse index, for "which tags does this game carry."
+
+`tags.name` is unique ignoring case. Applying a tag creates one "when nothing matches exactly" (product spec §3.2.4.5); without a case-insensitive uniqueness rule, `Blunder` and `blunder` would become two separate Sidebar rows.
+
+### 7.3 `collections` and `collection_games` tables
+
+A Collection is a user-named, static group of games; a Smart Collection is the same concept computed from a saved search rather than explicit membership.
+
+| #   | Column     | Type    | Description |
+| --- | ---------- | ------- | ------------ |
+| 1   | `id`       | INTEGER | Primary key |
+| 2   | `name`     | TEXT    | Collection name |
+| 3   | `smart`    | INTEGER | Whether this is a Smart Collection |
+| 4   | `criteria` | TEXT    | Smart Collection's saved search; format unspecified (product spec §3.2.3.4) |
+
+```sql
+CREATE TABLE collections (
+    id       INTEGER PRIMARY KEY,
+    name     TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    smart    INTEGER NOT NULL DEFAULT 0 CHECK (smart IN (0, 1)),
+    criteria TEXT,
+    CHECK (smart = 1 OR criteria IS NULL)
+);
+
+-- Membership of regular Collections only. A Smart Collection computes its own.
+CREATE TABLE collection_games (
+    collection_id INTEGER NOT NULL REFERENCES collections(id) ON DELETE CASCADE,
+    game_id       INTEGER NOT NULL REFERENCES games(id)       ON DELETE CASCADE,
+    PRIMARY KEY (collection_id, game_id)
+) WITHOUT ROWID;
+CREATE INDEX collection_games_by_game ON collection_games (game_id);
+```
+
+`collection_games` records membership for a regular Collection only; a Smart Collection has no rows here because its membership is computed from `criteria` at query time, not stored.
+
+A game may belong to more than one Collection: product spec §3.2.4.5 lets a single import place a game into several Collections at once.
+
+`collections.name` is unique ignoring case, for the same reason as `tags.name` (§7.2).
+
+---
+
+## 8. Subscription tracking
+
+`subscription_games` records which games in this game database arrived through which `config.db` subscription (§5.2), so the Sidebar can filter a Library's games by subscription and show a count.
+
+| #   | Column            | Type    | Description                     |
+| --- | ----------------- | ------- | -------------------------------- |
+| 1   | `subscription_id` | INTEGER | `config.db` `subscriptions.id`  |
+| 2   | `game_id`         | INTEGER | References `games.id`            |
+
+```sql
+CREATE TABLE subscription_games (
+    subscription_id INTEGER NOT NULL,
+    game_id         INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    PRIMARY KEY (subscription_id, game_id)
+) WITHOUT ROWID;
+CREATE INDEX subscription_games_by_game ON subscription_games (game_id);
+```
+
+**`subscription_id` carries no `REFERENCES` clause.** SQLite cannot enforce a foreign key into another database file, and `subscription_id` points at `config.db`'s `subscriptions` table, not at anything in this file. `config.db` is expected to reside beside the game database it references; the two travel together, but this table does not depend on that arrangement to remain internally valid.
+
+**This table is a deliberate exception to the one-way relationship described in §5.** §5 states that a game database contains no reference to `config.db` or to any subscription, and remains valid and usable without it. `subscription_games` is such a reference: without `config.db` present, its `subscription_id` values mean nothing. The games themselves are unaffected — they remain fully usable rows in `games` regardless of `config.db`'s presence — and this table simply cannot be resolved to a subscription's name or source until `config.db` is available again.
+
+**The relationship is many-to-many.** A game can arrive through more than one subscription — for example, a game between two subscribed players — so a game may have more than one row here.
+
+**No `imported_at` column.** It would duplicate `games.created_at`, which already records when the row was added to this database. The count of games a subscription has newly found is the number of rows in this table, for that subscription, whose `games.created_at` is later than that subscription's `subscriptions.last_viewed_at`.
+
+**Deleting a subscription leaves its rows.** Per §5.2, deleting a subscription does not delete the games it found; the rows here simply point at a `subscription_id` that no longer resolves, and may be cleaned up or left as an application choice.
+
+---
+
+## 9. Sources
 
 - PGN standard:
   https://www.saremba.de/chessgml/standards/pgn/pgn-complete.htm
