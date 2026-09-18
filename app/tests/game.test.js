@@ -36,6 +36,7 @@ import {
   flipBoard, toggleCollapsed, toggleHidden, toggleEvalBar,
   setEngineOn, setEngineSource, setEngineLines, setEngineDepth, engineContentHeight
 } from '../src/lib/stores/game.js';
+import { games as libraryGames } from '../src/lib/stores/library.js';
 
 const readSrc = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
@@ -1589,6 +1590,54 @@ describe('§5.3 ply navigation', () => {
     ensureGameState('b', 'g42');
     expect(get(gameStates).a.gameId).toBe(get(gameStates).b.gameId);
     expect(GAMES.some((g) => g.id === get(gameStates).a.gameId)).toBe(true);
+  });
+});
+
+/*
+  Game Info reads a REAL library row, not the mock GAMES table, once one is
+  attached to the tab (gameForLibraryId's hash only ever resolves a numeric
+  library id to GAMES[0] — see the BUG FIX comment in stores/game.js). This
+  guards the fix: a real row's identity fields must win over the mock game's.
+*/
+describe('Game Info reads the real library row when one is open', () => {
+  afterEach(() => { libraryGames.set([]); });
+
+  it('prefers the library row\'s player names, ratings, result, date and event over the mock game', () => {
+    libraryGames.set([{
+      id: 42,
+      white: 'Carlsen, Magnus',
+      black: 'Caruana, Fabiano',
+      whiteElo: 2839,
+      blackElo: 2822,
+      result: '1/2-1/2',
+      date: '2024.04.12',
+      event: 'Candidates',
+      favorite: false,
+      tags: [],
+      collections: []
+    }]);
+    resetGameState();
+    ensureGameState('real-1', 42);
+    activeId.set('real-1');
+
+    const info = get(activeGame).info;
+    expect(info.white).toBe('Carlsen, Magnus');
+    expect(info.black).toBe('Caruana, Fabiano');
+    expect(info.result).toBe('1/2-1/2');
+    expect(info.date).toBe('2024.04.12');
+    expect(info.event).toBe('Candidates');
+    expect(info.hasRow).toBe(true);
+  });
+
+  it('falls back to the mock game when no library row matches the tab', () => {
+    libraryGames.set([]);
+    resetGameState();
+    ensureGameState('mock-1', 999);
+    activeId.set('mock-1');
+
+    const info = get(activeGame).info;
+    expect(info.hasRow).toBe(false);
+    expect(info.white).toBe(GAMES[0].white);
   });
 });
 

@@ -205,15 +205,29 @@ export const activeGame = derived(
       ]
     : [];
 
+  /*
+    BUG FIX, pending the bigger one: `game` is still always GAMES[0] for a
+    real library game (see gameForLibraryId below — its hash is built for a
+    string id, and a real id is a number, so the loop it depends on never
+    runs and every real game hashes to the same one). The record fields the
+    Info card can get from the already-loaded library row it uses instead,
+    when `row` exists — `site` and `round` are not columns readGames() carries
+    yet, so those still come from the wrong mock game until they are. The
+    board, moves and engine analysis below (`plies`, `engine`) are NOT fixed
+    by this: they still read `game.movetext`/`game.pgn`, which is the mock
+    record's, not the real one's — that needs an async per-game fetch this
+    derived store does not do yet, and is tracked separately.
+  */
+  const record = row ?? game;
   const info = {
-    white: known(game.white),
-    black: known(game.black),
-    whiteElo: ratingText(game.white_elo),
-    blackElo: ratingText(game.black_elo),
-    result: resultText(game.result),
-    date: known(game.date),
+    white: known(record.white),
+    black: known(record.black),
+    whiteElo: ratingText(record.whiteElo ?? record.white_elo),
+    blackElo: ratingText(record.blackElo ?? record.black_elo),
+    result: resultText(record.result),
+    date: known(record.date),
     site: known(game.site),
-    event: known(game.event),
+    event: known(record.event),
     round: known(game.round),
     favorite: !!row?.favorite,
     chips,
