@@ -19,7 +19,7 @@ const tagRows = [{ id: 10, name: 'Blunder' }];
 const collectionRows = [{ id: 20, name: 'Opening Prep', smart: false, criteria: null }];
 
 vi.mock('$lib/data/session.js', () => ({
-  gamesConnection: vi.fn()
+  libraryConnection: vi.fn()
 }));
 vi.mock('$lib/data/games.js', () => ({
   readGames: vi.fn(async () => rows),
@@ -33,20 +33,20 @@ vi.mock('$lib/data/games.js', () => ({
 }));
 
 const { games, tags, collections, loadGames } = await import('../src/lib/stores/library.js');
-const { gamesConnection } = await import('$lib/data/session.js');
+const { libraryConnection } = await import('$lib/data/session.js');
 const dataGames = await import('$lib/data/games.js');
 
 beforeEach(() => {
   games.set([]);
   tags.set([]);
   collections.set([]);
-  gamesConnection.mockReset();
+  libraryConnection.mockReset();
   for (const fn of Object.values(dataGames)) fn.mockClear?.();
 });
 
 describe('loadGames', () => {
-  it('is a no-op outside Tauri, where gamesConnection() resolves null', async () => {
-    gamesConnection.mockResolvedValue(null);
+  it('is a no-op outside Tauri, where libraryConnection() resolves null', async () => {
+    libraryConnection.mockResolvedValue(null);
     games.set([{ id: 'placeholder' }]);
     await loadGames();
     expect(get(games)).toEqual([{ id: 'placeholder' }]);
@@ -55,7 +55,7 @@ describe('loadGames', () => {
 
   it('replaces games with rows read through the seam', async () => {
     const connection = {};
-    gamesConnection.mockResolvedValue(connection);
+    libraryConnection.mockResolvedValue(connection);
     await loadGames();
     expect(dataGames.readGames).toHaveBeenCalledWith(connection, { limit: 5000 });
     expect(get(games)).toHaveLength(2);
@@ -63,13 +63,13 @@ describe('loadGames', () => {
   });
 
   it('passes a caller-supplied limit through to readGames', async () => {
-    gamesConnection.mockResolvedValue({});
+    libraryConnection.mockResolvedValue({});
     await loadGames({ limit: 50 });
     expect(dataGames.readGames).toHaveBeenCalledWith(expect.anything(), { limit: 50 });
   });
 
   it('marks favorites and trash from the real presence tables', async () => {
-    gamesConnection.mockResolvedValue({});
+    libraryConnection.mockResolvedValue({});
     await loadGames();
     const [g1, g2] = get(games);
     expect(g1.favorite).toBe(true);
@@ -78,7 +78,7 @@ describe('loadGames', () => {
   });
 
   it('attaches each game’s real tag ids', async () => {
-    gamesConnection.mockResolvedValue({});
+    libraryConnection.mockResolvedValue({});
     await loadGames();
     const [g1, g2] = get(games);
     expect(g1.tags).toEqual([10]);
@@ -86,7 +86,7 @@ describe('loadGames', () => {
   });
 
   it('carries every Collection a game belongs to, not just the first', async () => {
-    gamesConnection.mockResolvedValue({});
+    libraryConnection.mockResolvedValue({});
     await loadGames();
     const [g1, g2] = get(games);
     expect(g1.collections).toEqual([]);
@@ -94,7 +94,7 @@ describe('loadGames', () => {
   });
 
   it('leaves subscription null and addedDaysAgo unreachable, which have no read path yet', async () => {
-    gamesConnection.mockResolvedValue({});
+    libraryConnection.mockResolvedValue({});
     await loadGames();
     const [game] = get(games);
     expect(game.subscription).toBeNull();
@@ -102,7 +102,7 @@ describe('loadGames', () => {
   });
 
   it('populates the tags and collections stores from the real database', async () => {
-    gamesConnection.mockResolvedValue({});
+    libraryConnection.mockResolvedValue({});
     await loadGames();
     expect(get(tags)).toEqual(tagRows);
     expect(get(collections)).toEqual(collectionRows);

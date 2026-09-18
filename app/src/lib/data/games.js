@@ -12,9 +12,53 @@ export const LIST_COLUMNS = [
   'id', 'date', 'white', 'white_elo', 'black', 'black_elo', 'event', 'result', 'ply_count'
 ];
 
+/**
+ * `created_at` is fetched alongside the eight list columns above rather than
+ * added to them — it is not one of §3.2.4.2's eight and the Content Table
+ * does not draw it — but `stores/library.js`'s `loadGames()` needs it to
+ * derive `addedDaysAgo` for Recently Added (§3.2.3.2).
+ */
+const ROW_COLUMNS = [...LIST_COLUMNS, 'created_at'];
+
 /** How many games the database holds. The Library status bar's count. §3.2.4.4 */
 export const countGames = async (connection) =>
   Number(await connection.value('select count(*) from games')) || 0;
+
+/**
+ * How many games a subscription has newly found, per §8's own definition:
+ * the rows in `subscription_games` for that subscription whose game's
+ * `created_at` is later than the subscription's `last_viewed_at` — not a
+ * stored count, and not `imported_at` (this table has none, deliberately;
+ * see §8's own comment on that).
+ *
+ * `connection` is to the subscription's DESTINATION library — this table
+ * lives in a game database, not in `config.db` alongside the subscription
+ * itself (§8's whole point: `config.db` and a game database are different
+ * files). `sinceIso` is the subscription's `lastViewedAt`; `null` (never
+ * viewed) counts every row rather than none.
+ *
+ * A game database without `subscription_games` (§7's own caveat — a
+ * database not built by this application may not have it) reports 0 rather
+ * than throwing, the same degradation `readPositionStats` uses for a
+ * database without `positions`.
+ */
+export const countNewGamesForSubscription = async (connection, subscriptionId, sinceIso) => {
+  try {
+    if (!sinceIso) {
+      return Number(await connection.value(
+        'select count(*) from subscription_games where subscription_id = ?',
+        [subscriptionId]
+      )) || 0;
+    }
+    return Number(await connection.value(
+      'select count(*) from subscription_games sg join games g on g.id = sg.game_id ' +
+        'where sg.subscription_id = ? and g.created_at > ?',
+      [subscriptionId, sinceIso]
+    )) || 0;
+  } catch {
+    return 0;
+  }
+};
 
 /**
  * A page of games, shaped for the Content Table.
@@ -27,7 +71,7 @@ export const countGames = async (connection) =>
 export const readGames = async (connection, { limit = 200, offset = 0, order = 'date' } = {}) => {
   const by = { date: 'date desc, id', white: 'white, id', black: 'black, id', event: 'event, id' };
   const rows = await connection.all(
-    `select ${LIST_COLUMNS.join(', ')} from games order by ${by[order] ?? by.date} limit ? offset ?`,
+    `select ${ROW_COLUMNS.join(', ')} from games order by ${by[order] ?? by.date} limit ? offset ?`,
     [limit, offset]
   );
   return rows.map((row) => ({
@@ -39,7 +83,8 @@ export const readGames = async (connection, { limit = 200, offset = 0, order = '
     blackElo: row.black_elo,
     event: row.event,
     result: row.result,
-    plyCount: row.ply_count
+    plyCount: row.ply_count,
+    createdAt: row.created_at
   }));
 };
 
@@ -112,6 +157,21 @@ export const writeMovetextFor = async (connection, id, movetext) => {
 /** The original PGN, byte for byte as imported. §1, field 2. */
 export const readPgn = async (connection, id) =>
   (await connection.get('select pgn from games where id = ?', [id]))?.pgn ?? null;
+
+/**
+ * A game's `site` and `round` — §1's two record fields the Library's list
+ * columns don't carry (§3.2.4.2 names eight, not these two), so a caller
+ * that needs them for one game — the Info card — reads them on demand
+ * rather than the Content Table paying for them on every row.
+ *
+ * Both are nullable in the schema and stay that way here: a game genuinely
+ * without a Round is `{ round: null }`, not a reason to fall back to some
+ * other row's value. Optional data reads as absent, never as someone else's.
+ */
+export const readRecordFields = async (connection, id) =>
+  (await connection.get('select site, round from games where id = ?', [id])) ?? {
+    site: null, round: null
+  };
 
 /**
  * Count the plies of a game's main line.

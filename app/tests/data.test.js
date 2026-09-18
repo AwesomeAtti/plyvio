@@ -32,11 +32,19 @@ import {
   readGames,
   readTagIdsByGame,
   readCollectionIdsByGame,
+  countNewGamesForSubscription,
+  readEngines,
   readLibraries,
   readMovetextFor,
   readPgn,
   readPreference,
   readPreferences,
+  readSubscriptions,
+  writeEngineEnabled,
+  writeEngineName,
+  writeEngineOption,
+  writeLibraryEnabled,
+  writeLibraryName,
   readCollectionCounts,
   readTagCounts,
   readTagIdsForGame,
@@ -86,13 +94,27 @@ suite('config.db through the seam', () => {
     const values = await readPreferences(config);
     expect(values.theme).toBe('system');
     expect(values.language).toBe('en');
-    expect(values.restore_open_games).toBe(true);
-    expect(values.board_style).toBe('Default');
+    expect(values.restoreOpenGames).toBe(true);
+    expect(values.boardStyle).toBe('Default');
   });
 
   it('reads one preference, with a fallback for a key that is not set', async () => {
     expect(await readPreference(config, 'language')).toBe('en');
     expect(await readPreference(config, 'nothing.here', 'fallback')).toBe('fallback');
+  });
+
+  it('translates a schema key to camelCase, both directions', async () => {
+    // readPreferences() and readPreference() are keyed by the schema's own
+    // spelling nowhere — callers never see `restore_open_games`.
+    expect(await readPreference(config, 'restoreOpenGames')).toBe(true);
+
+    const copy = await openMemoryDatabase(bytesOf('config.db'));
+    await writePreference(copy, 'restoreOpenGames', false);
+    expect(await readPreference(copy, 'restoreOpenGames')).toBe(false);
+    // The row underneath is still spelled the way the table spells it.
+    expect(await copy.value("select value from preferences where key = 'restore_open_games'"))
+      .toBe('false');
+    await copy.close();
   });
 
   it('reads UI state, including a nested object', async () => {
@@ -106,6 +128,83 @@ suite('config.db through the seam', () => {
     const libraries = await readLibraries(config);
     expect(libraries.map((l) => l.name)).toEqual(['My Games', 'Master Games']);
     expect(libraries[0]).toMatchObject({ path: 'my-games.db', enabled: true });
+  });
+
+  it('renames a library and reads it back, on a copy', async () => {
+    const copy = await openMemoryDatabase(bytesOf('config.db'));
+    const [first] = await readLibraries(copy);
+    await writeLibraryName(copy, first.id, 'Renamed Library');
+    expect((await readLibraries(copy))[0].name).toBe('Renamed Library');
+    await copy.close();
+  });
+
+  it('disables and re-enables a library, on a copy', async () => {
+    const copy = await openMemoryDatabase(bytesOf('config.db'));
+    const [first] = await readLibraries(copy);
+    expect(first.enabled).toBe(true);
+    await writeLibraryEnabled(copy, first.id, false);
+    expect((await readLibraries(copy))[0].enabled).toBe(false);
+    await writeLibraryEnabled(copy, first.id, true);
+    expect((await readLibraries(copy))[0].enabled).toBe(true);
+    await copy.close();
+  });
+
+  it('leaves the original untouched when a copy is renamed or disabled', async () => {
+    const libraries = await readLibraries(config);
+    expect(libraries[0]).toMatchObject({ name: 'My Games', enabled: true });
+  });
+
+  it('reads the engines, translated to camelCase', async () => {
+    const engines = await readEngines(config);
+    expect(engines.map((e) => e.name)).toEqual(['Stockfish', 'Torch']);
+    expect(engines[0]).toMatchObject({
+      binaryPath: '/usr/local/bin/stockfish', hashMb: 512, threads: 4, enabled: true
+    });
+  });
+
+  it('renames an engine, sets its threads/hash, and toggles it, on a copy', async () => {
+    const copy = await openMemoryDatabase(bytesOf('config.db'));
+    const [first] = await readEngines(copy);
+    await writeEngineName(copy, first.id, 'Renamed Engine');
+    await writeEngineOption(copy, first.id, 'threads', 8);
+    await writeEngineOption(copy, first.id, 'hashMb', 1024);
+    await writeEngineEnabled(copy, first.id, false);
+    const [updated] = await readEngines(copy);
+    expect(updated).toMatchObject({
+      name: 'Renamed Engine', threads: 8, hashMb: 1024, enabled: false
+    });
+    await copy.close();
+  });
+
+  it('leaves the original untouched when a copy\'s engine is changed', async () => {
+    const engines = await readEngines(config);
+    expect(engines[0]).toMatchObject({ name: 'Stockfish', enabled: true });
+  });
+
+  it('reads the subscriptions, translated to camelCase', async () => {
+    const subs = await readSubscriptions(config);
+    expect(subs.map((s) => s.name)).toEqual(['MagnusCarlsen', 'Hikaru', 'GothamChess']);
+    expect(subs[0]).toMatchObject({
+      sourceType: 'chess_com_player', sourceIdentifier: 'magnuscarlsen', libraryId: 1,
+      syncInterval: 'daily', lastViewedAt: '2026-09-10T19:05:00Z'
+    });
+  });
+
+  it('counts a subscription\'s new games against its destination library', async () => {
+    const games = await openMemoryDatabase(bytesOf('my-games.db'));
+    // Never viewed: every row in subscription_games counts.
+    expect(await countNewGamesForSubscription(games, 1, null)).toBe(104);
+    // Every sample game predates this subscription's real last_viewed_at.
+    expect(await countNewGamesForSubscription(games, 1, '2026-09-10T19:05:00Z')).toBe(0);
+    // A date before every sample game counts them all.
+    expect(await countNewGamesForSubscription(games, 1, '2026-01-01T00:00:00Z')).toBe(104);
+    await games.close();
+  });
+
+  it('counts zero for a database with no subscription_games table, rather than throwing', async () => {
+    const empty = await openMemoryDatabase(null);
+    expect(await countNewGamesForSubscription(empty, 1, null)).toBe(0);
+    await empty.close();
   });
 
   it('writes a preference and reads it back, on a copy', async () => {

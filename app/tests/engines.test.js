@@ -20,9 +20,9 @@ const now = (fn) => fn();
 
 const ENGINES = [
   { id: 'engine-1', name: 'Stockfish', version: '17.1', protocol: 'UCI',
-    threads: 4, hash_mb: 512, status: 'ready', enabled: true },
+    threads: 4, hashMb: 512, status: 'ready', enabled: true },
   { id: 'engine-2', name: 'Torch', version: '3', protocol: 'UCI',
-    threads: 2, hash_mb: 256, status: 'ready', enabled: false }
+    threads: 2, hashMb: 256, status: 'ready', enabled: false }
 ];
 
 beforeEach(() => {
@@ -104,7 +104,7 @@ describe('§3.4.8.2 Available', () => {
     expect(e.enabled).toBe(true);
     expect(e.version).toBe('14.25');
     expect(e.threads).toBe(DEFAULT_THREADS);
-    expect(e.hash_mb).toBe(DEFAULT_HASH);
+    expect(e.hashMb).toBe(DEFAULT_HASH);
   });
 
   it('refuses a second transfer of the same entry', () => {
@@ -165,10 +165,10 @@ describe('§3.4.8.2 the expander fields', () => {
 
   it('commits threads and hash', () => {
     expect(setEngineOption('engine-1', 'threads', 16)).toBe(true);
-    expect(setEngineOption('engine-1', 'hash_mb', 1024)).toBe(true);
+    expect(setEngineOption('engine-1', 'hashMb', 1024)).toBe(true);
     const e = get(objects).engines.find((x) => x.id === 'engine-1');
     expect(e.threads).toBe(16);
-    expect(e.hash_mb).toBe(1024);
+    expect(e.hashMb).toBe(1024);
   });
 
   /* Only the two options the application itself sets are writable here. */

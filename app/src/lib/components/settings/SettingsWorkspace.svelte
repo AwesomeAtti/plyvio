@@ -68,8 +68,8 @@
           <SettingRow
             label={$t('pref.restoreGames')}
             type="toggle"
-            value={$preferences.restore_open_games}
-            oncommit={(v) => applyPreference('restore_open_games', v)}
+            value={$preferences.restoreOpenGames}
+            oncommit={(v) => applyPreference('restoreOpenGames', v)}
           />
         </div>
 
@@ -142,15 +142,15 @@
             label={$t('pref.boardStyle')}
             type="select"
             options={['Default', 'Wood', 'Blue', 'Monochrome']}
-            value={$preferences.board_style}
-            oncommit={(v) => applyPreference('board_style', v)}
+            value={$preferences.boardStyle}
+            oncommit={(v) => applyPreference('boardStyle', v)}
           />
           <SettingRow
             label={$t('pref.pieceSet')}
             type="select"
             options={['Merida', 'Alpha', 'Leipzig']}
-            value={$preferences.piece_set}
-            oncommit={(v) => applyPreference('piece_set', v)}
+            value={$preferences.pieceSet}
+            oncommit={(v) => applyPreference('pieceSet', v)}
           />
         </div>
       </div>

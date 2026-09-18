@@ -2,6 +2,15 @@ import { writable, derived, get } from 'svelte/store';
 import { SECTIONS, DEFAULT_SECTION, isSection, OBJECT_TYPES, validateField } from '$lib/settings/schema.js';
 import { AVAILABLE_DATABASES } from '$lib/settings/databases.js';
 import { AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
+import { configConnection, explorerConnection } from '$lib/data/session.js';
+import {
+  readPreferences, writePreference, PREFERENCE_KEYS,
+  readLibraries, writeLibraryName, writeLibraryEnabled,
+  readEngines, writeEngineName, writeEngineOption, writeEngineEnabled,
+  readSubscriptions
+} from '$lib/data/config.js';
+import { countNewGamesForSubscription } from '$lib/data/games.js';
+import { locale } from '$lib/stores/i18n.js';
 
 /**
  * Settings Workspace state. §3.4
@@ -38,9 +47,9 @@ const nextId = (p) => `${p}-n${++seq}`;
 export const objects = writable({
   engines: [
     { id: 'engine-1', name: 'Stockfish', version: '17.1', status: 'ready', protocol: 'UCI',
-      binary_path: '/usr/local/bin/stockfish', hash_mb: 512, threads: 4, enabled: true },
+      binaryPath: '/usr/local/bin/stockfish', hashMb: 512, threads: 4, enabled: true },
     { id: 'engine-2', name: 'Torch', version: '3', status: 'ready', protocol: 'UCI',
-      binary_path: '/usr/local/bin/torch', hash_mb: 256, threads: 2, enabled: false }
+      binaryPath: '/usr/local/bin/torch', hashMb: 256, threads: 2, enabled: false }
   ],
   subscriptions: [
     { id: 'sub-1', name: 'Hikaru', source: 'chesscom', state: 'idle',
@@ -63,15 +72,16 @@ export const objects = writable({
 /** Conventional settings controls for General and Appearance. §3.4.6, §3.4.7 */
 export const preferences = writable({
   /*
-    Keys are `config.db`'s own (§5): a preference is spelled here the way the
-    table spells it. `libraryLocation` is the exception and deliberately still
-    camelCase — §3.4.6 specifies the setting and `preferences` has no key for it,
-    so it is not a field yet and does not get a field's spelling.
+    Keys are camelCase — `config.db`'s own schema keys (§5), translated the
+    same way `readGames` translates a column (`data/config.js`'s
+    `PREFERENCE_KEYS`). `libraryLocation` is the exception: §3.4.6 specifies
+    the setting and `preferences` has no key for it, so it is not a schema
+    field and is never persisted (see `applyPreference` below).
   */
-  restore_open_games: true,
+  restoreOpenGames: true,
   libraryLocation: '~/Documents/Chessgui',
-  board_style: 'Default',
-  piece_set: 'Merida',
+  boardStyle: 'Default',
+  pieceSet: 'Merida',
   /*
     PROTOTYPE ONLY, and not specified.
 
@@ -83,6 +93,158 @@ export const preferences = writable({
   */
   simulatedImport: 'clean'
 });
+
+/** The camelCase keys `config.db`'s `preferences` table actually has a row for. */
+const PERSISTED_PREFERENCE_KEYS = new Set(Object.values(PREFERENCE_KEYS));
+
+/**
+ * Replace the schema-backed fields of `preferences` with the real values from
+ * `config.db`, once. `libraryLocation` and `simulatedImport` have no schema
+ * column and are left exactly as the defaults above set them.
+ *
+ * A no-op outside Tauri (`configConnection()` resolves `null`) — `preferences`
+ * is left exactly as whatever set it last, the same as `stores/library.js`'s
+ * `loadGames()`.
+ */
+export async function loadPreferences() {
+  const connection = await configConnection();
+  if (!connection) return;
+  const real = await readPreferences(connection);
+  preferences.update((p) => ({ ...p, ...real }));
+}
+
+/**
+ * Replace the installed half of `objects.databases` with the real rows from
+ * `config.db`'s `libraries` table, once, on mount. Only replaces what was
+ * there before startup — a row `installDatabase()` adds afterward (a
+ * simulated catalogue install, still out of scope for a real download)
+ * lands the same way it always has, on top of whatever this loaded.
+ *
+ * `games`/`players`/`bytes` have no column on `libraries` and are
+ * deliberately left off rather than faked; `DatabaseSection.svelte` only
+ * draws `installedDetail()` for a row that actually has them.
+ *
+ * A no-op outside Tauri — `objects.databases` is left exactly as whatever
+ * set it last, the same as `loadGames()`/`loadPreferences()`.
+ */
+export async function loadLibraries() {
+  const connection = await configConnection();
+  if (!connection) return;
+  const real = await readLibraries(connection);
+  objects.update((all) => ({
+    ...all,
+    databases: real.map((lib) => ({
+      id: lib.id,
+      name: lib.name,
+      status: 'indexed',
+      version: lib.version,
+      enabled: lib.enabled,
+      createdAt: lib.createdAt,
+      lastOpenedAt: lib.lastOpenedAt
+    }))
+  }));
+}
+
+/**
+ * Replace `objects.engines` with the real rows from `config.db`'s `engines`
+ * table, once, on mount. Same shape as `loadLibraries()`: only replaces what
+ * was there before startup, so a row `installEngine()` adds afterward (still
+ * simulated, per the catalogue being a static file rather than a `config.db`
+ * table) lands the way it always has.
+ *
+ * `protocol` has no column — §5.3 says every engine here speaks UCI, so it
+ * is set rather than read.
+ *
+ * A no-op outside Tauri, the same as `loadLibraries()`/`loadPreferences()`.
+ */
+export async function loadEngines() {
+  const connection = await configConnection();
+  if (!connection) return;
+  const real = await readEngines(connection);
+  objects.update((all) => ({
+    ...all,
+    engines: real.map((e) => ({
+      id: e.id,
+      name: e.name,
+      version: e.version,
+      protocol: 'UCI',
+      binaryPath: e.binaryPath,
+      hashMb: e.hashMb,
+      threads: e.threads,
+      enabled: e.enabled
+    }))
+  }));
+}
+
+/** `subscriptions.source_type` → the mark/label key `SOURCES` (settings/subscriptions.js) uses. */
+const SOURCE_TYPE_TO_SOURCE = { chess_com_player: 'chesscom', lichess_player: 'lichess' };
+
+/** `sync_interval` ('daily') → the label `INTERVALS` uses ('Daily'). */
+const capitalize = (s) => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
+
+/**
+ * An ISO timestamp as a reader would want it — §5.2's own example is
+ * "August 31, 2026 10:42 AM", not a relative "12 min ago" (which the mock
+ * invented and no schema column can reconstruct: `last_synced_at` is a
+ * point in time, not a duration).
+ */
+const formatTimestamp = (iso) => {
+  if (!iso) return null;
+  try {
+    return new Intl.DateTimeFormat(get(locale), { dateStyle: 'medium', timeStyle: 'short' })
+      .format(new Date(iso));
+  } catch {
+    return iso;
+  }
+};
+
+/**
+ * Replace `objects.subscriptions` with the real rows from `config.db`'s
+ * `subscriptions` table, once, on mount — READ-ONLY. Rename, interval,
+ * enable, create and Sync Now all stay on the mock store: the Edit View's
+ * single `url` field doesn't match the schema (`source_type` +
+ * `source_identifier` + a destination Library picker), and that redesign is
+ * its own piece of work, scoped separately.
+ *
+ * `newGames` is computed for real — §5.2/§8 define it as the count of
+ * `subscription_games` rows (in the subscription's DESTINATION library, not
+ * `config.db`) whose game postdates `last_viewed_at`. A library that can't
+ * be opened (missing, or no `libraryId`) reports 0 rather than failing the
+ * whole list — `countNewGamesForSubscription` already degrades the same way
+ * for a database with no `subscription_games` table.
+ *
+ * `state` only ever resolves to `'idle'` or `'error'` here: nothing in this
+ * pass actually checks a source, so there is no live `'syncing'` to report.
+ *
+ * A no-op outside Tauri, the same as `loadLibraries()`/`loadEngines()`.
+ */
+export async function loadSubscriptions() {
+  const connection = await configConnection();
+  if (!connection) return;
+  const real = await readSubscriptions(connection);
+  const rows = await Promise.all(real.map(async (s) => {
+    let newGames = 0;
+    try {
+      const libConnection = await explorerConnection(s.libraryId);
+      if (libConnection) {
+        newGames = await countNewGamesForSubscription(libConnection, s.id, s.lastViewedAt);
+      }
+    } catch (err) {
+      console.error(`Plyvio: failed to count new games for subscription ${s.id}`, err);
+    }
+    return {
+      id: s.id,
+      name: s.name,
+      source: SOURCE_TYPE_TO_SOURCE[s.sourceType] ?? s.sourceType,
+      state: s.lastStatus === 'error' ? 'error' : 'idle',
+      interval: capitalize(s.syncInterval),
+      lastSynced: formatTimestamp(s.lastSyncedAt),
+      newGames,
+      enabled: s.enabled
+    };
+  }));
+  objects.update((all) => ({ ...all, subscriptions: rows }));
+}
 
 /* ---------------- navigation ---------------------------------------- */
 
@@ -128,15 +290,31 @@ export function applyField(section, id, fieldId, value) {
   return null;
 }
 
+/**
+ * Commit one preference. The store updates synchronously, per §3.4.1's
+ * auto-apply; persisting it to `config.db` happens fire-and-forget after,
+ * the same shape as `stores/game.js`'s real-data fetches use for their own
+ * write side. `libraryLocation` and `simulatedImport` have no schema column
+ * (see `preferences`' own comment) and are left store-only.
+ */
 export function applyPreference(key, value) {
   preferences.update((p) => ({ ...p, [key]: value }));
   lastApplied.set(Date.now());
+  if (!PERSISTED_PREFERENCE_KEYS.has(key)) return;
+  (async () => {
+    try {
+      const connection = await configConnection();
+      if (connection) await writePreference(connection, key, value);
+    } catch (err) {
+      console.error(`Plyvio: failed to save preference ${key}`, err);
+    }
+  })();
 }
 
 /* ---------------- create / destroy ---------------------------------- */
 
 const NEW_DEFAULTS = {
-  engines:       { name: 'New Engine',       status: 'not configured', binary_path: '', hash_mb: 256, threads: 4, enabled: false },
+  engines:       { name: 'New Engine',       status: 'not configured', binaryPath: '', hashMb: 256, threads: 4, enabled: false },
   subscriptions: { name: 'New Subscription', status: 'not configured', url: '',  interval: 'Daily', enabled: false },
   databases:     { name: 'New Database',     status: 'not configured', location: '', format: 'PGN', enabled: false }
 };
@@ -230,7 +408,14 @@ export function installDatabase(id, { tick = (fn) => setTimeout(fn, 260) } = {})
   return true;
 }
 
-/** Rename a database. The name is what the Library switcher shows (§3.2.3.10). */
+/**
+ * Rename a database. The name is what the Library switcher shows (§3.2.3.10).
+ *
+ * A real Library's id is the `libraries.id` integer `readLibraries()`
+ * returns; a mock row added by `installDatabase()` gets a generated string
+ * id (`nextId('db')`). Only the former is persisted — the latter has no
+ * `config.db` row to write to.
+ */
 export function renameDatabase(id, name) {
   const clean = String(name ?? '').trim();
   if (!clean) return 'validation.required';
@@ -239,16 +424,40 @@ export function renameDatabase(id, name) {
     databases: all.databases.map((db) => (db.id === id ? { ...db, name: clean } : db))
   }));
   lastApplied.set(Date.now());
+  if (typeof id === 'number') {
+    (async () => {
+      try {
+        const connection = await configConnection();
+        if (connection) await writeLibraryName(connection, id, clean);
+      } catch (err) {
+        console.error(`Plyvio: failed to rename library ${id}`, err);
+      }
+    })();
+  }
   return null;
 }
 
-/** Enable or disable a database. Disabled databases leave the switcher's offer. */
+/**
+ * Enable or disable a database. Disabled databases leave the switcher's
+ * offer. Persisted for a real Library (integer id); a mock catalogue-install
+ * row (string id) stays store-only, the same as `renameDatabase`.
+ */
 export function setDatabaseEnabled(id, enabled) {
   objects.update((all) => ({
     ...all,
     databases: all.databases.map((db) => (db.id === id ? { ...db, enabled } : db))
   }));
   lastApplied.set(Date.now());
+  if (typeof id === 'number') {
+    (async () => {
+      try {
+        const connection = await configConnection();
+        if (connection) await writeLibraryEnabled(connection, id, enabled);
+      } catch (err) {
+        console.error(`Plyvio: failed to update library ${id}`, err);
+      }
+    })();
+  }
 }
 
 /* ---------------- subscriptions: SU-A rows --------------------------- */
@@ -355,7 +564,7 @@ export function installEngine(id, { tick = (fn) => setTimeout(fn, 260) } = {}) {
         protocol: entry.protocol,
         bytes: entry.bytes,
         threads: DEFAULT_THREADS,
-        hash_mb: DEFAULT_HASH,
+        hashMb: DEFAULT_HASH,
         status: 'ready',
         enabled: true
       }]
@@ -371,7 +580,12 @@ export function installEngine(id, { tick = (fn) => setTimeout(fn, 260) } = {}) {
   return true;
 }
 
-/** Rename an engine. Empty names are refused rather than committed (§3.4.1). */
+/**
+ * Rename an engine. Empty names are refused rather than committed (§3.4.1).
+ * Persisted for a real engine (integer id, from `config.db`); a mock
+ * catalogue-install row (string id, from `installEngine()`) stays
+ * store-only, the same split `renameDatabase` uses for Libraries.
+ */
 export function renameEngine(id, name) {
   const clean = String(name ?? '').trim();
   if (!clean) return 'validation.required';
@@ -380,26 +594,63 @@ export function renameEngine(id, name) {
     engines: all.engines.map((e) => (e.id === id ? { ...e, name: clean } : e))
   }));
   lastApplied.set(Date.now());
+  if (typeof id === 'number') {
+    (async () => {
+      try {
+        const connection = await configConnection();
+        if (connection) await writeEngineName(connection, id, clean);
+      } catch (err) {
+        console.error(`Plyvio: failed to rename engine ${id}`, err);
+      }
+    })();
+  }
   return null;
 }
 
-/** Threads and Hash commit on change, per §3.4.9. */
+/**
+ * Threads and Hash commit on change, per §3.4.9. `key` is `'threads'` or
+ * `'hashMb'` — camelCase, matching every other field on the object.
+ */
 export function setEngineOption(id, key, value) {
-  if (key !== 'threads' && key !== 'hash_mb') return false;
+  if (key !== 'threads' && key !== 'hashMb') return false;
   objects.update((all) => ({
     ...all,
     engines: all.engines.map((e) => (e.id === id ? { ...e, [key]: value } : e))
   }));
   lastApplied.set(Date.now());
+  if (typeof id === 'number') {
+    (async () => {
+      try {
+        const connection = await configConnection();
+        if (connection) await writeEngineOption(connection, id, key, value);
+      } catch (err) {
+        console.error(`Plyvio: failed to update engine ${id}`, err);
+      }
+    })();
+  }
   return true;
 }
 
+/**
+ * Enable or disable an engine. Persisted for a real engine (integer id);
+ * a mock catalogue-install row (string id) stays store-only.
+ */
 export function setEngineEnabled(id, enabled) {
   objects.update((all) => ({
     ...all,
     engines: all.engines.map((e) => (e.id === id ? { ...e, enabled } : e))
   }));
   lastApplied.set(Date.now());
+  if (typeof id === 'number') {
+    (async () => {
+      try {
+        const connection = await configConnection();
+        if (connection) await writeEngineEnabled(connection, id, enabled);
+      } catch (err) {
+        console.error(`Plyvio: failed to update engine ${id}`, err);
+      }
+    })();
+  }
 }
 
 export function resetSettings() {

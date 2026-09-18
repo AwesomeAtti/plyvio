@@ -8,7 +8,9 @@
   } from '$lib/stores/tabs.js';
   import { enforceWindowFloor } from '$lib/windowFloor.js';
   import { watchFullscreen } from '$lib/stores/appCommands.js';
-  import { selectSection } from '$lib/stores/settings.js';
+  import {
+    selectSection, loadPreferences, loadLibraries, loadEngines, loadSubscriptions
+  } from '$lib/stores/settings.js';
   import { loadGames } from '$lib/stores/library.js';
 
   let aboutFocus = $state(false);
@@ -20,10 +22,28 @@
   // the user triggers with Esc or F11 rather than through the menu.
   $effect(() => watchFullscreen());
 
-  // Replaces the Library's mock corpus with the real game database,
-  // once, on mount (Phase 1 of the SQLite migration — games only, not
-  // config). A no-op outside Tauri; see stores/library.js.
+  // Replaces the Library's mock corpus with the real game database, once, on
+  // mount. A no-op outside Tauri; see stores/library.js.
   $effect(() => { loadGames(); });
+
+  // Replaces the schema-backed Settings preferences with the real values
+  // from config.db, once, on mount. A no-op outside Tauri; see
+  // stores/settings.js.
+  $effect(() => { loadPreferences(); });
+
+  // Replaces the installed half of the Databases section with the real
+  // libraries from config.db, once, on mount. A no-op outside Tauri; see
+  // stores/settings.js.
+  $effect(() => { loadLibraries(); });
+
+  // Replaces the Engines section with the real engines from config.db,
+  // once, on mount. A no-op outside Tauri; see stores/settings.js.
+  $effect(() => { loadEngines(); });
+
+  // Replaces the Subscriptions list with the real subscriptions from
+  // config.db, once, on mount — read-only (see stores/settings.js). A
+  // no-op outside Tauri.
+  $effect(() => { loadSubscriptions(); });
 
   function onNavigate(detail) {
     if (detail?.section === 'about') {

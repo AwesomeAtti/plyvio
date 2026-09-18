@@ -44,7 +44,7 @@ export function installedDetail(e) {
   return [
     e.protocol ?? 'UCI',
     `${e.threads} ${Number(e.threads) === 1 ? 'thread' : 'threads'}`,
-    formatHash(e.hash_mb)
+    formatHash(e.hashMb)
   ].filter(Boolean).join(' · ');
 }
 

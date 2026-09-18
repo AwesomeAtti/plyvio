@@ -28,10 +28,10 @@ const tick = () => new Promise((r) => setTimeout(r, 0));
 
 const BASE_OBJECTS = {
   engines: [
-    { id: 'engine-1', name: 'Stockfish 16.1', status: 'ready', binary_path: '/bin/sf',
-      hash_mb: 256, threads: 8, enabled: true },
-    { id: 'engine-2', name: 'Leela Chess Zero', status: 'ready', binary_path: '/bin/lc0',
-      hash_mb: 512, threads: 4, enabled: true }
+    { id: 'engine-1', name: 'Stockfish 16.1', status: 'ready', binaryPath: '/bin/sf',
+      hashMb: 256, threads: 8, enabled: true },
+    { id: 'engine-2', name: 'Leela Chess Zero', status: 'ready', binaryPath: '/bin/lc0',
+      hashMb: 512, threads: 4, enabled: true }
   ],
   subscriptions: [
     { id: 'sub-1', name: 'Lichess Broadcasts', status: 'syncing',
@@ -54,8 +54,8 @@ beforeEach(() => {
   resetSettings();
   objects.set(structuredClone(BASE_OBJECTS));
   preferences.set({
-    restore_open_games: true, libraryLocation: '~/Documents/Chessgui',
-    board_style: 'Default', piece_set: 'Merida'
+    restoreOpenGames: true, libraryLocation: '~/Documents/Chessgui',
+    boardStyle: 'Default', pieceSet: 'Merida'
   });
 });
 afterEach(cleanup);
@@ -365,10 +365,10 @@ describe('§3.4.9 detail view + auto-apply', () => {
   });
 
   it('rejects an invalid field and keeps the last good value', () => {
-    const before = get(objects).engines[0].binary_path;
-    const err = applyField('engines', 'engine-1', 'binary_path', '   ');
+    const before = get(objects).engines[0].binaryPath;
+    const err = applyField('engines', 'engine-1', 'binaryPath', '   ');
     expect(err).toBe('validation.required');
-    expect(get(objects).engines[0].binary_path).toBe(before);      // nothing written
+    expect(get(objects).engines[0].binaryPath).toBe(before);      // nothing written
   });
 
   it('validation covers every required field of every object type', () => {
@@ -388,10 +388,10 @@ describe('§3.4.9 detail view + auto-apply', () => {
     const input = container.querySelector('#settings-content input[type="text"]');
 
     await fireEvent.input(input, { target: { value: '/new/pa' } });   // mid-typing
-    expect(get(objects).engines[0].binary_path).toBe('/bin/sf');             // not applied yet
+    expect(get(objects).engines[0].binaryPath).toBe('/bin/sf');             // not applied yet
 
     await fireEvent.blur(input);
-    expect(get(objects).engines[0].binary_path).toBe('/new/pa');             // applied on blur
+    expect(get(objects).engines[0].binaryPath).toBe('/new/pa');             // applied on blur
   });
 
   it('a rejected commit keeps the bad input on screen with an error', async () => {
@@ -406,7 +406,7 @@ describe('§3.4.9 detail view + auto-apply', () => {
     await tick();
 
     // stored value untouched...
-    expect(get(objects).engines[0].binary_path).toBe('/bin/sf');
+    expect(get(objects).engines[0].binaryPath).toBe('/bin/sf');
     // ...but the typed text stays, with an error, so it can be corrected
     // rather than silently reverted.
     expect(input.value).toBe('   ');
@@ -429,7 +429,7 @@ describe('§3.4.9 detail view + auto-apply', () => {
     await fireEvent.input(input, { target: { value: '/opt/stockfish' } });
     await fireEvent.blur(input);
     await tick();
-    expect(get(objects).engines[0].binary_path).toBe('/opt/stockfish');
+    expect(get(objects).engines[0].binaryPath).toBe('/opt/stockfish');
     expect(container.querySelector('#settings-content [role="alert"]')).toBeNull();
   });
 
@@ -533,9 +533,9 @@ describe('§3.4.6 / §3.4.7 conventional controls', () => {
     const { container } = await renderSettings();
     selectSection('general');
     await tick();
-    expect(get(preferences).restore_open_games).toBe(true);
+    expect(get(preferences).restoreOpenGames).toBe(true);
     await fireEvent.click(container.querySelector('#settings-content [role="switch"]'));
-    expect(get(preferences).restore_open_games).toBe(false);
+    expect(get(preferences).restoreOpenGames).toBe(false);
   });
 
   it('Appearance theme control drives the same store as the Application Menu', async () => {

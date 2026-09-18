@@ -48,7 +48,14 @@
       <div class="r" class:hov={expanded === db.id}>
         <span class="ic"><Icon icon={DatabaseIcon} size={18} /></span>
         <span class="nm">{db.name}</span>
-        <span class="dt">{installedDetail(db)}</span>
+        <!--
+          A real Library (config.db's libraries table) has no games/players/
+          bytes column — installedDetail() is only meaningful for a row that
+          has them, which today means a mock catalogue install
+          (installDatabase(), still simulated). A real row's id is an
+          integer; a mock row's is a generated string (nextId('db')).
+        -->
+        <span class="dt">{db.games != null ? installedDetail(db) : ''}</span>
         <button
           class="tg" class:on={db.enabled !== false} type="button"
           role="switch" aria-checked={db.enabled !== false}
@@ -75,12 +82,16 @@
           {#if nameError}<p class="err">{$t(nameError)}</p>{/if}
           <div class="er"><span class="k">{$t('field.version')}</span>
             <span class="v">{db.version ?? '—'}</span></div>
-          <div class="er">
-            <span class="k"></span>
-            <button class="dan" type="button" onclick={() => removeObject('databases', db.id)}>
-              {$t('settings.removeDatabase')}
-            </button>
-          </div>
+          {#if typeof db.id !== 'number'}
+            <!-- Removing a real Library isn't wired yet (config.db write) — offering
+                 the button would look like it worked and then revert on reload. -->
+            <div class="er">
+              <span class="k"></span>
+              <button class="dan" type="button" onclick={() => removeObject('databases', db.id)}>
+                {$t('settings.removeDatabase')}
+              </button>
+            </div>
+          {/if}
         </div>
       {/if}
     {/each}

@@ -5,7 +5,7 @@ import {
   readGames, readFavoriteIds, readTrashedIds, readTags, readCollections,
   readTagIdsByGame, readCollectionIdsByGame
 } from '$lib/data/games.js';
-import { gamesConnection } from '$lib/data/session.js';
+import { libraryConnection } from '$lib/data/session.js';
 
 /**
  * Library Workspace state. §3.2
@@ -20,10 +20,11 @@ import { gamesConnection } from '$lib/data/session.js';
  * The Content Table's rows.
  *
  * Starts empty and is filled by `loadGames()` — see there for why this is a
- * single generous fetch rather than true incremental paging, and what a real
- * row does NOT yet carry (`trashed`, `favorite`, `tags`, `collection`,
- * `addedDaysAgo` are Phase 2; a real row simply lacks them, and every filter
- * below that reads one degrades to treating it as unset rather than throwing).
+ * single generous fetch rather than true incremental paging. `addedDaysAgo`
+ * is derived below from the real `games.created_at` column; every other
+ * per-user mark (`trashed`, `favorite`, `tags`, `collections`) is also filled
+ * by `loadGames()`, from its own tables — `subscription` is the one field
+ * still unfilled (see there).
  *
  * Tests set this directly (`games.set(makeGames())`) and are unaffected by
  * `loadGames()`, which they never call.
@@ -46,11 +47,11 @@ export const tags = writable([]);
  * read path without it, which is why `limit` defaults well above the
  * sample database's size rather than to `readGames`'s own default page.
  *
- * A no-op outside Tauri (`gamesConnection()` resolves `null` in a browser/
+ * A no-op outside Tauri (`libraryConnection()` resolves `null` in a browser/
  * PWA visit or a test) — `games` is left exactly as whatever set it last.
  */
 export async function loadGames({ limit = 5000 } = {}) {
-  const connection = await gamesConnection();
+  const connection = await libraryConnection();
   if (!connection) return;
 
   const [rows, favoriteIds, trashedIds, tagRows, collectionRows, tagsByGame, collectionsByGame] =
@@ -78,9 +79,15 @@ export async function loadGames({ limit = 5000 } = {}) {
     // subscription_games (§8) records which subscription a game arrived
     // through, in this same database — read path not added yet.
     subscription: null,
-    // addedDaysAgo has no column yet (no import timestamp is stored); Infinity
-    // keeps a real row out of Recently Added rather than crashing recentlyAdded.
-    addedDaysAgo: Infinity
+    // games.created_at (§1) may legitimately be NULL — "a database populated
+    // outside the application's import process... may have no created_at" —
+    // which is exactly today's sample data before an import path exists.
+    // Infinity is the same sentinel as before, now only for that case: it
+    // sorts last and fails the `<= RECENT_DAYS` filter, keeping the row out
+    // of Recently Added rather than crashing or showing a wrong date.
+    addedDaysAgo: g.createdAt
+      ? (Date.now() - new Date(g.createdAt).getTime()) / 86_400_000
+      : Infinity
   })));
 
   tags.set(tagRows);

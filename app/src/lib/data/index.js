@@ -25,7 +25,12 @@ export {
   readUiState,
   writeUiState,
   readLibraries,
+  writeLibraryName,
+  writeLibraryEnabled,
   readEngines,
+  writeEngineName,
+  writeEngineOption,
+  writeEngineEnabled,
   readSubscriptions,
   PREFERENCE_KEYS
 } from './config.js';
@@ -33,6 +38,7 @@ export {
 export {
   LIST_COLUMNS,
   countGames,
+  countNewGamesForSubscription,
   readGames,
   movetextFromRow,
   readMovetextFor,

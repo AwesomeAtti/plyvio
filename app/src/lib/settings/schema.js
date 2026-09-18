@@ -44,10 +44,10 @@ export const OBJECT_TYPES = {
     addKey: 'settings.addEngine',
     emptyKey: 'settings.emptyEngines',
     fields: [
-      { id: 'binary_path', labelKey: 'field.path', type: 'text',   commit: 'blur',   required: true },
+      { id: 'binaryPath', labelKey: 'field.path', type: 'text',   commit: 'blur',   required: true },
       /* Stored as the schema stores it — megabytes, as a number. `MB` is added
          when it is drawn, not when it is kept. */
-      { id: 'hash_mb', labelKey: 'field.hash',    type: 'select', commit: 'change',
+      { id: 'hashMb', labelKey: 'field.hash',    type: 'select', commit: 'change',
         options: [64, 128, 256, 512, 1024], format: (v) => `${v} MB` },
       { id: 'threads', labelKey: 'field.threads', type: 'select', commit: 'change',
         options: [1, 2, 4, 8, 16] },

@@ -1,7 +1,7 @@
 /**
  * The Explorer Section's real position statistics — database-schema.md §6,
  * read through `data/games.js`'s `readPositionStats` and `data/session.js`'s
- * `libraryConnection`. See `stores/game.js`'s `loadExplorerStats`/
+ * `explorerConnection`. See `stores/game.js`'s `loadExplorerStats`/
  * `refreshExplorerStats`/`explorerStats`.
  *
  * Mocks `$lib/data/session.js` and `$lib/data/games.js` the same way
@@ -28,8 +28,8 @@ const STATS_DB2 = [
 ];
 
 vi.mock('$lib/data/session.js', () => ({
-  gamesConnection: vi.fn(async () => null),
-  libraryConnection: vi.fn()
+  libraryConnection: vi.fn(async () => null),
+  explorerConnection: vi.fn()
 }));
 vi.mock('$lib/data/games.js', async (importOriginal) => ({
   ...(await importOriginal()),
@@ -40,7 +40,7 @@ const {
   gameStates, activeGame, ensureGameState, resetGameState, goToPly, setExplorerLibrary
 } = await import('../src/lib/stores/game.js');
 const { activeId } = await import('../src/lib/stores/tabs.js');
-const { libraryConnection } = await import('$lib/data/session.js');
+const { explorerConnection } = await import('$lib/data/session.js');
 const { readPositionStats } = await import('$lib/data/games.js');
 const { positionKey } = await import('../src/lib/game/explorer.js');
 
@@ -49,9 +49,9 @@ const flush = () => new Promise((r) => setTimeout(r, 0));
 beforeEach(() => {
   resetGameState();
   activeId.set('library');
-  libraryConnection.mockReset();
+  explorerConnection.mockReset();
   readPositionStats.mockReset();
-  libraryConnection.mockImplementation(async (id) => (id ? { id } : null));
+  explorerConnection.mockImplementation(async (id) => (id ? { id } : null));
   readPositionStats.mockImplementation(async (connection) =>
     connection?.id === 'db-2' ? STATS_DB2 : STATS_DB1
   );
@@ -63,14 +63,14 @@ describe('the Explorer Section’s real position statistics', () => {
     activeId.set('t1');
     await flush();
 
-    expect(libraryConnection).toHaveBeenCalledWith('db-1');
+    expect(explorerConnection).toHaveBeenCalledWith('db-1');
     const g = get(activeGame);
     expect(g.explorer.rows.map((r) => r.move)).toEqual(['e4', 'd4']);
     expect(g.explorer.total).toBe(361 + 314);
   });
 
   it('shows nothing while the fetch is in flight', () => {
-    libraryConnection.mockReturnValue(new Promise(() => {})); // never resolves
+    explorerConnection.mockReturnValue(new Promise(() => {})); // never resolves
     ensureGameState('t1', null);
     activeId.set('t1');
 
@@ -106,14 +106,14 @@ describe('the Explorer Section’s real position statistics', () => {
     setExplorerLibrary('t1', 'db-2');
     await flush();
 
-    expect(libraryConnection).toHaveBeenCalledWith('db-2');
+    expect(explorerConnection).toHaveBeenCalledWith('db-2');
     const g = get(activeGame);
     expect(g.explorer.library.id).toBe('db-2');
     expect(g.explorer.rows.map((r) => r.move)).toEqual(['Nf3']);
   });
 
   it('degrades to empty rows, not a crash, with no connection for the library', async () => {
-    libraryConnection.mockResolvedValue(null);
+    explorerConnection.mockResolvedValue(null);
     ensureGameState('t1', null);
     activeId.set('t1');
     await flush();

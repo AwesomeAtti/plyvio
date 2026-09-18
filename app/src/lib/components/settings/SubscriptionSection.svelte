@@ -69,21 +69,34 @@
             {:else}{$t(st.key, { n: st.n })}{/if}
           </span>
         {/if}
+        <!--
+          A real subscription (config.db's subscriptions table, integer id)
+          is read-only this pass — the Edit View's single `url` field doesn't
+          match the schema (source_type + source_identifier + a destination
+          Library), so editing it is deferred rather than half-wired.
+          Disabled rather than hidden, so the toggle still reports the real
+          `enabled` state.
+        -->
         <button
           class="tg" class:on={s.enabled !== false} type="button"
           role="switch" aria-checked={s.enabled !== false}
           aria-label={$t('settings.enableSubscription', { name: label(s) })}
+          disabled={typeof s.id === 'number'}
           onclick={() => setSubscriptionEnabled(s.id, s.enabled === false)}
         ></button>
-        <button
-          class="cv" type="button"
-          aria-expanded={expanded === s.id}
-          aria-label={$t('settings.subscriptionSettings', { name: label(s) })}
-          onclick={() => (expanded = expanded === s.id ? null : s.id)}
-        ><Icon icon={expanded === s.id ? SectionExpand : SubmenuArrow} size={15} /></button>
+        {#if typeof s.id !== 'number'}
+          <button
+            class="cv" type="button"
+            aria-expanded={expanded === s.id}
+            aria-label={$t('settings.subscriptionSettings', { name: label(s) })}
+            onclick={() => (expanded = expanded === s.id ? null : s.id)}
+          ><Icon icon={expanded === s.id ? SectionExpand : SubmenuArrow} size={15} /></button>
+        {:else}
+          <span class="cv" aria-hidden="true"></span>
+        {/if}
       </div>
 
-      {#if expanded === s.id}
+      {#if expanded === s.id && typeof s.id !== 'number'}
         <div class="exp">
           <div class="er">
             <span class="k"><label for="subname-{s.id}">{$t('field.name')}</label></span>

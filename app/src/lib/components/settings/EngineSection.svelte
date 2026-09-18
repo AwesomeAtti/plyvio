@@ -91,18 +91,22 @@
           <div class="er">
             <span class="k"><label for="enghash-{e.id}">{$t('field.hash')}</label></span>
             <select
-              id="enghash-{e.id}" class="sel" value={e.hash_mb}
-              onchange={(ev) => setEngineOption(e.id, 'hash_mb', Number(ev.currentTarget.value))}
+              id="enghash-{e.id}" class="sel" value={e.hashMb}
+              onchange={(ev) => setEngineOption(e.id, 'hashMb', Number(ev.currentTarget.value))}
             >
               {#each HASH_OPTIONS as o}<option value={o}>{formatHash(o)}</option>{/each}
             </select>
           </div>
-          <div class="er">
-            <span class="k"></span>
-            <button class="dan" type="button" onclick={() => removeObject('engines', e.id)}>
-              {$t('settings.removeEngine')}
-            </button>
-          </div>
+          {#if typeof e.id !== 'number'}
+            <!-- Removing a real engine isn't wired yet (config.db write) — offering
+                 the button would look like it worked and then revert on reload. -->
+            <div class="er">
+              <span class="k"></span>
+              <button class="dan" type="button" onclick={() => removeObject('engines', e.id)}>
+                {$t('settings.removeEngine')}
+              </button>
+            </div>
+          {/if}
         </div>
       {/if}
     {/each}

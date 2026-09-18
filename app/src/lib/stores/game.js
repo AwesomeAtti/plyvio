@@ -14,8 +14,8 @@ import { objects } from './settings.js';
 import { games as libraryGames, tags as libraryTags, collections as libraryCollections }
   from './library.js';
 import { known, ratingText, resultText, infoContentHeight } from '$lib/game/info.js';
-import { readMovetextFor, readPositionStats } from '$lib/data/games.js';
-import { gamesConnection, libraryConnection } from '$lib/data/session.js';
+import { readMovetextFor, readRecordFields, readPositionStats } from '$lib/data/games.js';
+import { libraryConnection, explorerConnection } from '$lib/data/session.js';
 
 /**
  * Game Workspace state — §5.3, §2.3.
@@ -89,8 +89,10 @@ const isRealGameId = (libraryGameId) => typeof libraryGameId === 'number';
 
 /** What an absent or not-yet-loaded real game looks like: the starting
  *  position and nothing else — the same shape `readGame()` already produces
- *  for a blank movetext, reused rather than hand-written a second time. */
-const EMPTY_REAL_GAME = readGame('');
+ *  for a blank movetext, reused rather than hand-written a second time —
+ *  plus `site`/`round` unset, the same "don't know yet" as everything else
+ *  here until the fetch below lands. */
+const EMPTY_REAL_GAME = { ...readGame(''), site: null, round: null };
 
 export const realGames = writable(new Map());
 
@@ -114,7 +116,7 @@ function loadRealGame(libraryGameId) {
   realGames.update((m) => new Map(m).set(libraryGameId, { status: 'loading', ...EMPTY_REAL_GAME }));
   (async () => {
     try {
-      const connection = await gamesConnection();
+      const connection = await libraryConnection();
       /* No connection (outside Tauri, or before one opens) is not "this game
          has no moves" — it is "there is no way to know yet", the same as a
          read that throws. Treating it as ready-with-nothing would tell a
@@ -122,7 +124,22 @@ function loadRealGame(libraryGameId) {
       if (!connection) throw new Error('no database connection');
       const { movetext } = await readMovetextFor(connection, libraryGameId);
       const parsed = readGame(movetext);
-      realGames.update((m) => new Map(m).set(libraryGameId, { status: 'ready', ...parsed }));
+      /*
+        `site`/`round` are fetched alongside the movetext — same id, same tab-
+        open moment — but their own failure is caught separately and does not
+        take the movetext down with it: a game whose moves loaded fine
+        shouldn't go to the empty/error state just because its Round didn't.
+        They degrade to `null`, the same as a game that genuinely has none.
+      */
+      let record = { site: null, round: null };
+      try {
+        record = await readRecordFields(connection, libraryGameId);
+      } catch (fieldErr) {
+        console.error(`Plyvio: failed to load site/round for game ${libraryGameId}`, fieldErr);
+      }
+      realGames.update((m) => new Map(m).set(libraryGameId, {
+        status: 'ready', ...parsed, site: record.site ?? null, round: record.round ?? null
+      }));
     } catch (err) {
       console.error(`Plyvio: failed to load game ${libraryGameId}`, err);
       realGames.update((m) =>
@@ -165,7 +182,7 @@ export const explorerStats = writable({});
  * `explorerStats`. Same fire-and-forget shape as `loadRealGame`.
  *
  * A missing connection — outside Tauri, or a library id `data/session.js`'s
- * `libraryConnection` has no path for — and a read against a database with
+ * `explorerConnection` has no path for — and a read against a database with
  * no `positions` table both resolve the same way: `readPositionStats`
  * itself returns `[]` for the latter (§6: "a game database without one is
  * valid… any feature that needs them is unavailable until the table is
@@ -181,7 +198,7 @@ function loadExplorerStats(tabId, libraryId, posKey) {
   (async () => {
     let rows = [];
     try {
-      const connection = await libraryConnection(libraryId);
+      const connection = await explorerConnection(libraryId);
       rows = connection ? await readPositionStats(connection, posKey) : [];
     } catch (err) {
       console.error(`Plyvio: failed to load Explorer stats for ${libraryId}`, err);
@@ -244,8 +261,16 @@ export function ensureGameState(tabId, libraryGameId = null) {
       orientation: two tabs on one game must be able to ask different libraries.
       The library explored is deliberately independent of the game's own — reading
       your own game against a master library is the Section's most useful case.
+
+      Defaults to the first indexed-and-enabled entry `objects.databases` has
+      right now, the same list `explorerLibraries` derives the picker from —
+      not a literal id, which stopped meaning anything once `objects.databases`
+      could hold real `libraries.id` integers instead of only `'db-1'`/`'db-2'`.
+      `null` when nothing is selectable yet (outside Tauri before
+      `loadLibraries()` lands, or a fresh install with no Library at all);
+      `refreshExplorerStats` already no-ops on a falsy `explorerLibraryId`.
     */
-    explorerLibraryId: 'db-1',
+    explorerLibraryId: explorerLibraries(get(objects).databases ?? [])[0]?.id ?? null,
     /*
       The Engine Section, per tab like everything else here. `engineId` is left
       null rather than seeded: the source resolves to the first engine Settings
@@ -300,13 +325,12 @@ export const activeGame = derived(
   const game = { ...base, ...($gameEdits?.[st.gameId] ?? {}) };
 
   /*
-    THE FIX: a real library game's board, move list and engine banner read
-    the movetext `loadRealGame` fetched for it, not the mock row's — the mock
-    row is still consulted for `gameId`/edits and the Info card's
-    not-yet-a-real-column fields (`site`, `round`), which is a separate,
-    already-noted gap, not this one. `real` is null for a tab with no
-    library row (a sandbox tab, or a test), which keeps the mock path exactly
-    as it was for those.
+    THE FIX: a real library game's board, move list, engine banner and
+    Info card's `site`/`round` all read what `loadRealGame` fetched for it,
+    not the mock row's — the mock row is still consulted for `gameId`/edits,
+    which stay a session-only overlay regardless. `real` is null for a tab
+    with no library row (a sandbox tab, or a test), which keeps the mock
+    path exactly as it was for those.
   */
   const real = isRealGameId(st.libraryGameId)
     ? ($realGames.get(st.libraryGameId) ?? { status: 'loading', ...EMPTY_REAL_GAME })
@@ -394,10 +418,12 @@ export const activeGame = derived(
     : [];
 
   /*
-    Record fields the Info card draws. `site`/`round` still come from the
-    mock row for a real game — `readGames()` does not select those columns
-    yet — which is the one part of the earlier `gameForLibraryId` bug this
-    file does not close; everything else `row` can answer, it does.
+    Record fields the Info card draws. `site`/`round` are the two §1 fields
+    `row` (the library row, built from `readGames()`'s eight list columns)
+    never carries, real game or not — they come from `real` instead, the
+    same per-game fetch that loaded the movetext, for a real game; the mock
+    row for everything else. A null here is a game that genuinely has no
+    Round, not a fallback — see `readRecordFields`.
   */
   const record = row ?? game;
   const info = {
@@ -407,9 +433,9 @@ export const activeGame = derived(
     blackElo: ratingText(record.blackElo ?? record.black_elo),
     result: resultText(record.result),
     date: known(record.date),
-    site: known(game.site),
+    site: known(real ? real.site : game.site),
     event: known(record.event),
-    round: known(game.round),
+    round: known(real ? real.round : game.round),
     favorite: !!row?.favorite,
     chips,
     hasRow: !!row
@@ -478,11 +504,9 @@ export function toggleFavourite(tabId) {
  * them from. Writing the marks onto the game would put one user's opinion into
  * the shared record of what happened.
  *
- * COLLECTIONS ARE TRUNCATED TO ONE, which is a model mismatch rather than a
- * decision: a library row carries a single `collection` id, while GI-M's form
- * offers a token field for several — the same shape the Add Games dialog
- * offers. One of the two is wrong and it is not this function's to settle, so
- * it writes the first and does not pretend the rest were stored.
+ * Collections are written as a full array, matching how a library row
+ * already carries `collections` (many-to-many, the same shape as `tags`) and
+ * how the Info card's own chips already read it back.
  */
 export function saveGameInfo(tabId, v) {
   const st = get(gameStates)[tabId];
