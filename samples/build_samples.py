@@ -112,12 +112,12 @@ CREATE TABLE tags (
     name TEXT NOT NULL UNIQUE COLLATE NOCASE
 );
 
-CREATE TABLE game_tags (
-    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+CREATE TABLE tag_games (
     tag_id  INTEGER NOT NULL REFERENCES tags(id)  ON DELETE CASCADE,
-    PRIMARY KEY (game_id, tag_id)
+    game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
+    PRIMARY KEY (tag_id, game_id)
 ) WITHOUT ROWID;
-CREATE INDEX game_tags_by_tag ON game_tags (tag_id);
+CREATE INDEX tag_games_by_game ON tag_games (game_id);
 
 CREATE TABLE collections (
     id       INTEGER PRIMARY KEY,
@@ -488,8 +488,8 @@ def add_library_features(db, library, game_ids):
 
         if rnd.random() < SHARE_TAGGED:
             db.execute(
-                "INSERT INTO game_tags (game_id, tag_id) VALUES (?, ?)",
-                (game_id, rnd.choice(tag_ids)),
+                "INSERT INTO tag_games (tag_id, game_id) VALUES (?, ?)",
+                (rnd.choice(tag_ids), game_id),
             )
 
         if rnd.random() < SHARE_COLLECTED:
