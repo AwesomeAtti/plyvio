@@ -14,7 +14,7 @@ import {
 } from '../src/lib/stores/library.js';
 import { layoutColumns, widths, COLUMNS, TABLE_MIN, FIXED_TOTAL, NAME_MIN, NAME_MAX, EVENT_MIN, cellValue } from '../src/lib/library/columns.js';
 import { makeGames, realRows, SUBSCRIPTIONS, COLLECTIONS, TAGS } from '../src/lib/library/mock.js';
-import { GAMES } from '../src/lib/game/games.js';
+import { GAMES } from '../src/lib/mock-data/sample-games.js';
 import { readFileSync } from 'node:fs';
 
 const readSrc = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');

@@ -1,4 +1,4 @@
-import { GAMES } from '$lib/game/games.js';
+import { GAMES } from '$lib/mock-data/sample-games.js';
 
 /**
  * Mock library data for the prototype.
@@ -59,7 +59,7 @@ const RESULTS = ['1-0', '0-1', '½-½', '½-½', '1-0', '0-1', '½-½'];
  * Every other row in this file is fabricated metadata with no moves behind it, which is
  * what the Content Table needs to be designed against — but it also meant the Library
  * could not list a single game the Game Workspace can open. These rows are built FROM
- * `$lib/game/games.js`, so a row and the game it names cannot drift apart: there is one
+ * `$lib/mock-data/sample-games.js`, so a row and the game it names cannot drift apart: there is one
  * source for both, and a row that says GothamChess is a game whose PGN is in the bundle.
  *
  * `ply_count` stays NULL because the game rows leave it NULL, which is what an imported

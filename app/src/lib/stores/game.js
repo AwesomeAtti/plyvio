@@ -1,6 +1,6 @@
 import { writable, derived, get } from 'svelte/store';
 import { activeId } from './tabs.js';
-import { GAMES } from '$lib/game/games.js';
+import { GAMES } from '$lib/mock-data/sample-games.js';
 import { pliesFor, engineFor, readGame } from '$lib/game/plies.js';
 import { SECTIONS, DEFAULT_VISIBILITY } from '$lib/game/sections.js';
 import { explorerRows, positionGames, explorerHeight, positionKey } from '$lib/game/explorer.js';

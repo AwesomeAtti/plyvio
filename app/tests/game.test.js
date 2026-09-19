@@ -13,7 +13,7 @@ import {
   boardSize, gameViewLayout, crossoverWidth,
   evalLabel, evalSide, evalFraction, evalIsStep, evalScore, allocateSections, scrollThreshold
 } from '../src/lib/game/layout.js';
-import { GAMES } from '../src/lib/game/games.js';
+import { GAMES } from '../src/lib/mock-data/sample-games.js';
 import { pliesFor, pliesOf, readGame, engineFor } from '../src/lib/game/plies.js';
 import MoveList from '../src/lib/components/game/MoveList.svelte';
 import { movetextFromRow } from '../src/lib/data/games.js';

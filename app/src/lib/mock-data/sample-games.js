@@ -60,7 +60,7 @@
  * populated state, and a feature no shipped data reaches is a feature nobody can check.
  */
 
-import { ANNOTATED } from './annotated.js';
+import { ANNOTATED } from './sample-annotated-games.js';
 
 export const GAMES = [
   {
