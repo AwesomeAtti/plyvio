@@ -5,14 +5,14 @@ import { scopeBase } from '../src/lib/swScope.js';
 // Path from the project root, as switcher.test.js does — vitest runs from there.
 const sw = () => readFileSync('src/service-worker.js', 'utf8');
 
-/* Comments name '/chessgui-pwa' as the worked example. Only the code matters. */
+/* Comments name '/plyvio-pwa' as the worked example. Only the code matters. */
 const code = () => sw().replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '');
 
 /*
   The service worker used to fall back to a hardcoded '/index.html' and '/'.
   Both are domain-root paths, so a cold offline start worked locally by
   accident and failed on GitHub Pages, where the app lives under
-  /chessgui-pwa/. These tests exist so the base can never be written down
+  /plyvio-pwa/. These tests exist so the base can never be written down
   again.
 */
 
@@ -22,7 +22,7 @@ describe('service worker scope — derived, never hardcoded', () => {
   });
 
   it('is the project path under a GitHub Pages subpath', () => {
-    expect(scopeBase('/chessgui-pwa/service-worker.js')).toBe('/chessgui-pwa');
+    expect(scopeBase('/plyvio-pwa/service-worker.js')).toBe('/plyvio-pwa');
   });
 
   it('handles a subpath of any depth', () => {
@@ -38,7 +38,7 @@ describe('service worker scope — derived, never hardcoded', () => {
 
   it('appends to exactly the key `prerendered` caches — base + slash', () => {
     expect(`${scopeBase('/service-worker.js')}/`).toBe('/');
-    expect(`${scopeBase('/chessgui-pwa/service-worker.js')}/`).toBe('/chessgui-pwa/');
+    expect(`${scopeBase('/plyvio-pwa/service-worker.js')}/`).toBe('/plyvio-pwa/');
   });
 
   it('does not throw on the degenerate cases', () => {
@@ -53,7 +53,7 @@ describe('service worker scope — derived, never hardcoded', () => {
     not quietly produce a wrong base if it ever gets a full path.
   */
   it('is unaffected by anything after the filename', () => {
-    expect(scopeBase('/chessgui-pwa/service-worker.js')).toBe('/chessgui-pwa');
+    expect(scopeBase('/plyvio-pwa/service-worker.js')).toBe('/plyvio-pwa');
   });
 });
 
@@ -64,7 +64,7 @@ describe('the service worker source', () => {
   });
 
   it('names no deployment', () => {
-    expect(code()).not.toMatch(/chessgui-pwa|github\.io/);
+    expect(code()).not.toMatch(/plyvio-pwa|github\.io/);
   });
 
   it('derives the base rather than importing a build-time constant', () => {

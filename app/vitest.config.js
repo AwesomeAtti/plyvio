@@ -7,7 +7,7 @@ import { sveltekit } from '@sveltejs/kit/vite';
  *
  * It is deliberately NOT SvelteKit's `kit.version.name`. That value reaches the
  * service worker as `version` from '$service-worker', where it names the cache:
- * `chessgui-${version}`. It defaults to a build timestamp, so every deploy gets
+ * `plyvio-${version}`. It defaults to a build timestamp, so every deploy gets
  * a fresh cache. Pinning it to the package version would make two deploys of
  * 0.1.0 share a cache name and serve users stale assets offline.
  */

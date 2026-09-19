@@ -1,5 +1,5 @@
 /**
- * A movetext reader and writer for chessgui, wrapping chessops and adding the two
+ * A movetext reader and writer for Plyvio, wrapping chessops and adding the two
  * comment commands chessops does not define: `[%engine]` and `[%bestmove]`.
  */
 

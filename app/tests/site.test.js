@@ -65,7 +65,7 @@ describe('the project page', () => {
 
   /*
     Every URL it names is relative. The page has to work at a domain root, at
-    /chessgui-pwa/, and from the build/ folder on disk.
+    /plyvio-pwa/, and from the build/ folder on disk.
   */
   it('names no absolute path', () => {
     for (const m of page().matchAll(/(?:href|src)="([^"]+)"/g)) {
@@ -112,7 +112,7 @@ describe('the project page’s theme tokens', () => {
   });
 
   it('reads the same stored theme key the app writes', () => {
-    expect(page()).toContain("localStorage.getItem('chessgui.theme')");
+    expect(page()).toContain("localStorage.getItem('plyvio.theme')");
   });
 });
 

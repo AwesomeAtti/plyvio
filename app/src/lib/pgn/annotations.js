@@ -2,7 +2,7 @@
  * The comment layer.
  *
  * A PGN comment is free text with `[%command args]` tokens embedded in it. chessops
- * understands five of the commands chessgui uses — `[%eval]`, `[%clk]`, `[%emt]`,
+ * understands five of the commands Plyvio uses — `[%eval]`, `[%clk]`, `[%emt]`,
  * `[%csl]`, `[%cal]` — and returns them as typed fields, dropping everything it does
  * not recognize into the leftover `text`. That is enough to read a comment and not
  * enough to write one back: database-schema §3.1 replaces the whole of `movetext` on

@@ -5,8 +5,8 @@
  * CSS `text-overflow: ellipsis` only truncates at the end, which is the wrong
  * end for library names. Libraries are files, and files get versioned by year:
  *
- *   "Chessgui Reference 2026"  ─end─►  "Chessgui Referenc…"
- *   "Chessgui Reference 2025"  ─end─►  "Chessgui Referenc…"
+ *   "Plyvio Reference 2026"  ─end─►  "Plyvio Referenc…"
+ *   "Plyvio Reference 2025"  ─end─►  "Plyvio Referenc…"
  *
  * Two different libraries, one string on screen. Middle truncation keeps the
  * tail, which is where the distinguishing part lives — the same reason macOS

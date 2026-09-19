@@ -8,7 +8,7 @@
  * The comparison uses `spacing: 'padded'` and `wrap: null` because that is the shape the
  * source is written in — chess.com pads its comment braces and puts a game's movetext on
  * one line. Those two settings are the whole of the difference between this file and the
- * form chessgui writes; nothing else about the document is allowed to move.
+ * form Plyvio writes; nothing else about the document is allowed to move.
  */
 
 import { existsSync, readFileSync } from 'fs';
@@ -20,7 +20,7 @@ import { commandsOf } from '../src/lib/pgn/annotations.js';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const CORPUS =
-  process.env.CHESSGUI_CORPUS ?? resolve(here, '../../samples/pgn/gothamchess-annotated.pgn');
+  process.env.PLYVIO_CORPUS ?? resolve(here, '../../samples/pgn/gothamchess-annotated.pgn');
 
 const available = existsSync(CORPUS);
 const movetexts = available

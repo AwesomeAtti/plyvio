@@ -12,17 +12,17 @@
         href="%sveltekit.assets%/fonts/ibm-plex-mono-latin-400-normal.woff2" />
   <link rel="manifest" href="%sveltekit.assets%/manifest.webmanifest" />
   <meta name="theme-color" content="#f7f7f5" />
-  <meta name="description" content="Chessgui — offline-first chess library and analysis." />
-  <title>Chessgui</title>
+  <meta name="description" content="Plyvio — offline-first chess library and analysis." />
+  <title>Plyvio</title>
   <script>
     // Apply persisted theme before first paint to avoid a flash.
     try {
-      var t = localStorage.getItem('chessgui.theme');
+      var t = localStorage.getItem('plyvio.theme');
       if (t !== 'light' && t !== 'dark') {
         t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
       }
       document.documentElement.setAttribute('data-theme', t);
-      var l = localStorage.getItem('chessgui.locale');
+      var l = localStorage.getItem('plyvio.locale');
       if (l) document.documentElement.lang = l;
     } catch (e) {}
   </script>

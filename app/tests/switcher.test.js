@@ -50,18 +50,18 @@ describe('Library switcher — middle truncation', () => {
 
   /*
     The reason this exists. End truncation renders both of these as
-    "Chessgui Referenc…" — two libraries, one string on screen.
+    "Plyvio Referenc…" — two libraries, one string on screen.
   */
   it('keeps names distinguishable when they differ only at the end', () => {
-    const a = middleTruncate('Chessgui Reference 2026', 18, uniform);
-    const b = middleTruncate('Chessgui Reference 2025', 18, uniform);
+    const a = middleTruncate('Plyvio Reference 2026', 18, uniform);
+    const b = middleTruncate('Plyvio Reference 2025', 18, uniform);
     expect(a).not.toBe(b);
     expect(a.endsWith('2026')).toBe(true);
     expect(b.endsWith('2025')).toBe(true);
   });
 
   it('never returns a string wider than the budget', () => {
-    const names = ['Master Games', 'Chessgui Reference 2026', 'TWIC Complete Archive 1994–2026',
+    const names = ['Master Games', 'Plyvio Reference 2026', 'TWIC Complete Archive 1994–2026',
                    'A', 'AB', 'A very very very long library name indeed'];
     for (const n of names) {
       for (let w = 1; w <= 60; w++) {
@@ -71,7 +71,7 @@ describe('Library switcher — middle truncation', () => {
   });
 
   it('puts the ellipsis in the middle, not the end', () => {
-    const out = middleTruncate('Chessgui Reference 2026', 16, uniform);
+    const out = middleTruncate('Plyvio Reference 2026', 16, uniform);
     const at = out.indexOf(ELLIPSIS);
     expect(at).toBeGreaterThan(0);
     expect(at).toBeLessThan(out.length - 1);
@@ -83,7 +83,7 @@ describe('Library switcher — middle truncation', () => {
   });
 
   it('degrades to an end truncation rather than showing an ellipsis alone', () => {
-    const out = middleTruncate('Chessgui Reference 2026', 5, uniform);
+    const out = middleTruncate('Plyvio Reference 2026', 5, uniform);
     expect(out).not.toBe(ELLIPSIS);
     expect(out.length).toBeLessThanOrEqual(5);
   });

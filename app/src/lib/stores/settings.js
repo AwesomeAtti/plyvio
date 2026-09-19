@@ -79,7 +79,7 @@ export const preferences = writable({
     field and is never persisted (see `applyPreference` below).
   */
   restoreOpenGames: true,
-  libraryLocation: '~/Documents/Chessgui',
+  libraryLocation: '~/Documents/Plyvio',
   boardStyle: 'Default',
   pieceSet: 'Merida',
   /*
@@ -362,7 +362,7 @@ export const availableDatabases = derived([objects, downloads], ([$o, $d]) => {
 /**
  * Install a database from the catalogue.
  *
- * A distributed database is a Chessgui database file that arrives ready, so
+ * A distributed database is a Plyvio database file that arrives ready, so
  * there is no indexing phase: the object is created enabled, unlike §3.4.8's
  * default for objects that still need configuring. `tick` is injected so the
  * transfer can be driven deterministically in tests.

@@ -2,7 +2,7 @@
  * Where the app is being served from, derived at runtime.
  *
  * The build must run unchanged from a domain root, a GitHub Pages project
- * subpath (`/chessgui-pwa/`), or any other server or folder. Nothing may name
+ * subpath (`/plyvio-pwa/`), or any other server or folder. Nothing may name
  * the deployment: `paths.relative` already makes the page's own assets
  * portable, and this is the service worker's half of the same guarantee.
  *

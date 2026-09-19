@@ -102,7 +102,7 @@ export const offline = writable(false);
 
 /* ---------------- sidebar collapse (§3.2.3.8) ----------------------- */
 
-const COLLAPSE_KEY = 'chessgui.library.sidebar';
+const COLLAPSE_KEY = 'plyvio.library.sidebar';
 
 function initialCollapsed() {
   if (!browser) return false;
@@ -136,7 +136,7 @@ export function toggleSidebar() {
  */
 export const SECTIONS = ['subscriptions', 'collections', 'tags'];
 
-const SECTIONS_KEY = 'chessgui.library.sections';
+const SECTIONS_KEY = 'plyvio.library.sections';
 
 function initialSections() {
   const none = { subscriptions: false, collections: false, tags: false };

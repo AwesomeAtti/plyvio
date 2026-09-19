@@ -1,9 +1,9 @@
 """
-Build the chessgui sample databases.
+Build the Plyvio sample databases.
 
 Creates, beside one another:
 
-    config.db          chessgui configuration (schema reference v009 section 5)
+    config.db          Plyvio configuration (schema reference v009 section 5)
     my-games.db        Library "My Games"     - magnuscarlsen.pgn
     master-games.db    Library "Master Games" - hikaru.pgn, gothamchess-annotated.pgn
 
@@ -588,7 +588,7 @@ def report(path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Build the chessgui sample databases.")
+    parser = argparse.ArgumentParser(description="Build the Plyvio sample databases.")
     parser.add_argument("--pgn-dir", default="pgn", help="Folder holding the PGN files")
     parser.add_argument("--out-dir", default=".", help="Where the databases are written")
     args = parser.parse_args()

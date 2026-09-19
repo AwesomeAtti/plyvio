@@ -2,7 +2,7 @@
  * What is this file?
  *
  * §1 of the schema says a game database is *any* SQLite file conforming to it,
- * "whether created by chessgui, supplied by another application, or populated
+ * "whether created by Plyvio, supplied by another application, or populated
  * independently". So the first thing done with a file is not a query — it is
  * asking whether the query would mean anything.
  *
@@ -13,7 +13,7 @@
  *                     database-schema v009 — a convention the builder
  *                     established and the specification does not yet state.
  *   `application_id`  which application owns the format. **0 in every sample
- *                     file**, which is to say unset: a chessgui database is
+ *                     file**, which is to say unset: a Plyvio database is
  *                     currently indistinguishable from any other SQLite file.
  *
  * This module **reads both and enforces neither**. What to do with a file that
@@ -22,7 +22,7 @@
  * `identify()` reports; the caller decides.
  */
 
-/** The schema revision this build of chessgui is written against. */
+/** The schema revision this build of Plyvio is written against. */
 export const SCHEMA_USER_VERSION = 9;
 
 /**
@@ -69,7 +69,7 @@ export const identify = async (connection) => {
  * what was found rather than what should be done about it.
  */
 export const describe = (identity) => {
-  if (identity.kind === 'unknown') return 'not a chessgui database';
+  if (identity.kind === 'unknown') return 'not a Plyvio database';
   if (identity.userVersion === 0) return `a ${identity.kind} database with no schema version`;
   if (identity.userVersion !== SCHEMA_USER_VERSION) {
     return `a ${identity.kind} database at schema v${String(identity.userVersion).padStart(3, '0')}, expected v${String(SCHEMA_USER_VERSION).padStart(3, '0')}`;

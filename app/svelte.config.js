@@ -5,7 +5,7 @@ import adapter from '@sveltejs/adapter-static';
  * — so every absolute URL the build emits has to be prefixed. `BASE_PATH` does
  * that; it is empty for local dev and preview, where the app is at the root.
  *
- *   BASE_PATH=/chessgui npm run build
+ *   BASE_PATH=/plyvio npm run build
  *
  * The deploy workflow sets it from the repository name, so it cannot drift.
  */

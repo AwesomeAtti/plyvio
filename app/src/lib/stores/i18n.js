@@ -2,7 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import { LOCALES, STRINGS } from '$lib/i18n/locales.js';
 
-const KEY = 'chessgui.locale';
+const KEY = 'plyvio.locale';
 const DEFAULT = 'en';
 
 function initial() {

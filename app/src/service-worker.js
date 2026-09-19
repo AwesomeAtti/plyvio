@@ -3,11 +3,11 @@ import { build, files, prerendered, version } from '$service-worker';
 import { scopeBase } from '$lib/swScope.js';
 
 // Everything needed to render is bundled with the app — no runtime network dependency. (§1.1)
-const CACHE = `chessgui-${version}`;
+const CACHE = `plyvio-${version}`;
 
 /**
  * The path this worker was served from, minus its own filename — '' at a
- * domain root, '/chessgui-pwa' under a GitHub Pages project subpath.
+ * domain root, '/plyvio-pwa' under a GitHub Pages project subpath.
  *
  * Read at runtime, never written down: see $lib/swScope.js for why, and
  * swScope.test.js for the cases it has to survive.

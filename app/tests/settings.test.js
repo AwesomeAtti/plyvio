@@ -54,7 +54,7 @@ beforeEach(() => {
   resetSettings();
   objects.set(structuredClone(BASE_OBJECTS));
   preferences.set({
-    restoreOpenGames: true, libraryLocation: '~/Documents/Chessgui',
+    restoreOpenGames: true, libraryLocation: '~/Documents/Plyvio',
     boardStyle: 'Default', pieceSet: 'Merida'
   });
 });
@@ -563,7 +563,7 @@ describe('§3.4.11 About', () => {
     selectSection('about');
     await tick();
     expect(container.querySelector('#settings-content dl')).toBeTruthy();
-    // §3.4.11 — three boxed groups: Application, Third party, Chessgui Credits.
+    // §3.4.11 — three boxed groups: Application, Third party, Plyvio Credits.
     expect(container.querySelectorAll('#settings-content .box').length).toBe(3);
     // No control on any row: informational, so the Card pattern does not apply.
     expect(container.querySelector('#settings-content [role="switch"]')).toBeFalsy();

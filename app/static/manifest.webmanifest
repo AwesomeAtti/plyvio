@@ -1,6 +1,6 @@
 {
-  "name": "Chessgui",
-  "short_name": "Chessgui",
+  "name": "Plyvio",
+  "short_name": "Plyvio",
   "description": "Offline-first chess library, game analysis and play.",
   "start_url": ".",
   "scope": ".",

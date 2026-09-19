@@ -1,5 +1,5 @@
 /* ---------------------------------------------------------------
-   Chessgui — shell tokens. Light is the base; dark overrides only
+   Plyvio — shell tokens. Light is the base; dark overrides only
    the token values so every component stays theme-agnostic. (§1.1)
    --------------------------------------------------------------- */
 :root {

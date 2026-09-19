@@ -1,7 +1,7 @@
 /**
  * Available databases — §3.4.8.
  *
- * The curated list offered for download. Distributed databases are Chessgui
+ * The curated list offered for download. Distributed databases are Plyvio
  * database files that arrive ready to use: there is no indexing step, so an
  * entry moves from Available to Installed the moment its transfer completes.
  *

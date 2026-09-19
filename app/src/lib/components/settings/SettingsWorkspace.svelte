@@ -167,7 +167,7 @@
       <div class="scroll" class:flash={aboutFocus}>
         <p class="glab">{$t('about.group.application')}</p>
         <dl class="box">
-          <div class="arow"><dt class="anm">{$t('about.application')}</dt><dd class="adt">Chessgui</dd></div>
+          <div class="arow"><dt class="anm">{$t('about.application')}</dt><dd class="adt">{$t('app.name')}</dd></div>
           <div class="arow"><dt class="anm">{$t('about.version')}</dt><dd class="adt">{$t('about.versionValue', { version: VERSION })}</dd></div>
           <div class="arow"><dt class="anm">{$t('about.licence')}</dt><dd class="adt">GPL-3.0-or-later</dd></div>
           <div class="arow"><dt class="anm">{$t('about.dataLocation')}</dt><dd class="adt">{$t('about.local')}</dd></div>
