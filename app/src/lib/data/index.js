@@ -1,10 +1,13 @@
 /**
  * The data seam. §1, §3 and §5 of the schema, behind one interface.
  *
- * The backends are deliberately NOT re-exported here. `backends/memory.js` is
- * the tests', and keeping it imported only by its own caller is what keeps the
- * SQLite engine out of the application's import graph — and therefore out of the
- * bundle — while the prototype runs on mock data.
+ * The backends are deliberately NOT re-exported here. Each backend is imported
+ * only by its own caller — `memory.js` by the tests, `tauri.js`/`pwa.js` by
+ * `data/session.js`'s dynamic `import()`s — so a build that never runs in Tauri
+ * never pulls `@tauri-apps/plugin-sql` into its bundle, and vice versa. Both
+ * `tauri.js` and `pwa.js` are genuine runtime dependencies of their own build
+ * now; this file staying backend-agnostic is what keeps each build shipping
+ * only the engine it actually uses.
  */
 
 export { DataError, isConnection, assertConnection, CONNECTION_METHODS } from './connection.js';

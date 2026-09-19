@@ -5,11 +5,11 @@
  * is a handful of async methods. Nothing above this line names SQLite, a driver,
  * or a file.
  *
- * **The prototype does not read SQLite.** It runs on mock data shaped to this
- * schema; the only thing that opens a real database is the test suite. What this
- * seam is for is the move to a Tauri application, where the databases are opened
- * natively: that is one new file in `backends/`, and nothing above the seam
- * changes.
+ * **Both real builds read SQLite now.** The desktop app opens `backends/tauri.js`
+ * (a file on disk, over Tauri IPC); the browser/PWA build opens `backends/pwa.js`
+ * (an in-memory SQLite database snapshotted to IndexedDB — no OPFS, no
+ * third-party VFS, see that file's own header). Async paid off exactly as
+ * planned below: neither backend needed this seam rewritten to arrive.
  *
  * Async, although nothing here is slow today, because everything that will
  * implement it is: a Tauri command is IPC, and any browser-side storage would be
@@ -20,9 +20,11 @@
  * EVERYTHING THAT KNOWS SQLITE IS A LIBRARY LIVES IN `backends/`.
  *
  * Not "mostly", and not "by convention": `data/backends/` is the only directory
- * that imports a SQLite package or knows how a database is opened. One backend
- * exists today — `memory.js`, which opens a database from its bytes and is used
- * by the tests — and the next is one file satisfying the contract below.
+ * that imports a SQLite package or knows how a database is opened. Four files
+ * today: `sqlite-engine.js` (the shared WASM-loading/`Connection`-wrapping core),
+ * `memory.js` (opens bytes already in memory, used by the tests), `tauri.js`
+ * (the desktop backend) and `pwa.js` (the browser backend, built on
+ * `sqlite-engine.js` the same way `memory.js` is).
  *
  * The repositories beside this file (`config.js`, `games.js`, `identify.js`) hold
  * SQL, and that is deliberate: SQL is the schema's own language and it travels to
