@@ -2,7 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 import { SECTIONS, DEFAULT_SECTION, isSection, OBJECT_TYPES, validateField } from '$lib/settings/schema.js';
 import { AVAILABLE_DATABASES } from '$lib/settings/databases.js';
 import { AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
-import { configConnection, explorerConnection } from '$lib/data/session.js';
+import { configConnection, explorerConnection, isTauri } from '$lib/data/session.js';
 import {
   readPreferences, writePreference, PREFERENCE_KEYS,
   readLibraries, writeLibraryName, writeLibraryEnabled,
@@ -124,10 +124,17 @@ export async function loadPreferences() {
  * deliberately left off rather than faked; `DatabaseSection.svelte` only
  * draws `installedDetail()` for a row that actually has them.
  *
- * A no-op outside Tauri — `objects.databases` is left exactly as whatever
- * set it last, the same as `loadGames()`/`loadPreferences()`.
+ * DESKTOP ONLY, DELIBERATELY, even though `configConnection()` now resolves
+ * a real connection in the PWA too. A `libraries` row is a filesystem path
+ * to a `.db` file — a concept the PWA's single in-browser database has no
+ * counterpart for. Giving it real (empty) storage without a PWA-shaped
+ * design for what a "library" even means there would look like a built
+ * capability from the data alone; staying mocked here says plainly it isn't
+ * one yet. See `backends/schema.js`'s own comment on the same call for
+ * `engines`.
  */
 export async function loadLibraries() {
+  if (!isTauri()) return;
   const connection = await configConnection();
   if (!connection) return;
   const real = await readLibraries(connection);
@@ -155,9 +162,14 @@ export async function loadLibraries() {
  * `protocol` has no column — §5.3 says every engine here speaks UCI, so it
  * is set rather than read.
  *
- * A no-op outside Tauri, the same as `loadLibraries()`/`loadPreferences()`.
+ * DESKTOP ONLY, DELIBERATELY — same reasoning as `loadLibraries()`. An
+ * `engines` row is a UCI binary on disk; live engine analysis stays mocked
+ * via `engineMock.js` in the PWA regardless (a separate, unrelated
+ * decision), so persisting installed-engine rows there would be real
+ * storage for a capability the PWA doesn't functionally have.
  */
 export async function loadEngines() {
+  if (!isTauri()) return;
   const connection = await configConnection();
   if (!connection) return;
   const real = await readEngines(connection);
