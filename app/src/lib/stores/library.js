@@ -6,6 +6,8 @@ import {
   readTagIdsByGame, readCollectionIdsByGame
 } from '$lib/data/games.js';
 import { libraryConnection } from '$lib/data/session.js';
+import { objects } from './settings.js';
+import { activeLibraryId } from './libraries.js';
 
 /**
  * Library Workspace state. §3.2
@@ -20,11 +22,11 @@ import { libraryConnection } from '$lib/data/session.js';
  * The Content Table's rows.
  *
  * Starts empty and is filled by `loadGames()` — see there for why this is a
- * single generous fetch rather than true incremental paging. `addedDaysAgo`
- * is derived below from the real `games.created_at` column; every other
- * per-user mark (`trashed`, `favorite`, `tags`, `collections`) is also filled
- * by `loadGames()`, from its own tables — `subscription` is the one field
- * still unfilled (see there).
+ * single generous fetch rather than true incremental paging. Every per-user
+ * mark (`trashed`, `favorite`, `tags`, `collections`) is filled by
+ * `loadGames()`, from its own tables — `subscription` is the one field
+ * still unfilled (see there). `createdAt` comes straight off the real
+ * `games.created_at` column and is what `recentlyAdded()` (below) uses.
  *
  * Tests set this directly (`games.set(makeGames())`) and are unaffected by
  * `loadGames()`, which they never call.
@@ -37,8 +39,40 @@ export const collections = writable([]);
 export const tags = writable([]);
 
 /**
- * Replace `games` with rows read from the real game database, through the
- * seam in `$lib/data`.
+ * Whatever database backs library `id` — `null` when nothing matches, OR
+ * when the row has no real database behind it — a still-mock/seeded row
+ * (`'location' in db` is `false`: no key at all, not even `null`) that
+ * predates a real library ever being created for it, e.g. the two sample
+ * rows the PWA still seeds (`Master Games`, `My Games` — its `libraries`
+ * table has no real counterpart for them; see `data/session.js`'s own
+ * comment). Resolving one of those is deliberately inert for now: there is
+ * nothing real to open, so this resolves `null` and every caller's own
+ * null-connection handling takes over from there, same as it always has for
+ * "no connection at all."
+ */
+export async function connectionForLibrary(id) {
+  const db = get(objects).databases.find((d) => d.id === id);
+  if (!db || !('location' in db)) return null;
+  return libraryConnection(id);
+}
+
+/**
+ * `connectionForLibrary()` for whichever library the switcher currently has
+ * active (`stores/libraries.js`'s `activeLibraryId`) — the one connection
+ * `loadGames()` below and a Game tab's own movetext fetch (`stores/
+ * game.js`'s `loadRealGame`) both use, so switching libraries changes what
+ * either of them reads. A real import's write path (`stores/importer.js`'s
+ * `runRealWrite`) does NOT use this — it writes to the request's own chosen
+ * `destination` via `connectionForLibrary()` directly, which may be a
+ * different library than whichever one is active.
+ */
+export async function activeLibraryConnection() {
+  return connectionForLibrary(get(activeLibraryId));
+}
+
+/**
+ * Replace `games` with rows read from the active library's game database,
+ * through the seam in `$lib/data`.
  *
  * A generous single page, not true incremental fetching: `readGames` is
  * already query-shaped for `limit`/`offset`, but `ContentTable.svelte`
@@ -47,11 +81,15 @@ export const tags = writable([]);
  * read path without it, which is why `limit` defaults well above the
  * sample database's size rather than to `readGames`'s own default page.
  *
- * A no-op outside Tauri (`libraryConnection()` resolves `null` in a browser/
- * PWA visit or a test) — `games` is left exactly as whatever set it last.
+ * Runs on mount and again every time `activeLibraryId` changes (see the
+ * subscribe below) — switching libraries in the switcher reloads the
+ * Content Table with that library's own games. A no-op when
+ * `activeLibraryConnection()` resolves `null` (no library selected, no real
+ * backend available, or a still-mock row with nothing to open) — `games` is
+ * left exactly as whatever set it last, same as before this was wired up.
  */
 export async function loadGames({ limit = 5000 } = {}) {
-  const connection = await libraryConnection();
+  const connection = await activeLibraryConnection();
   if (!connection) return;
 
   const [rows, favoriteIds, trashedIds, tagRows, collectionRows, tagsByGame, collectionsByGame] =
@@ -78,16 +116,11 @@ export async function loadGames({ limit = 5000 } = {}) {
     collections: collectionsByGame[g.id] ?? [],
     // subscription_games (§8) records which subscription a game arrived
     // through, in this same database — read path not added yet.
-    subscription: null,
+    subscription: null
     // games.created_at (§1) may legitimately be NULL — "a database populated
     // outside the application's import process... may have no created_at" —
-    // which is exactly today's sample data before an import path exists.
-    // Infinity is the same sentinel as before, now only for that case: it
-    // sorts last and fails the `<= RECENT_DAYS` filter, keeping the row out
-    // of Recently Added rather than crashing or showing a wrong date.
-    addedDaysAgo: g.createdAt
-      ? (Date.now() - new Date(g.createdAt).getTime()) / 86_400_000
-      : Infinity
+    // `recentlyAdded()` (below) already treats a falsy `createdAt` as
+    // ineligible, so nothing extra is derived here for it.
   })));
 
   tags.set(tagRows);
@@ -169,20 +202,25 @@ export function expandSection(name) {
   sectionCollapsed.update((v) => (v[name] ? { ...v, [name]: false } : v));
 }
 
-/* ---------------- Recently Added (§3.2.3.2) ------------------------- */
+/* ---------------- Recently Added (§4.3.2) ------------------------- */
 
 /**
- * "Recently" is the last 30 days, or the last 100 games added, whichever is
- * the smaller set. Bounding on both sides keeps the view useful on a sparsely
- * used library and on a bulk import alike.
+ * "Recently Added" means the last import, not a time window — revised
+ * 20 Sep 2026, on request. Every row from one `gameRowsFromPgnText()` call
+ * shares a single `created_at` (see `pgn/importPgn.js`), so the games from
+ * the most recent import are exactly the ones whose `createdAt` equals the
+ * library's max `createdAt`. A game with no `createdAt` (a database
+ * populated outside the application's import process, per §1) is never
+ * eligible.
  */
-export const RECENT_DAYS = 30;
-export const RECENT_MAX = 100;
-
 export function recentlyAdded(all) {
-  const within = all.filter((g) => !g.trashed && g.addedDaysAgo <= RECENT_DAYS);
-  const sorted = [...within].sort((a, b) => a.addedDaysAgo - b.addedDaysAgo);
-  return sorted.slice(0, RECENT_MAX);
+  const eligible = all.filter((g) => !g.trashed && g.createdAt);
+  if (!eligible.length) return [];
+  const latest = eligible.reduce(
+    (max, g) => (g.createdAt > max ? g.createdAt : max),
+    eligible[0].createdAt
+  );
+  return eligible.filter((g) => g.createdAt === latest);
 }
 
 /* ---------------- filtering ----------------------------------------- */
@@ -319,3 +357,28 @@ export function resetLibrary() {
   offline.set(false);
   sectionCollapsed.set({ subscriptions: false, collections: false, tags: false });
 }
+
+/*
+ * Reload on every switch, not just on mount — 20 Sep 2026, the switcher's
+ * first real wiring (`stores/libraries.js`'s own header comment previously
+ * called this "presentational only, deliberately"; that was never an
+ * approved decision, just a comment, and it undersold what was actually
+ * built here — see that file). `activeLibraryId` starts at whatever
+ * `firstSelectable()` picks from the seeded/mock rows before `config.db`'s
+ * real ones have loaded (`stores/settings.js`'s `loadLibraries()`, called
+ * separately on mount); `loadGames()` no-ops for those (no `location`), so
+ * this fires again, harmlessly, once the real list replaces them and
+ * `libraries.js`'s own fallback subscribe repicks a real id.
+ *
+ * Also runs `resetLibrary()` on every switch (added the same day, on
+ * request) — a still-selected tag/collection filter, a search term, or a
+ * highlighted row from the PREVIOUS library carries no meaning in the new
+ * one, so the Sidebar returns to All, search clears, and the collapsed
+ * Subscriptions/Collections/Tags sections re-expand. This has to be defined
+ * down here, after `resetLibrary()` and every store it touches
+ * (`selection`/`search`/`selectedGameId`/`offline`/`sectionCollapsed`/
+ * `pinnedExtra`) — `subscribe()` fires its callback immediately and
+ * synchronously, and those are `const` bindings still in their temporal
+ * dead zone at the top of the file where this subscribe used to live.
+ */
+activeLibraryId.subscribe(() => { resetLibrary(); loadGames(); });

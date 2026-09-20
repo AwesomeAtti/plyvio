@@ -11,11 +11,13 @@ import {
 } from '$lib/game/engine.js';
 import { analyse, hasLegalMoves } from '$lib/game/engineMock.js';
 import { objects } from './settings.js';
-import { games as libraryGames, tags as libraryTags, collections as libraryCollections }
-  from './library.js';
+import {
+  games as libraryGames, tags as libraryTags, collections as libraryCollections,
+  activeLibraryConnection
+} from './library.js';
 import { known, ratingText, resultText, infoContentHeight } from '$lib/game/info.js';
 import { readMovetextFor, readRecordFields, readPositionStats } from '$lib/data/games.js';
-import { libraryConnection, explorerConnection } from '$lib/data/session.js';
+import { explorerConnection } from '$lib/data/session.js';
 
 /**
  * Game Workspace state — §5.3, §2.3.
@@ -116,11 +118,12 @@ function loadRealGame(libraryGameId) {
   realGames.update((m) => new Map(m).set(libraryGameId, { status: 'loading', ...EMPTY_REAL_GAME }));
   (async () => {
     try {
-      const connection = await libraryConnection();
-      /* No connection (outside Tauri, or before one opens) is not "this game
-         has no moves" — it is "there is no way to know yet", the same as a
-         read that throws. Treating it as ready-with-nothing would tell a
-         caller the fetch succeeded when it never ran. */
+      const connection = await activeLibraryConnection();
+      /* No connection (outside Tauri, before one opens, or no active library
+         with a real database behind it) is not "this game has no moves" — it
+         is "there is no way to know yet", the same as a read that throws.
+         Treating it as ready-with-nothing would tell a caller the fetch
+         succeeded when it never ran. */
       if (!connection) throw new Error('no database connection');
       const { movetext } = await readMovetextFor(connection, libraryGameId);
       const parsed = readGame(movetext);

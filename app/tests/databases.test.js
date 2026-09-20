@@ -243,7 +243,11 @@ describe('§3.4.8 the section', () => {
     const exp = container.querySelector('#settings-content .exp');
     expect(exp).toBeTruthy();
     expect(exp.textContent).toContain('Name');
-    expect(exp.textContent).toContain('Version');
+    // Version dropped Rev H — every created database starts at the same
+    // fixed 1.0 and never changes, so reporting it here was never informative.
+    // (This seeded mock row has no `location`, so Location itself doesn't
+    // render here — that's covered for a real row in databases-create.test.js.)
+    expect(exp.textContent).not.toContain('Version');
     // still in the Settings tab, still on the collection
     expect(container.querySelectorAll('#settings-content .box').length).toBe(2);
   });

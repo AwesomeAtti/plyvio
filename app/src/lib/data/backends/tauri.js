@@ -56,20 +56,50 @@ export const openFileDatabase = async (path) => {
 
   const all = async (sql, params) => db.select(sql, params ?? []);
 
+  /*
+   * `db.execute()`'s own return value carries `lastInsertId` directly — the
+   * plugin's documented, reliable way to read it back (`node_modules/
+   * @tauri-apps/plugin-sql/dist-js/index.d.ts`). A follow-up
+   * `select last_insert_rowid()` call, which is what this used to do (and
+   * still what `memory.js`/`pwa.js` do, since better-sqlite3 and sqlite-wasm
+   * are both single-connection there), is fragile here specifically: this
+   * plugin pools connections, and `last_insert_rowid()` is only meaningful on
+   * the exact connection that ran the insert — a fresh `select` isn't
+   * guaranteed to land on it. Tracked here instead, so `config.js`'s
+   * `createLibrary()` (the only caller of `value('select last_insert_rowid()')`
+   * today) gets it from the source that's actually documented to be correct.
+   */
+  let lastInsertId = null;
+
   const connection = {
     all,
     get: async (sql, params) => (await all(sql, params))[0] ?? null,
     value: async (sql, params) => {
+      if (sql.trim().toLowerCase() === 'select last_insert_rowid()') return lastInsertId;
       const rows = await all(sql, params);
       if (!rows.length) return null;
       const first = Object.values(rows[0]);
       return first.length ? first[0] : null;
     },
     run: async (sql, params) => {
-      await db.execute(sql, params ?? []);
+      const result = await db.execute(sql, params ?? []);
+      if (result && typeof result.lastInsertId === 'number') lastInsertId = result.lastInsertId;
     },
     close: async () => {
-      await db.close();
+      /*
+       * `db.close()` with no argument closes EVERY connection pool this
+       * plugin manages, not just this one (its own docs: "Otherwise, all
+       * database pools will be in scope") — a destructive surprise for what
+       * looks like closing a single connection. `createDatabase()`
+       * (`stores/settings.js`) opens a brand-new Library's file, writes its
+       * DDL, and closes it right after — and that close was silently
+       * killing the already-open, cached `config.db` connection alongside
+       * it, breaking every config.db write for the rest of the session
+       * ("attempted to acquire a connection on a closed pool", 20 Sep).
+       * Scoped to this connection's own string so closing one never reaches
+       * another.
+       */
+      await db.close(connectionStringFor(path));
     }
   };
 

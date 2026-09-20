@@ -574,7 +574,7 @@ Selecting any Sidebar destination applies a filter to the Content Table.
 
 **Recently Added** displays games that were recently added to the library. It is a Library filter rather than a separate collection.
 
-"Recently" is defined as **the last 30 days, or the last 100 games added, whichever is the smaller set**. This bounds the view on both a sparsely used library and a bulk import.
+"Recently" is **the most recent import**, not a time window: every game whose `created_at` equals the library's latest `created_at`. A single import call gives every one of its rows the same timestamp, so the view is exactly the batch that just landed, however large or small — there is no day or count bound to fall outside of. A game with no `created_at` (a database populated outside the application's import process) is never eligible.
 
 ### 4.3.3 Subscriptions
 

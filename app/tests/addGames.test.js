@@ -341,7 +341,10 @@ describe('organising on import', () => {
 
   it('imported games are recent, so Recently Added is the view that fills', () => {
     const batch = makeImportedGames(3, { tags: [1], collections: [0] });
-    expect(batch.every((g) => g.addedDaysAgo === 0)).toBe(true);
+    // One import call shares a single `createdAt` across every row (mirroring
+    // the real import path) -- that shared value is what makes the whole
+    // batch the "last import" `recentlyAdded()` (library.js) returns.
+    expect(new Set(batch.map((g) => g.createdAt)).size).toBe(1);
     expect(batch.every((g) => g.tags.includes(1) && g.collections.includes(0))).toBe(true);
   });
 });

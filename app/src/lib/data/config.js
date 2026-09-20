@@ -94,6 +94,20 @@ export const writeLibraryEnabled = async (connection, id, enabled) => {
 };
 
 /**
+ * Remove a Library's `config.db` registration. Settings → Databases →
+ * Remove database (DB‑03r, Rev H) — deliberately does NOT touch the
+ * game-database *file* `game_db_path` points at; only `config.db` forgets
+ * the row, the same distinction General → Storage draws between "known to
+ * the application" and "exists on the filesystem." Confirming the action
+ * (§6.1 — destructive, confirmed) is the caller's job
+ * (`stores/settings.js`'s `removeDatabase()`, gated behind
+ * `ConfirmRemove.svelte` in `DatabaseSection.svelte`), not this function's.
+ */
+export const deleteLibrary = async (connection, id) => {
+  await connection.run('delete from libraries where id = ?', [id]);
+};
+
+/**
  * Register a new Library — Settings → Databases → Add's "create new" path
  * (`stores/settings.js`'s `createDatabase()`). The game-database *file* is
  * created separately, before this is called (`backends/tauri.js`'s

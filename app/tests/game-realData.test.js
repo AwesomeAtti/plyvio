@@ -44,6 +44,8 @@ const {
 } = await import('../src/lib/stores/game.js');
 const { activeId } = await import('../src/lib/stores/tabs.js');
 const { libraryConnection } = await import('$lib/data/session.js');
+const { objects } = await import('../src/lib/stores/settings.js');
+const { activeLibraryId } = await import('../src/lib/stores/libraries.js');
 const { readMovetextFor, readRecordFields } = await import('$lib/data/games.js');
 const { readGame } = await import('../src/lib/game/plies.js');
 
@@ -59,6 +61,13 @@ beforeEach(() => {
   readMovetextFor.mockResolvedValue({ movetext: REAL_MOVETEXT, source: 'pgn' });
   readRecordFields.mockReset();
   readRecordFields.mockResolvedValue(REAL_RECORD);
+  // A real, selected library — `loadRealGame()` (via `activeLibraryConnection()`)
+  // now checks this before calling `libraryConnection()` at all.
+  objects.update((o) => ({
+    ...o,
+    databases: [{ id: 99, name: 'Test Library', location: '/tmp/test.db', enabled: true, status: 'indexed' }]
+  }));
+  activeLibraryId.set(99);
 });
 
 describe('a real game’s movetext, fetched for the board/moves/engine', () => {

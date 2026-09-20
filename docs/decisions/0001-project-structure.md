@@ -7,7 +7,7 @@ Accepted — 2026-09-16.
 ## Context
 
 The prototype grew for several weeks as a flat tree in
-`chessgui prototype - pwa/`: the SvelteKit app, `spec/`, `wireframes/`
+the original prototype folder: the SvelteKit app, `spec/`, `wireframes/`
 (dozens of accepted, exploratory and superseded drawings mixed together),
 `samples/`, working notes under `working notes/`, and a single 32KB
 `app/README.md` covering everything from `npm run dev` to per-workspace

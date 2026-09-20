@@ -9,6 +9,12 @@ import { readFileSync, existsSync } from 'node:fs';
 
   Everything here guards the seam between them. It is all source-level, so it
   runs without a build.
+
+  The "no network" guarantee (offline-capable, no CDN fetches) is a desktop/
+  PWA property -- this file does not assert it for the project page itself.
+  The gh-pages landing page is out of scope: it already carries Google
+  Analytics and plain external links (GitHub, the licence), on purpose --
+  20 Sep 2026, on request.
 */
 
 const read = (p) => readFileSync(p, 'utf8');
@@ -50,17 +56,6 @@ describe('the project page', () => {
     for (const browser of ['Chrome', 'Safari', 'Edge']) {
       expect(src).toContain(`<div class="n">${browser}</div>`);
     }
-  });
-
-  /*
-    §1.1 — nothing is fetched at runtime. The page borrows the app's bundled
-    faces rather than reaching for a font CDN, so it stays as offline-capable
-    as the thing it is advertising.
-  */
-  it('requests nothing from the network', () => {
-    const src = page();
-    expect(src).not.toMatch(/https?:\/\//);
-    expect(src).not.toMatch(/fonts\.googleapis|cdn\./);
   });
 
   /*

@@ -127,9 +127,16 @@ suite('config.db through the seam', () => {
   });
 
   it('reads the libraries, and names the file each one points at', async () => {
+    // Checks that the two seeded libraries are present, rather than the
+    // exact full list -- `samples/config.db` doubles as the desktop app's
+    // own live config database (see `data/session.js`'s `CONFIG_DB_PATH`
+    // comment) until it has a real data directory of its own, so manual
+    // testing against the real app can add rows here that this test has no
+    // business asserting against.
     const libraries = await readLibraries(config);
-    expect(libraries.map((l) => l.name)).toEqual(['My Games', 'Master Games']);
-    expect(libraries[0]).toMatchObject({ path: 'my-games.db', enabled: true });
+    const byName = Object.fromEntries(libraries.map((l) => [l.name, l]));
+    expect(byName['My Games']).toMatchObject({ path: 'my-games.db', enabled: true });
+    expect(byName['Master Games']).toBeTruthy();
   });
 
   it('renames a library and reads it back, on a copy', async () => {
@@ -244,7 +251,8 @@ suite('a game database through the seam', () => {
     const page = await readGames(games, { limit: 5 });
     expect(page).toHaveLength(5);
     expect(Object.keys(page[0])).toEqual([
-      'id', 'date', 'white', 'whiteElo', 'black', 'blackElo', 'event', 'result', 'plyCount'
+      'id', 'date', 'white', 'whiteElo', 'black', 'blackElo', 'event', 'result', 'plyCount',
+      'createdAt'
     ]);
   });
 

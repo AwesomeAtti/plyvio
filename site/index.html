@@ -109,11 +109,12 @@
 
  /* ---- hero: the screen, with the action laid over it ---- */
  .hero{padding:34px 0 0}
- .heroline{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;margin-bottom:16px}
- .heroline h1{font-size:40px;letter-spacing:-.02em;margin:0}
+ .heroline{display:flex;align-items:flex-end;gap:12px;flex-wrap:wrap;margin-bottom:16px}
+ .heroline h1{font-size:40px;line-height:1;letter-spacing:-.02em;margin:0}
  .badge{font:9.5px/1 var(--mono);letter-spacing:.13em;text-transform:uppercase;color:var(--ink);
   background:var(--fill-1);border:1px solid var(--rule-strong);border-radius:999px;padding:6px 10px;
-  height:24px;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px}
+  height:24px;box-sizing:border-box;display:inline-flex;align-items:center;gap:6px;
+  position:relative;top:-5px /* rests the chip's bottom edge on the heading's text baseline (measured against IBM Plex Sans 40px: baseline sits 5px above the flex row's bottom edge) */}
  .heroline .sp{flex:1}
  .heroline .meta{font:10px/1.5 var(--mono);color:var(--faint)}
  .shotwrap{position:relative;border:1px solid var(--rule-strong);border-radius:9px;overflow:hidden;

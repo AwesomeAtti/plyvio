@@ -1,10 +1,9 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
-import { games, collections, tags } from '$lib/stores/library.js';
+import { games, collections, tags, connectionForLibrary } from '$lib/stores/library.js';
 import { makeImportedGames } from '$lib/library/mock.js';
 import { planImport, notAddedCount, outcomeMessage } from '$lib/library/importJob.js';
 import { insertGames } from '$lib/data/games.js';
-import { libraryConnection } from '$lib/data/session.js';
 
 /**
  * The import lane. §3.2.4.5
@@ -163,10 +162,15 @@ function appendGames(p, from, count) {
 }
 
 /**
- * Write a real import's rows to the currently open library, through the
- * same seam `loadGames()` reads from -- `insertGame`/`insertGames` in
- * `data/games.js`, over whatever connection `libraryConnection()` gives
- * either backend. One shot, not paced like `appendGames`'s simulated
+ * Write a real import's rows to `p.destination` -- the library chosen in
+ * Add Games' own picker (`AddGamesDialog.svelte`, defaulted to whichever
+ * library is active when the dialog opens, but independently selectable
+ * from it) -- through the same seam `loadGames()` reads from --
+ * `insertGame`/`insertGames` in `data/games.js`, over whatever connection
+ * `connectionForLibrary()` gives either backend. 20 Sep 2026: this used to
+ * ignore `destination` entirely and always write to whichever library was
+ * ACTIVE, regardless of what the dialog said -- a real gap, not a design
+ * choice; fixed here. One shot, not paced like `appendGames`'s simulated
  * animation: a paste is small enough that there is nothing to show
  * progress against.
  *
@@ -175,20 +179,20 @@ function appendGames(p, from, count) {
  * does -- not yet written to `tag_games`/`collection_games` themselves;
  * see `registerOrganisation`'s own comment, which this does not change.
  *
- * `libraryConnection()` resolving null (no real backend available -- see
- * `data/session.js`) leaves the games unwritten; nothing here pretends
- * otherwise, but `finish(p)` still runs so the lane always reaches 'done'.
+ * `connectionForLibrary()` resolving null (no real backend available, or
+ * the chosen destination has no real database behind it -- see `stores/
+ * library.js`) leaves the games unwritten; nothing here pretends otherwise,
+ * but `finish(p)` still runs so the lane always reaches 'done'.
  */
 async function runRealWrite(p) {
   if (!browser || p.added === 0) { finish(p); return; }
   try {
-    const connection = await libraryConnection();
+    const connection = await connectionForLibrary(p.destination);
     if (connection) {
       const inserted = await insertGames(connection, p.rows);
       const shown = inserted.map((g) => ({
         ...g,
         favorite: false,
-        addedDaysAgo: 0,
         subscription: null,
         tags: p.tags.map((t) => t.id),
         collections: p.collections.map((c) => c.id),

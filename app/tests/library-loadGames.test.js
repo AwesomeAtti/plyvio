@@ -34,6 +34,8 @@ vi.mock('$lib/data/games.js', () => ({
 
 const { games, tags, collections, loadGames } = await import('../src/lib/stores/library.js');
 const { libraryConnection } = await import('$lib/data/session.js');
+const { objects } = await import('../src/lib/stores/settings.js');
+const { activeLibraryId } = await import('../src/lib/stores/libraries.js');
 const dataGames = await import('$lib/data/games.js');
 
 beforeEach(() => {
@@ -42,15 +44,55 @@ beforeEach(() => {
   collections.set([]);
   libraryConnection.mockReset();
   for (const fn of Object.values(dataGames)) fn.mockClear?.();
+  // A real, selected library — `loadGames()` (via `activeLibraryConnection()`)
+  // now checks this before calling `libraryConnection()` at all. A row with
+  // no `location` key (a still-mock/seeded one) is skipped entirely — see
+  // the dedicated tests for that below.
+  objects.update((o) => ({
+    ...o,
+    databases: [{ id: 42, name: 'Test Library', location: '/tmp/test.db', enabled: true, status: 'indexed' }]
+  }));
+  activeLibraryId.set(42);
 });
 
 describe('loadGames', () => {
-  it('is a no-op outside Tauri, where libraryConnection() resolves null', async () => {
+  it('is a no-op when the active library has no real connection (libraryConnection() resolves null)', async () => {
     libraryConnection.mockResolvedValue(null);
     games.set([{ id: 'placeholder' }]);
     await loadGames();
     expect(get(games)).toEqual([{ id: 'placeholder' }]);
     expect(dataGames.readGames).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op when no library is selected', async () => {
+    activeLibraryId.set(null);
+    // `activeLibraryId` also drives a module-level subscribe in
+    // `stores/library.js` that fires its own fire-and-forget `loadGames()`
+    // on every set (that's the switcher wiring itself) — let that settle
+    // before resetting the mock, so it doesn't leak a stray call into this
+    // test's own assertion below.
+    await Promise.resolve();
+    libraryConnection.mockReset();
+    games.set([{ id: 'placeholder' }]);
+    await loadGames();
+    expect(get(games)).toEqual([{ id: 'placeholder' }]);
+    expect(dataGames.readGames).not.toHaveBeenCalled();
+    expect(libraryConnection).not.toHaveBeenCalled();
+  });
+
+  it('is a no-op for a still-mock/seeded row with no real database behind it', async () => {
+    objects.update((o) => ({
+      ...o,
+      databases: [{ id: 'db-1', name: 'Master Games', enabled: true, status: 'indexed' }]
+    }));
+    activeLibraryId.set('db-1');
+    await Promise.resolve(); // see the comment above
+    libraryConnection.mockReset();
+    games.set([{ id: 'placeholder' }]);
+    await loadGames();
+    expect(get(games)).toEqual([{ id: 'placeholder' }]);
+    expect(dataGames.readGames).not.toHaveBeenCalled();
+    expect(libraryConnection).not.toHaveBeenCalled();
   });
 
   it('replaces games with rows read through the seam', async () => {
@@ -93,12 +135,17 @@ describe('loadGames', () => {
     expect(g2.collections).toEqual([20, 21]);
   });
 
-  it('leaves subscription null and addedDaysAgo unreachable, which have no read path yet', async () => {
+  it('leaves subscription null, which has no read path yet, and passes created_at through as-is', async () => {
     libraryConnection.mockResolvedValue({});
     await loadGames();
     const [game] = get(games);
     expect(game.subscription).toBeNull();
-    expect(game.addedDaysAgo).toBe(Infinity);
+    // This fixture's rows carry no `created_at` -- a database populated
+    // outside the application's import process may legitimately have none
+    // (`data/games.js`) -- and `loadGames()` derives nothing from its
+    // absence; `recentlyAdded()` (library.js) is what treats a falsy
+    // `createdAt` as ineligible.
+    expect(game.createdAt).toBeUndefined();
   });
 
   it('populates the tags and collections stores from the real database', async () => {

@@ -1,5 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import { objects } from './settings.js';
+import { configConnection } from '$lib/data/session.js';
+import { readUiState, writeUiState } from '$lib/data/config.js';
 
 /**
  * Library switcher — §3.2.3.10.
@@ -9,12 +11,26 @@ import { objects } from './settings.js';
  * does not own that list — it reads it, so a database added or renamed in
  * Settings appears here without a second source of truth.
  *
- * PRESENTATIONAL ONLY, deliberately. Selecting a library changes the name in
- * the header and nothing else: the same games stay on screen, search is
- * untouched, and no filter is applied. The prototype exists to validate the
- * control, not to implement multi-database scoping — and a switcher that
- * appeared to work while silently doing nothing would be worse than one that
- * is documented as inert.
+ * Selecting a library changes `activeLibraryId`, which `stores/library.js`'s
+ * `loadGames()` now reloads from (20 Sep 2026) — a real library switch, not
+ * a cosmetic one. It was inert before that: this file's own comment used to
+ * call that "deliberate," which wasn't accurate — it was an unfinished
+ * seam, not an approved scope decision, and describing it that way glossed
+ * over a real gap instead of flagging it.
+ *
+ * `stores/library.js`'s own `activeLibraryId.subscribe` also resets
+ * `selection`/`search`/`selectedGameId`/the Sidebar's collapsed sections on
+ * every switch (added 20 Sep 2026, on request).
+ *
+ * The selection also PERSISTS (same day): `selectLibrary()` writes the
+ * chosen id to `config.db`'s `ui_state` table (key `activeLibraryId`,
+ * `data/config.js`'s `writeUiState()` — free-form key/value, unlike
+ * `preferences`' fixed schema, and that table's own doc comment already
+ * names exactly this kind of thing: "sidebar, folded groups, open tabs").
+ * `loadActiveLibrarySelection()` reads it back on mount, after
+ * `stores/settings.js`'s `loadLibraries()` has replaced the seeded/mock
+ * rows with the real ones — see that function's own comment for why the
+ * order matters.
  */
 
 /** A database is offerable when it has finished indexing and is enabled. */
@@ -51,7 +67,47 @@ export function selectLibrary(id) {
   const lib = get(libraries).find((l) => l.id === id);
   if (!lib || !lib.selectable) return false;
   activeLibraryId.set(id);
+  persistActiveLibraryId(id);
   return true;
+}
+
+/**
+ * `selectLibrary()`'s own persistence — a user's explicit pick, not the
+ * fallback subscribe below or the startup restore, both of which set
+ * `activeLibraryId` too but shouldn't re-write the same value they just
+ * read (harmless, but pointless I/O on every launch).
+ */
+async function persistActiveLibraryId(id) {
+  try {
+    const connection = await configConnection();
+    if (connection) await writeUiState(connection, 'activeLibraryId', id);
+  } catch (err) {
+    console.error('Plyvio: failed to remember the active library', err);
+  }
+}
+
+/**
+ * Restore the last-selected library, once, on mount (`AppShell.svelte`,
+ * chained after `loadLibraries()` resolves — calling this any earlier would
+ * race the fallback subscribe below: it fires on every `libraries` change,
+ * including `loadLibraries()`'s replace of the seeded/mock rows with the
+ * real ones, and would immediately override a persisted id that isn't in
+ * the OLD (mock) list yet with `firstSelectable()`). A no-op if nothing was
+ * ever persisted, or if the persisted id no longer names a selectable
+ * library (deleted or disabled since) — `activeLibraryId`'s own default
+ * already covers that case.
+ */
+export async function loadActiveLibrarySelection() {
+  try {
+    const connection = await configConnection();
+    if (!connection) return;
+    const { activeLibraryId: savedId } = await readUiState(connection);
+    if (savedId == null) return;
+    const lib = get(libraries).find((l) => l.id === savedId);
+    if (lib && lib.selectable) activeLibraryId.set(savedId);
+  } catch (err) {
+    console.error('Plyvio: failed to restore the active library', err);
+  }
 }
 
 /**

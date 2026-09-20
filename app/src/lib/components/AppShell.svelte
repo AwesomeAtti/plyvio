@@ -11,7 +11,7 @@
   import {
     selectSection, loadPreferences, loadLibraries, loadEngines, loadSubscriptions
   } from '$lib/stores/settings.js';
-  import { loadGames } from '$lib/stores/library.js';
+  import { loadActiveLibrarySelection } from '$lib/stores/libraries.js';
 
   let aboutFocus = $state(false);
 
@@ -22,9 +22,10 @@
   // the user triggers with Esc or F11 rather than through the menu.
   $effect(() => watchFullscreen());
 
-  // Replaces the Library's mock corpus with the real game database, once, on
-  // mount. A no-op outside Tauri; see stores/library.js.
-  $effect(() => { loadGames(); });
+  // The Library's mock corpus is replaced by the active library's real game
+  // database in `stores/library.js` itself now (a module-level subscribe on
+  // `activeLibraryId`, so it also reloads on every switch, not just once) —
+  // no separate mount effect needed here.
 
   // Replaces the schema-backed Settings preferences with the real values
   // from config.db, once, on mount. A no-op outside Tauri; see
@@ -33,8 +34,11 @@
 
   // Replaces the installed half of the Databases section with the real
   // libraries from config.db, once, on mount. A no-op outside Tauri; see
-  // stores/settings.js.
-  $effect(() => { loadLibraries(); });
+  // stores/settings.js. Chained, not a separate effect: restoring the
+  // last-selected library (`loadActiveLibrarySelection()`, `stores/
+  // libraries.js`) has to run AFTER this replaces the seeded/mock rows —
+  // see that function's own comment for why the order matters.
+  $effect(() => { loadLibraries().then(() => loadActiveLibrarySelection()); });
 
   // Replaces the Engines section with the real engines from config.db,
   // once, on mount. A no-op outside Tauri; see stores/settings.js.

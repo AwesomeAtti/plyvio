@@ -7,24 +7,31 @@
  *                           `libraries`/`engines`/`subscriptions` rows Settings
  *                           reads and writes. One connection, opened once.
  *
- *   `libraryConnection()`   Whatever database backs the games currently on
+ *   `libraryConnection(id)`  Whatever database backs the games currently on
  *                           screen — the Library workspace's Content Table
  *                           and the Game Workspace's own tab content both use
- *                           this one. One connection, opened once.
+ *                           this one, always for the same id:
+ *                           `stores/libraries.js`'s `activeLibraryId`, the
+ *                           switcher's current selection. One connection per
+ *                           id, opened the first time that id is asked for
+ *                           and reused after that (20 Sep 2026 — wired to the
+ *                           switcher; see `stores/library.js`'s
+ *                           `activeLibraryConnection()`, its one caller).
  *
  *   `explorerConnection(id)` The Explorer section's own, independently-selected
  *                           library — resolved through `config.db`'s
  *                           `libraries` table by id, not tied to whatever
- *                           `libraryConnection()` is open to. One connection
- *                           per id, opened the first time that id is asked
- *                           for and reused after that.
+ *                           `libraryConnection()` is open to. Its own,
+ *                           separate per-id cache, so the Explorer can have a
+ *                           different library open at the same time as the
+ *                           main view.
  *
  * `libraryConnection` and `explorerConnection` were named `gamesConnection`
- * and `libraryConnection` respectively until this migration. The old names
- * suggested a bigger difference than exists — both open the same kind of
- * file, the same game-database schema — when the real difference is *which*
- * library each is pointed at and how many of them a caller can have open at
- * once.
+ * and `libraryConnection` respectively until an earlier migration. The old
+ * names suggested a bigger difference than exists — both open the same kind
+ * of file, the same game-database schema — when the real difference is
+ * *which* library each is pointed at and how many of them a caller can have
+ * open at once.
  *
  * TWO REAL BACKENDS NOW, NOT ONE. `configConnection()` and `libraryConnection()`
  * open `backends/tauri.js` inside Tauri (a file on disk, over IPC) and
@@ -59,18 +66,6 @@ const SAMPLES_DIR = import.meta.env.VITE_SAMPLES_DIR;
 export const CONFIG_DB_PATH = `${SAMPLES_DIR}/config.db`;
 
 /**
- * The absolute path to a game database on this machine — the sample shipped in
- * `samples/master-games.db` until the Library workspace's library switcher does
- * more than change a name in the header (it is presentational only today — see
- * `stores/libraries.js`) and there is a real "currently open library" to read
- * this from instead. Also set via `VITE_SAMPLES_DIR` (see `CONFIG_DB_PATH`'s own
- * comment). This is the connection the Library workspace's Content Table and
- * the Game Workspace's own tab content both use. Tauri only; see `backends/
- * pwa.js` for the browser/PWA equivalent.
- */
-export const GAMES_DB_PATH = `${SAMPLES_DIR}/master-games.db`;
-
-/**
  * Whether this is the desktop app. Exported because `stores/settings.js` needs
  * it directly — `loadLibraries()`/`loadEngines()` stay off `configConnection()`
  * even though that connection is real in the PWA now; see their own comments.
@@ -80,19 +75,28 @@ export const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS
 /**
  * The application's own default directory for Library (`.db`) files —
  * Settings → Databases → Add's "create new" path only (`stores/settings.js`'s
- * `createDatabase()`). Deliberately NOT used by `CONFIG_DB_PATH`/
- * `GAMES_DB_PATH` above, which stay pointed at the developer sample directory
- * (`VITE_SAMPLES_DIR`) — a separate, pre-existing stopgap this feature
- * doesn't touch.
+ * `createDatabase()`). Deliberately NOT used by `CONFIG_DB_PATH` above, which
+ * stays pointed at the developer sample directory (`VITE_SAMPLES_DIR`) — a
+ * separate, pre-existing stopgap this feature doesn't touch.
  *
- * `dataDir()` + the literal product name `"Plyvio"`, not `appDataDir()`
- * (which would insert the bundle identifier, `com.plyvio.app`, into a path
- * §6.6 shows the user — General → Storage's Library location). Decided and
- * recorded in `working/tauri/PROGRESS.md`, 20 Sep 2026:
+ * `documentDir()` + the literal product name `"Plyvio"` — CORRECTED 20 Sep
+ * 2026, replacing the `dataDir()` (Application Support) choice recorded
+ * earlier that same day in `working/tauri/PROGRESS.md`. A Library is a
+ * database the user names and fills with their own games — content they
+ * create and own, not data that merely supports the app running (a cache, a
+ * search index, `config.db`'s preferences/UI state, which correctly stay in
+ * Application Support and are untouched by this). Apple's own convention
+ * draws exactly this line, and Photos.app (`~/Pictures`) and Music.app
+ * (`~/Music`) are the precedent for "app-managed file, but it's fundamentally
+ * the user's content": both keep their libraries out of `~/Library`, which is
+ * hidden from Finder by default and not where a user expects to find, back
+ * up, or move their own files. Instructed directly; not `appDataDir()`
+ * either, for the same reason as before — that would insert the bundle
+ * identifier, `com.plyvio.app`, into a path §6.6 shows the user.
  *
- *   macOS:   ~/Library/Application Support/Plyvio/Libraries/
- *   Windows: %APPDATA%\Plyvio\Libraries\
- *   Linux:   ~/.local/share/Plyvio/Libraries/
+ *   macOS:   ~/Documents/Plyvio/Libraries/
+ *   Windows: %USERPROFILE%\Documents\Plyvio\Libraries\
+ *   Linux:   ~/Documents/Plyvio/Libraries/ (XDG_DOCUMENTS_DIR when set)
  *
  * `@tauri-apps/api/path` is imported dynamically, the same lazy-chunk
  * pattern `appCommands.js` already uses for `@tauri-apps/api` — so a plain
@@ -100,8 +104,8 @@ export const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS
  * `isTauri()` first (`createDatabase()` does).
  */
 export const defaultLibrariesDir = async () => {
-  const { dataDir, join } = await import('@tauri-apps/api/path');
-  return join(await dataDir(), 'Plyvio', 'Libraries');
+  const { documentDir, join } = await import('@tauri-apps/api/path');
+  return join(await documentDir(), 'Plyvio', 'Libraries');
 };
 
 /** `defaultLibrariesDir()` joined with a filename — the path a new Library's file is created at. */
@@ -113,14 +117,14 @@ export const defaultLibraryPath = async (filename) => {
 /**
  * `defaultLibrariesDir()`, but with the user's home directory collapsed to
  * `~` and a trailing separator — what DB‑04's Location field actually shows
- * while a database is a draft (`~/Library/Application Support/Plyvio/
- * Libraries/`, not the raw absolute path `dataDir()` resolves to). Display
- * only; `createDatabase()` uses `defaultLibrariesDir()`/`defaultLibraryPath()`
- * for the real path, never this string.
+ * while a database is a draft (`~/Documents/Plyvio/Libraries/`, not the raw
+ * absolute path `documentDir()` resolves to). Display only; `createDatabase()`
+ * uses `defaultLibrariesDir()`/`defaultLibraryPath()` for the real path,
+ * never this string.
  */
 export const defaultLibrariesDirDisplay = async () => {
-  const { dataDir, homeDir, join } = await import('@tauri-apps/api/path');
-  const [base, home] = await Promise.all([dataDir(), homeDir()]);
+  const { documentDir, homeDir, join } = await import('@tauri-apps/api/path');
+  const [base, home] = await Promise.all([documentDir(), homeDir()]);
   const dir = await join(base, 'Plyvio', 'Libraries');
   const withSep = /[/\\]$/.test(dir) ? dir : `${dir}/`;
   const homeClean = home ? home.replace(/[/\\]+$/, '') : '';
@@ -183,24 +187,46 @@ export const configConnection = () => {
   ));
 };
 
-let libraryConnectionPromise = null;
+const libraryConnectionPromises = new Map();
 
 /**
- * The application's one real connection to its own games (Tauri) or its PWA
- * counterpart (browser) — opened once and reused, everywhere except the
- * Explorer.
+ * A connection to a specific library's game database, by the id
+ * `stores/libraries.js`'s `activeLibraryId` holds — the switcher's current
+ * selection. One connection per id, opened once and reused, the same
+ * per-id caching `explorerConnection()` (below) already uses, kept as its
+ * own separate cache because the Explorer can have a different library open
+ * at the same time as this one.
  *
- * @returns {Promise<import('./connection.js').Connection>}
+ * This is the connection the Library workspace's Content Table and the Game
+ * Workspace's own tab content both use. Resolving WHICH id to ask for, and
+ * whether the currently active row even has a real database behind it (a
+ * still-mock/seeded row does not — `stores/library.js`'s
+ * `activeLibraryConnection()` is where that's decided), is the caller's
+ * job, not this function's — it just opens whatever id it's given.
+ *
+ * @returns {Promise<import('./connection.js').Connection|null>} `null` for
+ *   a nullish id, an id no library in `config.db` has (Tauri), or when the
+ *   underlying config/PWA connection itself is unavailable.
  */
-export const libraryConnection = () => {
-  if (isTauri()) {
-    return (libraryConnectionPromise ??= import('./backends/tauri.js').then((mod) =>
-      mod.openFileDatabase(GAMES_DB_PATH)
-    ));
+export const libraryConnection = (libraryId) => {
+  if (libraryId == null) return Promise.resolve(null);
+  if (!libraryConnectionPromises.has(libraryId)) {
+    libraryConnectionPromises.set(libraryId, (async () => {
+      if (isTauri()) {
+        const config = await configConnection();
+        if (!config) return null;
+        const libs = await readLibraries(config);
+        const library = libs.find((l) => l.id === libraryId);
+        if (!library) return null;
+        const mod = await import('./backends/tauri.js');
+        return mod.openFileDatabase(resolveGameDbPath(library.path));
+      }
+      return openPwaConnection(
+        (mod) => mod.openLibraryDatabase(libraryId), `library-${libraryId}`
+      );
+    })());
   }
-  return (libraryConnectionPromise ??= openPwaConnection(
-    (mod) => mod.openGameDatabase(), 'games'
-  ));
+  return libraryConnectionPromises.get(libraryId);
 };
 
 const explorerConnectionPromises = new Map();

@@ -17,8 +17,8 @@ export const LIST_COLUMNS = [
 /**
  * `created_at` is fetched alongside the eight list columns above rather than
  * added to them — it is not one of §3.2.4.2's eight and the Content Table
- * does not draw it — but `stores/library.js`'s `loadGames()` needs it to
- * derive `addedDaysAgo` for Recently Added (§3.2.3.2).
+ * does not draw it — but `stores/library.js`'s `loadGames()` passes it
+ * through as `createdAt`, which `recentlyAdded()` (§4.3.2) reads directly.
  */
 const ROW_COLUMNS = [...LIST_COLUMNS, 'created_at'];
 

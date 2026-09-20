@@ -173,7 +173,7 @@ describe('DB‑05 — validation, one shared message area', () => {
 });
 
 describe('DB‑04 — Create', () => {
-  it('creates the database, closes the draft, and the row becomes real (Version + Location, no Filename)', async () => {
+  it('creates the database, closes the draft, and the row becomes real (Location only, no Version, no Filename)', async () => {
     const { container } = await renderDatabases();
     await fireEvent.click(container.querySelector('#settings-content .chead .add'));
     await tick();
@@ -193,13 +193,13 @@ describe('DB‑04 — Create', () => {
     expect(created.enabled).toBe(true);
     expect(created.version).toBeTruthy();
 
-    // Re-expand: DB‑03r shows Name, Version, Location — no Filename field.
+    // Re-expand: DB‑03r (Rev H) shows Name, Location — no Version, no Filename.
     const row = [...container.querySelectorAll('#settings-content .box .r')]
       .find((r) => r.querySelector('.nm').textContent.trim() === 'Correspondence 2026');
     await fireEvent.click(row.querySelector('.cv'));
     await tick();
     const exp = container.querySelector('#settings-content .exp');
-    expect(exp.textContent).toContain('Version');
+    expect(exp.textContent).not.toContain('Version');
     expect(exp.textContent).toContain('Location');
     expect(exp.textContent).not.toContain('Filename');
     expect(exp.querySelectorAll('input.efield').length).toBe(0);

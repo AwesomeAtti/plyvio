@@ -4,9 +4,12 @@
    *
    * Fills the Sidebar header, with the collapse control trailing it. Names the
    * database the workspace is showing; the list comes from Settings → Databases
-   * (§3.4.8), and `Manage databases…` is the only route to changing that list,
-   * so §3.2.3.3's rule that the Sidebar carries no configuration controls
-   * still holds.
+   * (§3.4.8), and the menu's trailing `Settings…` item is the only route to
+   * changing that list, so §3.2.3.3's rule that the Sidebar carries no
+   * configuration controls still holds. Renamed from `Manage databases…` —
+   * it's a shortcut to the Settings tab generally, not only its Databases
+   * section, so the item shouldn't promise a narrower destination than it
+   * opens.
    *
    * NO ICON. A Library is a database file — one object, two words — so a glyph
    * beside the name in a panel that is unambiguously the library would be a

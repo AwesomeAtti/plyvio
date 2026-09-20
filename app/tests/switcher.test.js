@@ -15,7 +15,7 @@ import {
   TRIGGER_PAD_L, TRIGGER_PAD_R, TRIGGER_GAP, CHEVRON_W,
   SWITCHER_W, NAME_W, nameWidth
 } from '../src/lib/library/switcher.js';
-import { games, visibleGames, search, selection, sidebarCollapsed, resetLibrary } from '../src/lib/stores/library.js';
+import { games, visibleGames, search, selection, selectedGameId, sectionCollapsed, sidebarCollapsed, resetLibrary } from '../src/lib/stores/library.js';
 import { makeGames } from '../src/lib/library/mock.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -208,29 +208,59 @@ describe('Library switcher — the library list', () => {
   });
 });
 
-/* ================= the presentational-only guarantee ================== */
+/*
+ * ================= switching between these two fixture rows =============
+ *
+ * `DBS` above (`db-1`/`db-2`) are plain fixtures with no `location` field —
+ * the same shape a still-mock/seeded row has in the real app (no real
+ * database ever created for it). `stores/library.js`'s `loadGames()` (wired
+ * to `activeLibraryId` 20 Sep 2026 — real libraries switch for real now,
+ * see that file) skips a row like that entirely, so switching between them
+ * here changes nothing — not because switching is inert by design, but
+ * because neither of these two specific rows has anything real to open.
+ * `library-loadGames.test.js` and `game-realData.test.js` cover the real,
+ * wired path (a row that DOES carry `location`) with `session.js` mocked;
+ * this file doesn't mock it, so it can only exercise the fixture rows'
+ * behavior, which is this no-op case.
+ */
 
-describe('Library switcher — presentational only', () => {
+describe('Library switcher — selecting a fixture row with no real database', () => {
   it('does not change the visible games', () => {
     const before = get(visibleGames).map((g) => g.id);
     selectLibrary('db-2');
     expect(get(visibleGames).map((g) => g.id)).toEqual(before);
   });
+});
 
-  it('does not touch the search term or the sidebar selection', () => {
+/*
+ * ==================== resetLibrary() runs on every switch ================
+ *
+ * 20 Sep 2026, on request: a still-selected tag/collection filter, a search
+ * term, a highlighted row, or a collapsed Sidebar section from the PREVIOUS
+ * library carries no meaning in the new one, so `stores/library.js`'s
+ * `activeLibraryId.subscribe` calls `resetLibrary()` on every switch — even
+ * to one of the fixture rows above, which have nothing real to load. The
+ * reset is about UI state, not data backing, so it doesn't depend on that.
+ */
+describe('a library switch resets the Library workspace', () => {
+  it('returns the Sidebar selection to All and clears search', () => {
     search.set('carlsen');
-    const sel = get(selection);
-    const hits = get(visibleGames).length;
+    selection.set({ kind: 'tag', id: 5 });
     selectLibrary('db-2');
-    expect(get(search)).toBe('carlsen');
-    expect(get(selection)).toEqual(sel);
-    expect(get(visibleGames).length).toBe(hits);
-    search.set('');
+    expect(get(search)).toBe('');
+    expect(get(selection)).toEqual({ kind: 'all' });
   });
 
-  it('is stated in the source, so nobody wires it up by accident', () => {
-    const src = readFileSync('src/lib/stores/libraries.js', 'utf8');
-    expect(src).toMatch(/PRESENTATIONAL ONLY/);
+  it('clears the selected game', () => {
+    selectedGameId.set(42);
+    selectLibrary('db-2');
+    expect(get(selectedGameId)).toBeNull();
+  });
+
+  it('re-expands the Sidebar\'s collapsed sections', () => {
+    sectionCollapsed.set({ subscriptions: true, collections: true, tags: true });
+    selectLibrary('db-2');
+    expect(get(sectionCollapsed)).toEqual({ subscriptions: false, collections: false, tags: false });
   });
 });
 
@@ -266,7 +296,7 @@ describe('the switcher in the sidebar', () => {
     const names = [...container.querySelectorAll('.side .menu .mrow .nm')].map((e) => e.textContent.trim());
     expect(names).toContain('Master Games');
     expect(names).toContain('My Games');
-    expect(names).toContain('Manage databases…');
+    expect(names).toContain('Settings…');
   });
 
   it('switches from the menu and closes it', async () => {
@@ -305,7 +335,7 @@ describe('the switcher in the sidebar', () => {
     for (const b of container.querySelectorAll('.side .rail-it')) {
       await fireEvent.click(b);
       const fly = container.querySelector('.side .fly');
-      if (fly) expect(fly.textContent).not.toContain('Manage databases');
+      if (fly) expect(fly.textContent).not.toContain('Settings…');
     }
   });
 

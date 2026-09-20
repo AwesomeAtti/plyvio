@@ -39,7 +39,7 @@ asset URLs, so the build isn't welded to the path it was built for, while
 `404.html` gets **absolute** ones, because a fallback served at
 `/repo/some/deep/path` cannot resolve relative URLs. Both are verified.
 
-**Verified in the container** by serving the build under a `/chessgui/` prefix
+**Verified in the container** by serving the build under a `/plyvio/` prefix
 and requesting every asset the entry page names: 19 of 19 return 200, and the
 manifest, service worker, icons and fonts resolve. What that does *not* prove is
 that the page renders — the app is client-rendered and no browser binary was
@@ -51,7 +51,7 @@ push. And nothing gates the deploy on `npm test`, so run it first.
 
 **One caveat worth knowing.** The service worker caches aggressively by design
 (§1.1 wants offline-first). After a deploy, an already-installed copy keeps
-serving the old `chessgui-<version>` cache until the new worker activates, so a
+serving the old `plyvio-<version>` cache until the new worker activates, so a
 hard reload — or closing every tab of the app — is what shows a fresh build.
 
 ## Desktop target

@@ -7,7 +7,7 @@ import {
 } from '$lib/data/session.js';
 import {
   readPreferences, writePreference, PREFERENCE_KEYS,
-  readLibraries, writeLibraryName, writeLibraryEnabled, createLibrary,
+  readLibraries, writeLibraryName, writeLibraryEnabled, createLibrary, deleteLibrary,
   readEngines, writeEngineName, writeEngineOption, writeEngineEnabled,
   readSubscriptions
 } from '$lib/data/config.js';
@@ -588,6 +588,37 @@ export function setDatabaseEnabled(id, enabled) {
         if (connection) await writeLibraryEnabled(connection, id, enabled);
       } catch (err) {
         console.error(`Plyvio: failed to update library ${id}`, err);
+      }
+    })();
+  }
+}
+
+/**
+ * Remove a database (DB‑03r's "Remove database", Rev H). Destructive and
+ * NOT undoable — the caller confirms first (`ConfirmRemove.svelte` in
+ * `DatabaseSection.svelte`), the same contract `removeObject()` documents
+ * for Engines/Subscriptions.
+ *
+ * This removes the row from `objects` and, for a real Library (integer id),
+ * the `config.db` registration — `deleteLibrary()`. It deliberately never
+ * touches the game-database *file* on disk: "remove" forgets the Library,
+ * it does not delete anyone's games. A mock catalogue-install row (string
+ * id) has no `config.db` row to begin with, so it's store-only, same as
+ * `renameDatabase`/`setDatabaseEnabled`.
+ */
+export function removeDatabase(id) {
+  objects.update((all) => ({
+    ...all,
+    databases: all.databases.filter((db) => db.id !== id)
+  }));
+  lastApplied.set(Date.now());
+  if (typeof id === 'number') {
+    (async () => {
+      try {
+        const connection = await configConnection();
+        if (connection) await deleteLibrary(connection, id);
+      } catch (err) {
+        console.error(`Plyvio: failed to remove library ${id}`, err);
       }
     })();
   }

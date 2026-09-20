@@ -27,13 +27,14 @@
   import { DatabaseIcon, SectionExpand, SubmenuArrow, AddGames } from '$lib/icons.js';
   import {
     objects, availableDatabases, installDatabase, renameDatabase,
-    setDatabaseEnabled, removeObject, addObject, createDatabase, cancelDatabaseDraft
+    setDatabaseEnabled, removeDatabase, addObject, createDatabase, cancelDatabaseDraft
   } from '$lib/stores/settings.js';
   import {
     installedDetail, availableDetail, downloadingDetail,
     deriveFilename, validateDraftDatabase, basename
   } from '$lib/settings/databases.js';
   import { isTauri, defaultLibrariesDirDisplay } from '$lib/data/session.js';
+  import ConfirmRemove from './ConfirmRemove.svelte';
 
   let { heading } = $props();
 
@@ -57,6 +58,21 @@
   let creating = $state(false);
   let librariesDir = $state('');
   let draftServerError = $state(null);
+  /**
+   * Set when `createDatabase()` throws rather than returning a validation
+   * error — an unexpected failure (a filesystem/IPC/config-write problem),
+   * not one of DB‑05's three named states. Previously this was
+   * console.error-only, so a failed Create looked exactly like a successful
+   * one: the draft just sat there with no visible sign anything went wrong,
+   * which is what led to a database being created twice and to Cancel
+   * discarding a draft that might already have a real file behind it. Shown
+   * in the same shared message area as DB‑05's other states, but it does
+   * NOT disable Create — the fields are still valid, so retrying should stay
+   * one click away rather than forcing a re-type.
+   */
+  let createFailed = $state(false);
+  /** The raw error message, shown alongside the generic text — see createFailed's comment. */
+  let createFailedDetail = $state('');
 
   const installed = $derived(
     [...($objects.databases ?? [])].sort((a, b) => a.name.localeCompare(b.name))
@@ -94,12 +110,16 @@
     draftName = value;
     if (!filenameDetached) draftFilename = deriveFilename(value);
     draftServerError = null;
+    createFailed = false;
+    createFailedDetail = '';
   }
 
   function onDraftFilenameInput(value) {
     draftFilename = value;
     filenameDetached = true;
     draftServerError = null;
+    createFailed = false;
+    createFailedDetail = '';
   }
 
   /**
@@ -128,15 +148,23 @@
       const error = await createDatabase(id, { name: draftName, filename: draftFilename });
       if (error) {
         draftServerError = error;
+        createFailed = false;
+        createFailedDetail = '';
         return;
       }
       draftServerError = null;
+      createFailed = false;
+      createFailedDetail = '';
       expanded = null;
     } catch (err) {
-      // No drawn failure state for this (out of scope — DB‑04/DB‑05 draw
-      // only the three validation states). Logged and left as a draft the
-      // user can retry, rather than losing what they typed.
+      // createDatabase() can fail partway through its own multi-step write
+      // (file created, then config.db registration fails, say) — the draft
+      // stays a draft either way, on purpose, rather than guessing at what
+      // succeeded. Shown, not just logged, so the user knows to check
+      // before retrying or cancelling — see createFailed's own comment.
       console.error('Plyvio: failed to create the database', err);
+      createFailed = true;
+      createFailedDetail = err?.message ?? String(err);
     } finally {
       creating = false;
     }
@@ -146,6 +174,27 @@
     if (expanded === id) expanded = null;
     draftServerError = null;
     cancelDatabaseDraft(id);
+  }
+
+  /*
+    DB‑03r's Remove database, confirmed per §6.1 (destructive, no Cancel to
+    walk it back once committed). `removeConfirm` holds the row being asked
+    about — `null` when no confirmation is open — rather than a boolean, so
+    the dialog can show the right name (ConfirmRemove.svelte's own `name`
+    prop) without a second lookup.
+  */
+  let removeConfirm = $state(null);
+
+  function requestRemove(db) {
+    removeConfirm = db;
+  }
+  function confirmRemove() {
+    if (expanded === removeConfirm.id) expanded = null;
+    removeDatabase(removeConfirm.id);
+    removeConfirm = null;
+  }
+  function cancelRemove() {
+    removeConfirm = null;
   }
 </script>
 
@@ -188,37 +237,49 @@
       {#if expanded === db.id && db.draft}
         <!-- DB‑04/DB‑05 — the draft row: Name + Filename, same width, Location
              (directory only) and the shared Cancel/Create footer. -->
-        {@const error = draftServerError ?? draftValidation(db.id)}
+        {@const preflight = draftServerError ?? draftValidation(db.id)}
         <div class="exp">
           <div class="er">
             <span class="k"><label for="dbname-{db.id}">{$t('field.name')}</label></span>
             <input
-              id="dbname-{db.id}" class="inp efield" class:err={error?.field === 'name'}
-              type="text" value={draftName}
+              id="dbname-{db.id}" class="inp efield" class:err={preflight?.field === 'name'}
+              type="text" value={draftName} disabled={creating}
               oninput={(e) => onDraftNameInput(e.currentTarget.value)}
             />
           </div>
           <div class="er">
             <span class="k"><label for="dbfilename-{db.id}">{$t('field.filename')}</label></span>
+            <!--
+              Read-only for the duration of Create, not just disabled cosmetically:
+              once the write is under way the filename it started with is the one
+              that lands on disk, so editing it here would be a lie about what's
+              actually happening. Draws the same as a real row's read-only value
+              once DB‑03r takes over (the field itself, not this draft input).
+            -->
             <input
-              id="dbfilename-{db.id}" class="inp efield" class:err={error?.field === 'filename'}
-              type="text" value={draftFilename}
+              id="dbfilename-{db.id}" class="inp efield" class:err={preflight?.field === 'filename'}
+              type="text" value={draftFilename} readonly={creating} disabled={creating}
               oninput={(e) => onDraftFilenameInput(e.currentTarget.value)}
             />
           </div>
           <div class="er"><span class="k">{$t('settings.databaseLocation')}</span>
             <span class="v">{isTauri() ? librariesDir : $t('settings.storedInBrowser')}</span></div>
           <div class="actions">
-            {#if error}
-              <span class="formmsg" role="alert">{$t(error.key, error.params)}</span>
+            {#if preflight}
+              <span class="formmsg" role="alert">{$t(preflight.key, preflight.params)}</span>
+            {:else if createFailed}
+              <span class="formmsg" role="alert">
+                {$t('settings.createFailedGeneric')}
+                {#if createFailedDetail}<span class="errdetail">{createFailedDetail}</span>{/if}
+              </span>
             {/if}
-            <button class="b" type="button" onclick={() => cancelDraft(db.id)}>
+            <button class="b" type="button" disabled={creating} onclick={() => cancelDraft(db.id)}>
               {$t('settings.cancel')}
             </button>
             <button
-              class="b pri" type="button" disabled={!!error || creating}
+              class="b pri" type="button" disabled={!!preflight || creating}
               onclick={() => confirmCreate(db.id)}
-            >{$t('settings.create')}</button>
+            >{creating ? $t('settings.creating') : $t('settings.create')}</button>
           </div>
         </div>
       {:else if expanded === db.id}
@@ -233,8 +294,6 @@
             />
           </div>
           {#if nameError}<p class="err">{$t(nameError)}</p>{/if}
-          <div class="er"><span class="k">{$t('field.version')}</span>
-            <span class="v">{db.version ?? '—'}</span></div>
           <!--
             `location` distinguishes three states by more than truthiness:
             a real path (desktop, set by loadLibraries()/createDatabase()),
@@ -251,20 +310,25 @@
             <div class="er"><span class="k">{$t('settings.databaseLocation')}</span>
               <span class="v">{$t('settings.storedInBrowser')}</span></div>
           {/if}
-          {#if typeof db.id !== 'number'}
-            <!-- Removing a real Library isn't wired yet (config.db write) — offering
-                 the button would look like it worked and then revert on reload. -->
-            <div class="er">
-              <span class="k"></span>
-              <button class="dan" type="button" onclick={() => removeObject('databases', db.id)}>
-                {$t('settings.removeDatabase')}
-              </button>
-            </div>
-          {/if}
+          <div class="er">
+            <span class="k"></span>
+            <button class="dan" type="button" onclick={() => requestRemove(db)}>
+              {$t('settings.removeDatabase')}
+            </button>
+          </div>
         </div>
       {/if}
     {/each}
   </div>
+
+  {#if removeConfirm}
+    <ConfirmRemove
+      name={removeConfirm.name}
+      body={$t('settings.confirmRemoveDatabaseBody')}
+      onconfirm={confirmRemove}
+      oncancel={cancelRemove}
+    />
+  {/if}
 
   {#if $availableDatabases.length}
     <p class="glab two">{$t('settings.available')}</p>
@@ -426,6 +490,10 @@
     background: var(--surface); border: 1px solid var(--rule-strong);
     border-radius: 5px; color: var(--ink); font: 12px var(--sans);
   }
+  /* Read-only for the duration of Create (this row's own comment explains why). */
+  .inp:disabled {
+    background: var(--chrome); color: var(--muted); cursor: not-allowed;
+  }
   .err { margin: 0 0 6px; font-size: 11.5px; color: var(--warn); }
   .dan {
     height: 28px; padding: 0 11px;
@@ -453,10 +521,19 @@
     padding-top: 4px; padding-bottom: 4px;
   }
   .formmsg {
-    display: flex; align-items: center; gap: 6px;
+    display: flex; flex-direction: column; align-items: flex-start; gap: 2px;
     flex: 1; min-width: 0;
     font-size: 12px; color: var(--warn);
-    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    /*
+      DB‑05's three named validation states are short and stay on one line
+      naturally. An unexpected failure's raw error text isn't bounded the same
+      way, so it wraps onto its own line below rather than truncating —
+      seeing the real message is the whole point of showing it here.
+    */
+  }
+  .errdetail {
+    font: 11px var(--mono); color: var(--muted);
+    white-space: normal; word-break: break-word;
   }
   .b {
     display: inline-flex; align-items: center; gap: 6px;

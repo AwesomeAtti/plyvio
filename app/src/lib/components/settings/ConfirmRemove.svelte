@@ -6,7 +6,7 @@
    */
   import { t } from '$lib/stores/i18n.js';
 
-  let { name, onconfirm, oncancel } = $props();
+  let { name, body, onconfirm, oncancel } = $props();
   let el;
 
   $effect(() => { el?.querySelector('.danger')?.focus(); });
@@ -19,7 +19,7 @@
 <div class="scrim" role="presentation" onkeydown={onKey}>
   <div class="dlg" role="alertdialog" aria-modal="true" aria-labelledby="cr-title" bind:this={el}>
     <h2 id="cr-title">{$t('settings.confirmRemove', { name })}</h2>
-    <p>{$t('settings.confirmRemoveBody')}</p>
+    <p>{body ?? $t('settings.confirmRemoveBody')}</p>
     <div class="actions">
       <button type="button" class="quiet" onclick={() => oncancel?.()}>{$t('settings.cancel')}</button>
       <button type="button" class="danger" onclick={() => onconfirm?.()}>{$t('settings.remove')}</button>

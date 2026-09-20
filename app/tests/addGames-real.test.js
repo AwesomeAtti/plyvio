@@ -79,6 +79,8 @@ describe('planImport — real Paste', () => {
 const { games, tags, collections } = await import('../src/lib/stores/library.js');
 const { startImport, resetImporter, phase, notice } = await import('../src/lib/stores/importer.js');
 const { libraryConnection } = await import('$lib/data/session.js');
+const { objects } = await import('../src/lib/stores/settings.js');
+const { activeLibraryId } = await import('../src/lib/stores/libraries.js');
 const { insertGames } = await import('$lib/data/games.js');
 
 describe('the lane writes a real Paste import to the database', () => {
@@ -89,6 +91,19 @@ describe('the lane writes a real Paste import to the database', () => {
     resetImporter();
     libraryConnection.mockReset();
     insertGames.mockReset();
+    // `runRealWrite()` (via `connectionForLibrary()`) writes to the
+    // request's own `destination` ('db-1', the shared `request()` helper's
+    // default) — NOT necessarily the active library; `id: 7` here is a
+    // second, different library, active but not the destination, to prove
+    // that distinction actually holds.
+    objects.update((o) => ({
+      ...o,
+      databases: [
+        { id: 'db-1', name: 'Destination Library', location: '/tmp/db-1.db', enabled: true, status: 'indexed' },
+        { id: 7, name: 'Active Library', location: '/tmp/test.db', enabled: true, status: 'indexed' }
+      ]
+    }));
+    activeLibraryId.set(7);
   });
   afterEach(() => resetImporter());
 
@@ -108,6 +123,11 @@ describe('the lane writes a real Paste import to the database', () => {
     expect(insertGames).toHaveBeenCalledWith(connection, expect.arrayContaining([
       expect.objectContaining({ pgn: ONE_GAME, white: 'Carlsen, Magnus' })
     ]));
+    // 20 Sep 2026 — the write goes to the request's DESTINATION ('db-1'),
+    // not whichever library happens to be active (7); this used to be a
+    // real gap where `destination` was collected by the dialog and then
+    // silently ignored.
+    expect(libraryConnection).toHaveBeenCalledWith('db-1');
     expect(get(phase)).toBe('done');
     expect(get(games)).toHaveLength(1);
     expect(get(games)[0].white).toBe('Carlsen, Magnus');

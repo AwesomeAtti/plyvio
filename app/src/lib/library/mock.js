@@ -18,6 +18,13 @@ function mulberry32(a) {
   };
 }
 
+// A fixed reference point, not `Date.now()` — these rows are meant to be
+// identical every run (see the file doc comment above), and `createdAt`
+// values built off the real clock would drift a test's "most recent day"
+// answer between runs. `daysAgo(0)` is always this same moment.
+const MOCK_NOW = Date.UTC(2026, 8, 20);
+const daysAgo = (n) => new Date(MOCK_NOW - n * 86_400_000).toISOString();
+
 const PLAYERS = [
   ['Carlsen', 'Magnus'], ['Nepomniachtchi', 'Ian'], ['Fischer', 'Robert J'],
   ['Spassky', 'Boris V'], ['Kasparov', 'Garry'], ['Topalov', 'Veselin'],
@@ -87,7 +94,7 @@ export function realRows() {
       result: g.result,
       ply_count: g.ply_count,
       favorite: false,
-      addedDaysAgo: i,
+      createdAt: daysAgo(i),
       subscription: null,
       collections: [],
       tags: [],
@@ -152,7 +159,7 @@ export function makeGames(count = 1248, seed = 20260903) {
       */
       ply_count: rnd() < 0.06 ? null : 16 + Math.floor(rnd() * 244),
       favorite: rnd() < 0.03,
-      addedDaysAgo: Math.floor(rnd() * 400),
+      createdAt: daysAgo(Math.floor(rnd() * 400)),
       subscription: rnd() < 0.42 ? Math.floor(rnd() * 7) : null,
       collections: rnd() < 0.22 ? [Math.floor(rnd() * 3)] : [],
       tags: rnd() < 0.12 ? [Math.floor(rnd() * 4)] : [],
@@ -208,12 +215,15 @@ export const TAGS = [
  * nothing happened, and those three are the entire result of an import now
  * that r5 §4 drops the banner.
  *
- * Recent by construction — `addedDaysAgo: 0` — so Recently Added is the view
- * that fills, which is where the workspace navigates when an import finishes.
+ * Recent by construction — every row in one call shares a single `createdAt`
+ * (mirroring the real import path, see `pgn/importPgn.js`) set to the moment
+ * `makeImportedGames()` runs — so Recently Added is the view that fills,
+ * which is where the workspace navigates when an import finishes.
  */
 export function makeImportedGames(count, { offset = 0, seed = 424242, tags = [], collections = [] } = {}) {
   const rnd = mulberry32(seed + offset);
   const pick = (arr) => arr[Math.floor(rnd() * arr.length)];
+  const createdAt = new Date().toISOString();
   const out = [];
 
   for (let i = 0; i < count; i++) {
@@ -237,7 +247,7 @@ export function makeImportedGames(count, { offset = 0, seed = 424242, tags = [],
       result: pick(RESULTS),
       ply_count: 16 + Math.floor(rnd() * 244),
       favorite: false,
-      addedDaysAgo: 0,
+      createdAt,
       subscription: null,
       collections: [...collections],
       tags: [...tags],

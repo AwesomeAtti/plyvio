@@ -9,7 +9,7 @@ import {
   visibleGames, counts, pinnedExtra, subscriptions,
   selectSidebar, selectGame, clearSearch, resetLibrary,
   applySelection, applySearch, recentlyAdded,
-  visibleSubscriptions, overflowSubscriptions, SUBS_SHOWN, RECENT_DAYS, RECENT_MAX,
+  visibleSubscriptions, overflowSubscriptions, SUBS_SHOWN,
   sectionCollapsed, toggleSection, expandSection, SECTIONS, collections, tags
 } from '../src/lib/stores/library.js';
 import { layoutColumns, widths, COLUMNS, TABLE_MIN, FIXED_TOTAL, NAME_MIN, NAME_MAX, EVENT_MIN, cellValue } from '../src/lib/library/columns.js';
@@ -240,10 +240,16 @@ describe('§3.2.3 sidebar filtering', () => {
     expect(applySelection(all, { kind: 'favorites' }).every((g) => g.favorite)).toBe(true);
   });
 
-  it('Recently Added is bounded by both 30 days and 100 games', () => {
-    const r = recentlyAdded(get(games));
-    expect(r.length).toBeLessThanOrEqual(RECENT_MAX);
-    expect(r.every((g) => g.addedDaysAgo <= RECENT_DAYS)).toBe(true);
+  it('Recently Added is the last import -- every game sharing the latest createdAt', () => {
+    const all = get(games);
+    const r = recentlyAdded(all);
+    const eligible = all.filter((g) => !g.trashed && g.createdAt);
+    const latest = eligible.reduce(
+      (max, g) => (g.createdAt > max ? g.createdAt : max), eligible[0].createdAt
+    );
+    expect(r.length).toBeGreaterThan(0);
+    expect(r.every((g) => g.createdAt === latest)).toBe(true);
+    expect(eligible.filter((g) => g.createdAt === latest).length).toBe(r.length);
   });
 
   it('a subscription filter returns only its games', () => {

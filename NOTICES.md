@@ -1,15 +1,15 @@
 # Third-party notices
 
-Chessgui is licensed under the **GNU General Public License, version 3 or later**.
+Plyvio is licensed under the **GNU General Public License, version 3 or later**.
 The full text is in `LICENSE` at the root of this repository, and is bundled with
 the application so that it is available offline (§1.1).
 
-Chessgui is GPL because **Chessground is GPL**. Chessground carries no linking
+Plyvio is GPL because **Chessground is GPL**. Chessground carries no linking
 exception, and its code is bundled into the application's JavaScript rather than
 merely shipped alongside it, so the combined work is covered. Everything else
 listed here is permissively licensed and imposes attribution only.
 
-The components below are redistributed with Chessgui. Each licence text follows
+The components below are redistributed with Plyvio. Each licence text follows
 in full, as those licences require.
 
 | Component | Version | Licence | Used for |
