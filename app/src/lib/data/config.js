@@ -94,6 +94,30 @@ export const writeLibraryEnabled = async (connection, id, enabled) => {
 };
 
 /**
+ * Register a new Library — Settings → Databases → Add's "create new" path
+ * (`stores/settings.js`'s `createDatabase()`). The game-database *file* is
+ * created separately, before this is called (`backends/tauri.js`'s
+ * `openFileDatabase()` + `GAME_DB_DDL`) — this only adds the `config.db` row
+ * that makes the file a Library the rest of the application (the switcher,
+ * this section's own Installed list) can see.
+ *
+ * `libraries.id` is an ordinary `INTEGER PRIMARY KEY` rowid, so the new id
+ * comes back via `last_insert_rowid()` on the same connection rather than
+ * being generated here — the same thing every SQLite driver this seam might
+ * ever sit on supports, and consistent with every other `id` in `config.db`
+ * being assigned by SQLite, not by the application.
+ *
+ * @returns {Promise<number>} the new Library's `libraries.id`
+ */
+export const createLibrary = async (connection, { name, path, createdAt, enabled = true, version = null }) => {
+  await connection.run(
+    'insert into libraries (name, game_db_path, created_at, enabled, version) values (?, ?, ?, ?, ?)',
+    [name, path, createdAt, enabled ? 1 : 0, version]
+  );
+  return connection.value('select last_insert_rowid()');
+};
+
+/**
  * The engines configured in `config.db`. §5, camelCase per `readLibraries`/
  * `readGames`'s own convention: `binary_path` → `binaryPath`, `hash_mb` →
  * `hashMb`, `created_at` → `createdAt`.

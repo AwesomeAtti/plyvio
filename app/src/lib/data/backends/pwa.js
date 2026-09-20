@@ -130,3 +130,25 @@ export const openGameDatabase = () => openPwaDatabase('games', GAME_DB_DDL, seed
 
 /** The browser's `config.db` counterpart — no seed rows. */
 export const openConfigDatabase = () => openPwaDatabase('config', CONFIG_DB_DDL, null);
+
+/**
+ * An ADDITIONAL Library's game database, by a generated id — the PWA half of
+ * Settings → Databases → Add (`stores/settings.js`'s `createDatabase()`,
+ * `working/wireframes/settings-databases-add.html`). `openGameDatabase()`
+ * above stays exactly as it was, still the browser's one "currently open"
+ * game database (`session.js`'s `libraryConnection()`) keyed `'games'`; this
+ * is a second, parallel IndexedDB record per extra Library, keyed
+ * `library-<id>` so it can never collide with that fixed key or with
+ * `'config'`.
+ *
+ * Empty, not seeded — `openGameDatabase()`'s sample-game seeding is that one
+ * database's own demonstration-data rule (a first-time PWA visit isn't
+ * blank), not a general rule for every database this backend opens. A newly
+ * created Library starts genuinely empty, matching the desktop path
+ * (`backends/tauri.js` + `GAME_DB_DDL`, no seed).
+ *
+ * @param {string} id the Library's id — a generated id for a new database
+ *   (`nextId('db')`, `stores/settings.js`), same shape as any other
+ *   store-only object id this codebase already uses for a PWA row.
+ */
+export const openLibraryDatabase = (id) => openPwaDatabase(`library-${id}`, GAME_DB_DDL, null);

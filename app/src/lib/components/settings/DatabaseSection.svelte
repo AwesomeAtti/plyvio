@@ -9,15 +9,31 @@
    * Engines and Subscriptions still use the card pattern. That inconsistency
    * is deliberate and temporary — the Engines row exploration is below G1, and
    * this section went first because it was the one approved.
+   *
+   * Add database: create new — `working/wireframes/settings-databases-add.html`
+   * (Rev G, G1 20 Sep 2026), DB‑04/DB‑05/DB‑03r. A freshly-added row is a
+   * *draft* (`db.draft`, `stores/settings.js`'s `addObject('databases')`):
+   * its expander swaps the ordinary Name/Version/Remove fields for Name +
+   * Filename + a directory-only Location and a Cancel/Create pair, and
+   * nothing is written to disk or `config.db` until `createDatabase()`
+   * (Create) actually runs — this is a deliberate, accepted exception to
+   * §3.4.1's auto-apply, not a lapse into it: writing a file is heavier than
+   * committing a field, so an explicit step is correct here. Cancel discards
+   * the draft exactly like removing any other row (`cancelDatabaseDraft()`).
    */
+  import { get } from 'svelte/store';
   import { t } from '$lib/stores/i18n.js';
   import Icon from '$lib/components/Icon.svelte';
   import { DatabaseIcon, SectionExpand, SubmenuArrow, AddGames } from '$lib/icons.js';
   import {
     objects, availableDatabases, installDatabase, renameDatabase,
-    setDatabaseEnabled, removeObject, addObject
+    setDatabaseEnabled, removeObject, addObject, createDatabase, cancelDatabaseDraft
   } from '$lib/stores/settings.js';
-  import { installedDetail, availableDetail, downloadingDetail } from '$lib/settings/databases.js';
+  import {
+    installedDetail, availableDetail, downloadingDetail,
+    deriveFilename, validateDraftDatabase, basename
+  } from '$lib/settings/databases.js';
+  import { isTauri, defaultLibrariesDirDisplay } from '$lib/data/session.js';
 
   let { heading } = $props();
 
@@ -25,12 +41,111 @@
   let expanded = $state(null);
   let nameError = $state(null);
 
+  /*
+    A draft's own local editing state — not committed to `objects` until
+    Create. Single set rather than one per row: only one row can be expanded
+    at a time (`expanded` is a single id), so only one draft is ever being
+    edited at once. `draftServerError` is distinct from the live
+    `draftValidation()` check below: it holds the one thing that check can't
+    see client-side — a Filename collision `createDatabase()` only finds by
+    actually listing the Libraries directory on disk (DB‑05's note) — and is
+    cleared as soon as either field changes again.
+  */
+  let draftName = $state('');
+  let draftFilename = $state('');
+  let filenameDetached = $state(false);
+  let creating = $state(false);
+  let librariesDir = $state('');
+  let draftServerError = $state(null);
+
   const installed = $derived(
     [...($objects.databases ?? [])].sort((a, b) => a.name.localeCompare(b.name))
   );
 
+  /*
+    Re-seed the draft fields whenever a DIFFERENT row becomes expanded. Reads
+    `objects` with the imported `get()` rather than the `$objects` auto-
+    subscription, which is a one-shot read and creates no reactive dependency
+    of its own — so this effect depends only on `expanded`, and typing into
+    the draft's own fields afterward isn't stomped by an unrelated store
+    update elsewhere in Settings.
+  */
+  $effect(() => {
+    const id = expanded;
+    const db = (get(objects).databases ?? []).find((d) => d.id === id);
+    if (db?.draft) {
+      draftName = db.name;
+      draftFilename = deriveFilename(db.name);
+      filenameDetached = false;
+    }
+  });
+
+  $effect(() => {
+    if (isTauri()) {
+      defaultLibrariesDirDisplay().then((v) => { librariesDir = v; }).catch(() => {});
+    }
+  });
+
   function commitName(db, value) {
     nameError = renameDatabase(db.id, value);
+  }
+
+  function onDraftNameInput(value) {
+    draftName = value;
+    if (!filenameDetached) draftFilename = deriveFilename(value);
+    draftServerError = null;
+  }
+
+  function onDraftFilenameInput(value) {
+    draftFilename = value;
+    filenameDetached = true;
+    draftServerError = null;
+  }
+
+  /**
+   * The live, client-side half of DB‑05's shared check — everything
+   * `validateDraftDatabase` can decide from what's already loaded (other
+   * rows' names and, for a real row, its Location's filename). Desktop's
+   * extra "actual directory listing on disk" check only happens inside
+   * `createDatabase()` at Create time (an IPC round trip per keystroke isn't
+   * worth it for a check that registered-name collisions already catch in
+   * the overwhelming majority of cases) — its result, if any, surfaces as
+   * `draftServerError` instead.
+   */
+  function draftValidation(id) {
+    const others = installed.filter((d) => d.id !== id && !d.draft);
+    const existingNames = others.map((d) => d.name);
+    const existingFilenames = others.map((d) => d.location && basename(d.location)).filter(Boolean);
+    return validateDraftDatabase({
+      name: draftName, filename: draftFilename, existingNames, existingFilenames
+    });
+  }
+
+  async function confirmCreate(id) {
+    if (creating) return;
+    creating = true;
+    try {
+      const error = await createDatabase(id, { name: draftName, filename: draftFilename });
+      if (error) {
+        draftServerError = error;
+        return;
+      }
+      draftServerError = null;
+      expanded = null;
+    } catch (err) {
+      // No drawn failure state for this (out of scope — DB‑04/DB‑05 draw
+      // only the three validation states). Logged and left as a draft the
+      // user can retry, rather than losing what they typed.
+      console.error('Plyvio: failed to create the database', err);
+    } finally {
+      creating = false;
+    }
+  }
+
+  function cancelDraft(id) {
+    if (expanded === id) expanded = null;
+    draftServerError = null;
+    cancelDatabaseDraft(id);
   }
 </script>
 
@@ -70,7 +185,45 @@
         ><Icon icon={expanded === db.id ? SectionExpand : SubmenuArrow} size={15} /></button>
       </div>
 
-      {#if expanded === db.id}
+      {#if expanded === db.id && db.draft}
+        <!-- DB‑04/DB‑05 — the draft row: Name + Filename, same width, Location
+             (directory only) and the shared Cancel/Create footer. -->
+        {@const error = draftServerError ?? draftValidation(db.id)}
+        <div class="exp">
+          <div class="er">
+            <span class="k"><label for="dbname-{db.id}">{$t('field.name')}</label></span>
+            <input
+              id="dbname-{db.id}" class="inp efield" class:err={error?.field === 'name'}
+              type="text" value={draftName}
+              oninput={(e) => onDraftNameInput(e.currentTarget.value)}
+            />
+          </div>
+          <div class="er">
+            <span class="k"><label for="dbfilename-{db.id}">{$t('field.filename')}</label></span>
+            <input
+              id="dbfilename-{db.id}" class="inp efield" class:err={error?.field === 'filename'}
+              type="text" value={draftFilename}
+              oninput={(e) => onDraftFilenameInput(e.currentTarget.value)}
+            />
+          </div>
+          <div class="er"><span class="k">{$t('settings.databaseLocation')}</span>
+            <span class="v">{isTauri() ? librariesDir : $t('settings.storedInBrowser')}</span></div>
+          <div class="actions">
+            {#if error}
+              <span class="formmsg" role="alert">{$t(error.key, error.params)}</span>
+            {/if}
+            <button class="b" type="button" onclick={() => cancelDraft(db.id)}>
+              {$t('settings.cancel')}
+            </button>
+            <button
+              class="b pri" type="button" disabled={!!error || creating}
+              onclick={() => confirmCreate(db.id)}
+            >{$t('settings.create')}</button>
+          </div>
+        </div>
+      {:else if expanded === db.id}
+        <!-- DB‑03r — a real database: Name, Version, Location. No Filename
+             field (Location already carries it) and no draft actions. -->
         <div class="exp">
           <div class="er">
             <span class="k"><label for="dbname-{db.id}">{$t('field.name')}</label></span>
@@ -82,6 +235,22 @@
           {#if nameError}<p class="err">{$t(nameError)}</p>{/if}
           <div class="er"><span class="k">{$t('field.version')}</span>
             <span class="v">{db.version ?? '—'}</span></div>
+          <!--
+            `location` distinguishes three states by more than truthiness:
+            a real path (desktop, set by loadLibraries()/createDatabase()),
+            `null` (a PWA-created row — createDatabase() sets it explicitly,
+            "Stored in this browser", no path to show), and simply absent
+            (every pre-existing seeded/mock row this section drew before this
+            feature, which never claimed a Location at all) — that last case
+            must keep rendering nothing, exactly as before.
+          -->
+          {#if db.location}
+            <div class="er"><span class="k">{$t('settings.databaseLocation')}</span>
+              <span class="v">{db.location}</span></div>
+          {:else if db.location === null}
+            <div class="er"><span class="k">{$t('settings.databaseLocation')}</span>
+              <span class="v">{$t('settings.storedInBrowser')}</span></div>
+          {/if}
           {#if typeof db.id !== 'number'}
             <!-- Removing a real Library isn't wired yet (config.db write) — offering
                  the button would look like it worked and then revert on reload. -->
@@ -263,4 +432,39 @@
     border: 1px solid var(--warn); border-radius: 5px;
     background: none; color: var(--warn); font: 600 12px var(--sans);
   }
+
+  /*
+    DB‑04/DB‑05 — the draft row's own fields and footer. `.efield` names kept
+    from the accepted wireframe (`working/wireframes/settings-databases-add.html`)
+    rather than folded into `.inp`, since the red-ring error state is specific
+    to this draft form and shouldn't leak onto the ordinary rename input above.
+  */
+  .efield.err {
+    border-color: var(--warn);
+    box-shadow: 0 0 0 3px color-mix(in srgb, var(--warn) 15%, transparent);
+  }
+  /*
+    One footer row, not two — the message fills the remaining space so it
+    sits on the SAME line as Cancel/Create rather than stacked above them,
+    per DB‑05's note (status text left, actions right, one row).
+  */
+  .actions {
+    display: flex; align-items: center; justify-content: flex-end; gap: 8px;
+    padding-top: 4px; padding-bottom: 4px;
+  }
+  .formmsg {
+    display: flex; align-items: center; gap: 6px;
+    flex: 1; min-width: 0;
+    font-size: 12px; color: var(--warn);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .b {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 28px; padding: 0 11px; flex: none;
+    border: 1px solid var(--rule-strong); border-radius: 5px;
+    background: var(--surface); color: var(--ink);
+    font: 600 12px var(--sans); white-space: nowrap;
+  }
+  .b.pri { background: var(--ink); color: var(--surface); border-color: var(--ink); }
+  .b[disabled] { opacity: .4; cursor: not-allowed; }
 </style>

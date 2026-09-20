@@ -78,6 +78,59 @@ export const GAMES_DB_PATH = `${SAMPLES_DIR}/master-games.db`;
 export const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
 /**
+ * The application's own default directory for Library (`.db`) files —
+ * Settings → Databases → Add's "create new" path only (`stores/settings.js`'s
+ * `createDatabase()`). Deliberately NOT used by `CONFIG_DB_PATH`/
+ * `GAMES_DB_PATH` above, which stay pointed at the developer sample directory
+ * (`VITE_SAMPLES_DIR`) — a separate, pre-existing stopgap this feature
+ * doesn't touch.
+ *
+ * `dataDir()` + the literal product name `"Plyvio"`, not `appDataDir()`
+ * (which would insert the bundle identifier, `com.plyvio.app`, into a path
+ * §6.6 shows the user — General → Storage's Library location). Decided and
+ * recorded in `working/tauri/PROGRESS.md`, 20 Sep 2026:
+ *
+ *   macOS:   ~/Library/Application Support/Plyvio/Libraries/
+ *   Windows: %APPDATA%\Plyvio\Libraries\
+ *   Linux:   ~/.local/share/Plyvio/Libraries/
+ *
+ * `@tauri-apps/api/path` is imported dynamically, the same lazy-chunk
+ * pattern `appCommands.js` already uses for `@tauri-apps/api` — so a plain
+ * browser/PWA load never fetches it. Tauri only; callers guard with
+ * `isTauri()` first (`createDatabase()` does).
+ */
+export const defaultLibrariesDir = async () => {
+  const { dataDir, join } = await import('@tauri-apps/api/path');
+  return join(await dataDir(), 'Plyvio', 'Libraries');
+};
+
+/** `defaultLibrariesDir()` joined with a filename — the path a new Library's file is created at. */
+export const defaultLibraryPath = async (filename) => {
+  const { join } = await import('@tauri-apps/api/path');
+  return join(await defaultLibrariesDir(), filename);
+};
+
+/**
+ * `defaultLibrariesDir()`, but with the user's home directory collapsed to
+ * `~` and a trailing separator — what DB‑04's Location field actually shows
+ * while a database is a draft (`~/Library/Application Support/Plyvio/
+ * Libraries/`, not the raw absolute path `dataDir()` resolves to). Display
+ * only; `createDatabase()` uses `defaultLibrariesDir()`/`defaultLibraryPath()`
+ * for the real path, never this string.
+ */
+export const defaultLibrariesDirDisplay = async () => {
+  const { dataDir, homeDir, join } = await import('@tauri-apps/api/path');
+  const [base, home] = await Promise.all([dataDir(), homeDir()]);
+  const dir = await join(base, 'Plyvio', 'Libraries');
+  const withSep = /[/\\]$/.test(dir) ? dir : `${dir}/`;
+  const homeClean = home ? home.replace(/[/\\]+$/, '') : '';
+  if (homeClean && withSep.startsWith(homeClean)) {
+    return `~${withSep.slice(homeClean.length)}`;
+  }
+  return withSep;
+};
+
+/**
  * `samples/config.db`'s own `libraries.game_db_path` values are bare
  * filenames (`'my-games.db'`) rather than absolute paths — §5.1 documents the
  * column as "the filesystem path to the game database" but says nothing

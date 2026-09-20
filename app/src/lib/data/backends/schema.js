@@ -162,3 +162,27 @@ CREATE TABLE ui_state (
     updated_at TEXT NOT NULL
 );
 `;
+
+/**
+ * `GAME_DB_DDL`/`CONFIG_DB_DDL` as a list of individual statements, no
+ * trailing empties, comments and blank lines dropped.
+ *
+ * `pwa.js`'s `sqlite-wasm` `exec()` runs a whole multi-statement string in
+ * one call, but `backends/tauri.js`'s `run()` goes over `@tauri-apps/
+ * plugin-sql`'s `execute`, which (like sqlx's query preparation generally)
+ * expects one statement per call — so creating a brand-new Library's game
+ * database file on the Tauri side (`stores/settings.js`'s `createDatabase()`)
+ * runs `GAME_DB_DDL` one statement at a time through this split rather than
+ * as one string. A plain split on `;` is safe here because neither DDL
+ * string contains a semicolon inside a string literal, a trigger body, or
+ * anything else that would make a naive split wrong.
+ */
+export function splitSqlStatements(ddl) {
+  return String(ddl ?? '')
+    .split('\n')
+    .filter((line) => !line.trim().startsWith('--'))
+    .join('\n')
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean);
+}

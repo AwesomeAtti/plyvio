@@ -75,3 +75,52 @@ export const openFileDatabase = async (path) => {
 
   return assertConnection(connection, 'tauri connection');
 };
+
+/**
+ * Create a directory (and any missing parents) on disk, via a small custom
+ * Rust command — `ensure_dir_exists` in `src-tauri/src/lib.rs`.
+ *
+ * `@tauri-apps/plugin-sql` has no filesystem access of its own: opening a
+ * `.db` file whose directory doesn't exist yet still fails (sqlite creates
+ * the *file*, never a missing parent directory), and there is no `fs` plugin
+ * in this project (`working/tauri/PROGRESS.md`, 20 Sep — no new dependency
+ * for this). Rather than add one, this is `std::fs::create_dir_all` behind
+ * one command, used only by `stores/settings.js`'s `createDatabase()` before
+ * the first `openFileDatabase()` call for a brand-new Library, in the
+ * application's default Libraries directory (`session.js`'s
+ * `defaultLibrariesDir()`), which may not exist yet on a fresh install.
+ *
+ * @param {string} path absolute directory path
+ */
+export const ensureDirectory = async (path) => {
+  if (!path) throw new DataError('ensureDirectory requires a path');
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('ensure_dir_exists', { path });
+  } catch (cause) {
+    throw new DataError(`could not create directory ${path}: ${cause?.message ?? cause}`);
+  }
+};
+
+/**
+ * The names of the entries directly inside a directory — DB‑05's Filename
+ * collision check against "the actual directory listing on disk", not just
+ * `config.db`'s `libraries` rows (a stray or manually-copied `.db` file with
+ * no Library row would otherwise go unnoticed). Same `ensure_dir_exists`
+ * reasoning: no `fs` plugin, so this is a second small custom command
+ * (`list_dir_entries`, `std::fs::read_dir`) rather than a new dependency.
+ * Missing directory (a fresh install, before the first database is ever
+ * created) is not an error here — it has no entries, same as an empty one.
+ *
+ * @param {string} path absolute directory path
+ * @returns {Promise<string[]>} entry names, not full paths
+ */
+export const listDirectoryNames = async (path) => {
+  if (!path) throw new DataError('listDirectoryNames requires a path');
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    return await invoke('list_dir_entries', { path });
+  } catch (cause) {
+    throw new DataError(`could not list ${path}: ${cause?.message ?? cause}`);
+  }
+};

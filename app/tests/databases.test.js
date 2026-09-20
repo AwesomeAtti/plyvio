@@ -10,7 +10,10 @@ import {
   downloads, availableDatabases, installDatabase, renameDatabase, setDatabaseEnabled
 } from '../src/lib/stores/settings.js';
 import {
-  AVAILABLE_DATABASES, formatCount, formatBytes, installedDetail, downloadingDetail
+  AVAILABLE_DATABASES, formatCount, formatBytes, installedDetail, downloadingDetail,
+  slugify, deriveFilename, utf8ByteLength, basename,
+  validateDatabaseName, validateDatabaseFilename, validateDraftDatabase,
+  MAX_NAME_LENGTH, MAX_FILENAME_BYTES
 } from '../src/lib/settings/databases.js';
 import { libraries, activeLibrary, resetLibrarySelection } from '../src/lib/stores/libraries.js';
 
@@ -326,5 +329,132 @@ describe('§3.4.8 row geometry', () => {
 
   it('states that Engines and Subscriptions still use cards', () => {
     expect(src).toMatch(/card pattern/);
+  });
+});
+
+/* ===================== DB‑04/DB‑05 — Add database: create new ===================== */
+
+describe('slugify() — Name to filename base', () => {
+  it('lowercases, collapses non-alphanumerics to a single hyphen', () => {
+    expect(slugify('My Games')).toBe('my-games');
+    expect(slugify('Master Games Reference Collection 2026')).toBe('master-games-reference-collection-2026');
+  });
+
+  it('trims leading and trailing hyphens', () => {
+    expect(slugify('  -- Opening Studies! --  ')).toBe('opening-studies');
+  });
+
+  it('strips diacritics rather than dropping the letter', () => {
+    expect(slugify('Ajedrez Data — Correspondencia')).toBe('ajedrez-data-correspondencia');
+  });
+
+  it('never returns empty', () => {
+    expect(slugify('')).toBe('database');
+    expect(slugify('   ')).toBe('database');
+    expect(slugify('!!!')).toBe('database');
+  });
+});
+
+describe('deriveFilename() — DB‑04 auto-follow', () => {
+  it('appends .db to the slug', () => {
+    expect(deriveFilename('My Games')).toBe('my-games.db');
+    expect(deriveFilename('New Database')).toBe('new-database.db');
+  });
+
+  it('keeps the full slug rather than clipping it (Rev G field-wrap fix)', () => {
+    expect(deriveFilename('Master Games Reference Collection 2026'))
+      .toBe('master-games-reference-collection-2026.db');
+  });
+
+  it('stays within the 200-UTF-8-byte limit including .db for a very long or wide name', () => {
+    const wide = '★'.repeat(90); // 3 bytes each in UTF-8 — well past 200 bytes once slugified
+    const filename = deriveFilename(wide);
+    expect(utf8ByteLength(filename)).toBeLessThanOrEqual(MAX_FILENAME_BYTES);
+    expect(filename.endsWith('.db')).toBe(true);
+  });
+});
+
+describe('utf8ByteLength() / basename()', () => {
+  it('counts UTF-8 bytes, not UTF-16 code units', () => {
+    expect(utf8ByteLength('abc')).toBe(3);
+    expect(utf8ByteLength('★')).toBe(3);
+  });
+
+  it('reads the filename out of a path, either separator', () => {
+    expect(basename('/Users/x/Library/Application Support/Plyvio/Libraries/my-games.db'))
+      .toBe('my-games.db');
+    expect(basename('C:\\Users\\x\\AppData\\Roaming\\Plyvio\\Libraries\\my-games.db'))
+      .toBe('my-games.db');
+    expect(basename('')).toBe('');
+  });
+});
+
+describe('validateDatabaseName() — DB‑05', () => {
+  it('refuses a name over 35 characters, reporting its actual length', () => {
+    const long = 'Master Games Reference Collection 2026'; // 38 chars — over the 35 limit
+    const error = validateDatabaseName(long, []);
+    expect(error).toEqual({
+      field: 'name', key: 'settings.databaseNameTooLong',
+      params: { max: MAX_NAME_LENGTH, length: long.length }
+    });
+  });
+
+  it('accepts exactly 35 characters', () => {
+    const exact = 'A'.repeat(35);
+    expect(validateDatabaseName(exact, [])).toBeNull();
+  });
+
+  it('refuses a duplicate name, case-insensitively', () => {
+    expect(validateDatabaseName('my games', ['My Games'])).toEqual({
+      field: 'name', key: 'settings.databaseNameDuplicate', params: { name: 'my games' }
+    });
+  });
+
+  it('accepts a unique name', () => {
+    expect(validateDatabaseName('New Database', ['My Games', 'Master Games'])).toBeNull();
+  });
+});
+
+describe('validateDatabaseFilename() — DB‑05', () => {
+  it('refuses a collision against an existing filename', () => {
+    expect(validateDatabaseFilename('my-games.db', ['my-games.db'])).toEqual({
+      field: 'filename', key: 'settings.databaseFilenameDuplicate', params: { filename: 'my-games.db' }
+    });
+  });
+
+  it('refuses a filename over 200 UTF-8 bytes', () => {
+    const tooLong = `${'a'.repeat(200)}.db`;
+    expect(validateDatabaseFilename(tooLong, [])).toEqual({
+      field: 'filename', key: 'settings.databaseFilenameTooLong', params: { max: MAX_FILENAME_BYTES }
+    });
+  });
+
+  it('accepts a unique, in-budget filename', () => {
+    expect(validateDatabaseFilename('new-database.db', ['my-games.db'])).toBeNull();
+  });
+});
+
+describe('validateDraftDatabase() — one shared check, Name before Filename', () => {
+  it('reports the Name problem even when Filename also collides', () => {
+    const error = validateDraftDatabase({
+      name: 'My Games', filename: 'my-games.db',
+      existingNames: ['My Games'], existingFilenames: ['my-games.db']
+    });
+    expect(error.field).toBe('name');
+  });
+
+  it('falls through to Filename once Name is clean', () => {
+    const error = validateDraftDatabase({
+      name: 'New Database', filename: 'my-games.db',
+      existingNames: ['My Games'], existingFilenames: ['my-games.db']
+    });
+    expect(error.field).toBe('filename');
+  });
+
+  it('is null once both are clean', () => {
+    expect(validateDraftDatabase({
+      name: 'New Database', filename: 'new-database.db',
+      existingNames: ['My Games'], existingFilenames: ['my-games.db']
+    })).toBeNull();
   });
 });

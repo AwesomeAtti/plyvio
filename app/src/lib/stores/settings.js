@@ -1,16 +1,21 @@
 import { writable, derived, get } from 'svelte/store';
 import { SECTIONS, DEFAULT_SECTION, isSection, OBJECT_TYPES } from '$lib/settings/schema.js';
-import { AVAILABLE_DATABASES } from '$lib/settings/databases.js';
+import { AVAILABLE_DATABASES, validateDraftDatabase, basename } from '$lib/settings/databases.js';
 import { AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
-import { configConnection, explorerConnection, isTauri } from '$lib/data/session.js';
+import {
+  configConnection, explorerConnection, isTauri, defaultLibrariesDir, defaultLibraryPath
+} from '$lib/data/session.js';
 import {
   readPreferences, writePreference, PREFERENCE_KEYS,
-  readLibraries, writeLibraryName, writeLibraryEnabled,
+  readLibraries, writeLibraryName, writeLibraryEnabled, createLibrary,
   readEngines, writeEngineName, writeEngineOption, writeEngineEnabled,
   readSubscriptions
 } from '$lib/data/config.js';
 import { countNewGamesForSubscription } from '$lib/data/games.js';
 import { locale } from '$lib/stores/i18n.js';
+
+/** A brand-new database's `libraries.version` — see `createDatabase()`'s own comment. */
+const NEW_DATABASE_VERSION = '1.0';
 
 /**
  * Settings Workspace state. §3.4
@@ -146,7 +151,10 @@ export async function loadLibraries() {
       version: lib.version,
       enabled: lib.enabled,
       createdAt: lib.createdAt,
-      lastOpenedAt: lib.lastOpenedAt
+      lastOpenedAt: lib.lastOpenedAt,
+      // DB‑03r — Location carries the full path once a database is real.
+      // `readLibraries()`'s own `path` is `game_db_path` (§5.1), untranslated.
+      location: lib.path
     }))
   }));
 }
@@ -296,7 +304,23 @@ export function applyPreference(key, value) {
 const NEW_DEFAULTS = {
   engines:       { name: 'New Engine',       status: 'not configured', binaryPath: '', hashMb: 256, threads: 4, enabled: false },
   subscriptions: { name: 'New Subscription', status: 'not configured', url: '',  interval: 'Daily', enabled: false },
-  databases:     { name: 'New Database',     status: 'not configured', location: '', format: 'PGN', enabled: false }
+  /*
+    A database's Add button doesn't create a "not configured" placeholder the
+    way Engines/Subscriptions do — DB‑04's row is a real draft the user names
+    and creates on the spot, and nothing is written to disk until `Create` is
+    pressed (`createDatabase()`, below). `draft: true` marks that state for
+    `DatabaseSection.svelte` (Name+Filename+Location, Cancel/Create) and is
+    the one field `createDatabase()` strips on success, alongside every other
+    field it replaces with the real object's own.
+
+    `enabled: true` — confirmed 20 Sep 2026, replacing the `false` this
+    started at: a newly created database arrives enabled, the same as an
+    installed one (`installDatabase()`, below), rather than needing a
+    separate step to switch it on. It has no bearing on the draft state
+    itself (the toggle isn't meaningfully actionable until the file exists),
+    only on the row `createDatabase()` produces.
+  */
+  databases:     { name: 'New Database',     status: 'not configured', location: '', format: 'PGN', enabled: true, draft: true }
 };
 
 /**
@@ -322,6 +346,133 @@ export function removeObject(section, id) {
     ...all,
     [section]: (all[section] || []).filter((o) => o.id !== id)
   }));
+}
+
+/* ---------------- databases: create new (DB‑04/DB‑05) ----------------- */
+
+/**
+ * DB‑04's Cancel — discard a database draft with nothing written, same as
+ * `removeObject('databases', id)` under a name that reads correctly for a
+ * row that was never real. A draft carries nothing on disk or in `config.db`
+ * to undo.
+ */
+export function cancelDatabaseDraft(id) {
+  removeObject('databases', id);
+}
+
+/**
+ * The names/filenames DB‑05 checks a draft against: every OTHER database
+ * this store already knows about — real rows and any other draft — never
+ * the draft being validated itself. `existingFilenames` is derived from a
+ * real row's `location` (DB‑03r's full path; `basename()` gets the filename
+ * back out of it); a still-draft row has no filename of its own to collide
+ * on yet from this store's point of view.
+ */
+function existingDatabaseIdentity(excludingId) {
+  const others = get(objects).databases.filter((db) => db.id !== excludingId && !db.draft);
+  return {
+    existingNames: others.map((db) => db.name),
+    existingFilenames: others.map((db) => db.location && basename(db.location)).filter(Boolean)
+  };
+}
+
+/**
+ * DB‑04/DB‑05 — create the draft's real database file (Tauri) or its own
+ * IndexedDB record (PWA), then replace the draft object with the real one.
+ * Nothing is written until this is called; a validation failure writes
+ * nothing either.
+ *
+ * `version` on the resulting row is `NEW_DATABASE_VERSION` (`'1.0'`) — a
+ * brand-new, empty database has no catalogue edition the way an installed
+ * one does (`installDatabase()`'s `entry.version`); this is a starting
+ * point, not a meaningful figure to compare against another database's.
+ *
+ * @returns {Promise<{field: 'name'|'filename', key: string, params: object}|null>}
+ *   `null` on success; otherwise the same shape `validateDraftDatabase`
+ *   returns, for the caller to show in the shared message area.
+ */
+export async function createDatabase(id, { name, filename }) {
+  const draft = findObject('databases', id);
+  if (!draft || !draft.draft) return null;
+
+  const cleanName = String(name ?? '').trim();
+  const cleanFilename = String(filename ?? '').trim();
+  const { existingNames, existingFilenames } = existingDatabaseIdentity(id);
+
+  if (isTauri()) {
+    // DB‑05: "checked against ... the actual directory listing on disk" too,
+    // not just registered Libraries — a stray .db file nobody registered
+    // would otherwise go unnoticed. Best-effort: a listing failure (the
+    // directory not existing yet, most commonly) falls back to the
+    // registered-only check rather than blocking Create outright.
+    try {
+      const { listDirectoryNames } = await import('$lib/data/backends/tauri.js');
+      const dir = await defaultLibrariesDir();
+      const onDisk = await listDirectoryNames(dir);
+      for (const entry of onDisk) if (!existingFilenames.includes(entry)) existingFilenames.push(entry);
+    } catch (err) {
+      console.error('Plyvio: failed to list the Libraries directory', err);
+    }
+  }
+
+  const error = validateDraftDatabase({
+    name: cleanName, filename: cleanFilename, existingNames, existingFilenames
+  });
+  if (error) return error;
+
+  const now = new Date().toISOString();
+  let real;
+
+  if (isTauri()) {
+    const { openFileDatabase, ensureDirectory } = await import('$lib/data/backends/tauri.js');
+    const { GAME_DB_DDL, SCHEMA_USER_VERSION, splitSqlStatements } = await import('$lib/data/backends/schema.js');
+    const dir = await defaultLibrariesDir();
+    await ensureDirectory(dir);
+    const path = await defaultLibraryPath(cleanFilename);
+
+    const fileConnection = await openFileDatabase(path);
+    try {
+      for (const statement of splitSqlStatements(GAME_DB_DDL)) await fileConnection.run(statement);
+      await fileConnection.run(`pragma user_version = ${SCHEMA_USER_VERSION}`);
+    } finally {
+      await fileConnection.close();
+    }
+
+    const config = await configConnection();
+    const newId = config
+      ? await createLibrary(config, {
+          name: cleanName, path, createdAt: now, enabled: true, version: NEW_DATABASE_VERSION
+        })
+      : nextId('db');
+
+    real = {
+      id: newId, name: cleanName, status: 'indexed', version: NEW_DATABASE_VERSION,
+      enabled: true, createdAt: now, lastOpenedAt: null, location: path
+    };
+  } else {
+    // PWA — no filesystem: the typed Filename identifies nothing once the
+    // draft becomes real (DB‑03r's Location reads "Stored in this browser"
+    // there instead), so it's validated above and then dropped.
+    const newId = nextId('db');
+    try {
+      const { openLibraryDatabase } = await import('$lib/data/backends/pwa.js');
+      const conn = await openLibraryDatabase(newId);
+      await conn.close();
+    } catch (err) {
+      console.error('Plyvio: failed to create the database', err);
+    }
+    real = {
+      id: newId, name: cleanName, status: 'indexed', version: NEW_DATABASE_VERSION,
+      enabled: true, createdAt: now, lastOpenedAt: null, location: null
+    };
+  }
+
+  objects.update((all) => ({
+    ...all,
+    databases: all.databases.map((db) => (db.id === id ? real : db))
+  }));
+  lastApplied.set(Date.now());
+  return null;
 }
 
 /* ---------------- databases: available and install (§3.4.8) ---------- */
