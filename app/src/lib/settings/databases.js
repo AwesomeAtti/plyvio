@@ -48,11 +48,15 @@ export function formatBytes(b) {
   return `${b} B`;
 }
 
-/** The Installed row's detail line: what one database has that another does not. */
+/**
+ * The Installed row's detail line: what one database has that another does
+ * not. Corrected 20 Sep 2026 — dropped the players figure (games · players ·
+ * size -> games · size). `players` stays on the data model; it's just no
+ * longer part of what this line renders.
+ */
 export function installedDetail(db) {
   return [
     `${formatCount(db.games)} games`,
-    `${formatCount(db.players)} players`,
     formatBytes(db.bytes)
   ].filter(Boolean).join(' · ');
 }

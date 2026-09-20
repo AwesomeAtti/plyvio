@@ -1,6 +1,6 @@
 # Plyvio — Product Specification
 
-> **Product name: Plyvio.** (Internally developed under the working name "Chessgui"; that name appears in some historical wireframe filenames and code comments but is not the product name.) Everywhere else in this document the product is referred to as "the app" or "the application" rather than by name, so that a future rename touches only this line.
+> **Product name: Plyvio.** Everywhere else in this document the product is referred to as "the app" or "the application" rather than by name, so that a future rename touches only this line.
 
 > **About this document.** This is the merged, reconciled product specification for the application, combining four previously separate documents — Application Shell, Library Workspace, Settings Workspace, and Game Workspace — into one, with consistent numbering and a single set of shared systems. It supersedes those four documents, which are retained on disk for history but should no longer be edited or cited.
 >
@@ -2487,7 +2487,7 @@ The row's leading slot is shared by all three sections and is specified once, in
 
 ### 6.8.1 Databases
 
-Databases use a **row pattern**: a database is chosen by comparing figures — games, players, size — which a row aligns into a column; a grid of Cards does not.
+Databases use a **row pattern**: a database is chosen by comparing figures — games, size — which a row aligns into a column; a grid of Cards does not.
 
 #### Groups
 
@@ -2496,13 +2496,13 @@ The section presents two groups, each a **rounded, bordered box** with its label
 ```text
 INSTALLED
 ┌──────────────────────────────────────────────────────────────┐
-│ ▤  Master Games      2.4M games · 198k players · 1.0 GB  ◉ › │
-│ ▤  My Games            812 games · 24 players · 2.4 MB   ◉ › │
+│ ▤  Master Games      2.4M games · 1.0 GB                 ◉ › │
+│ ▤  My Games            812 games · 2.4 MB                ◉ › │
 └──────────────────────────────────────────────────────────────┘
 
 AVAILABLE
 ┌──────────────────────────────────────────────────────────────┐
-│ ▤  Caissabase 2024  5.4M games · 321k players · 2.3 GB [Install] │
+│ ▤  Caissabase 2024  5.4M games · 2.3 GB            [Install] │
 └──────────────────────────────────────────────────────────────┘
 ```
 
@@ -2516,7 +2516,7 @@ Rows are **44px** — Apple HIG's 44pt target, which satisfies WCAG 2.2 SC 2.5.5
 | --- | --- | --- |
 | Leading icon | the database glyph, 18px in the §6.8.4 slot | the same |
 | Name | the database's name | the catalogue entry's name |
-| Detail | `games · players · size` | the same; the size is the download |
+| Detail | `games · size` | the same; the size is the download |
 | Trailing | **toggle**, then **chevron** | **Install** button |
 
 The toggle precedes the chevron. The toggle is a value control and belongs with the row's data; the chevron is structural and takes the outer edge.
@@ -2993,7 +2993,7 @@ This is a condensed record of what changed in the four source documents before t
 
 **Game Workspace.** Written incrementally: Game Info (§5.6.5) was the last of the five Sections to be specified, closing the last placeholder in the composition. The panel's row grid (`30 + 6 + n×24`), the Move List's three-move floor as the panel's one invariant, and the Evaluation Timeline's anchored (not stacked) placement were all stated explicitly for the first time, which retired an earlier state in which Game Details could scroll when Section floors overran the panel — that state no longer occurs. The Explorer was renamed from "Move Explorer". Scrollbar treatment, menu-clipping, and the Engine's never-scrolls behaviour were amended on 15 Sep.
 
-**Product naming.** All four source documents referred to the product throughout as "Chessgui". This merge establishes **Plyvio** as the product name (§1), stated once, with all other body-text references generalized to "the app" / "the application". Chessground, an unrelated third-party board-rendering library, is unaffected by this change.
+**Product naming.** All four source documents referred to the product throughout by an earlier working name. This merge establishes **Plyvio** as the product name (§1), stated once, with all other body-text references generalized to "the app" / "the application". Chessground, an unrelated third-party board-rendering library, is unaffected by this change.
 
 ## 11.2 Open Decisions
 
