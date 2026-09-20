@@ -6,8 +6,8 @@ import { stripTabs, activeId, workspaceState, openSettings } from '../src/lib/st
 import { locale } from '../src/lib/stores/i18n.js';
 import { theme } from '../src/lib/stores/theme.js';
 import {
-  activeSection, openObject, objects, preferences,
-  selectSection, openDetail, addObject, removeObject, applyField, resetSettings
+  activeSection, objects, preferences,
+  selectSection, addObject, removeObject, resetSettings
 } from '../src/lib/stores/settings.js';
 import { SECTIONS, DEFAULT_SECTION, validateField, OBJECT_TYPES } from '../src/lib/settings/schema.js';
 import {
@@ -113,7 +113,7 @@ describe('§3.4.2 layout', () => {
     // §3.4.12 — a header button that scrolls away is unreachable with a dozen
     // engines installed, which is why the Add action sits in the heading.
     for (const c of ['SettingsWorkspace', 'EngineSection', 'DatabaseSection',
-                     'SubscriptionSection', 'ObjectDetail']) {
+                     'SubscriptionSection']) {
       const css = readSrc(`lib/components/settings/${c}.svelte`);
       const chead = css.slice(css.indexOf('.chead {'), css.indexOf('}', css.indexOf('.chead {')));
       expect(chead, c).toMatch(/flex:\s*none/);
@@ -260,10 +260,11 @@ describe('§3.4.8 object-management sections', () => {
     All three object sections now use rows: Databases (§3.4.8.1), Engines
     (§3.4.8.2) and Subscriptions (SU-A, accepted but not yet specified).
 
-    The Card pattern of §3.4.8 and §3.4.10 is therefore UNREACHABLE — no
-    section renders it. ObjectSection, ObjectCard and ObjectDetail are still
-    in the tree and still referenced by the spec; see STATUS.md. These tests
-    assert the current reality rather than the pattern the spec still names.
+    The Card pattern of §3.4.8 and §3.4.10 is retired, not just unreachable:
+    ObjectSection, ObjectCard and ObjectDetail were deleted 20 Sep 2026 (see
+    CLOSED.md) once every object section had its own row+expander. Add now
+    expands the new row in place instead of opening a Detail/Edit View — see
+    databases.test.js's "Add expands the new row in place" regression test.
   */
   it('every object section shows its own Add action, in its heading', async () => {
     const { container } = await renderSettings();
@@ -320,194 +321,6 @@ describe('§3.4.10 the Card pattern is unused', () => {
       expect(container.querySelector('#settings-content .card')).toBeNull();
       expect(container.querySelector('#settings-content .empty')).toBeNull();
     }
-  });
-});
-
-describe('§3.4.9 detail view + auto-apply', () => {
-  /*
-    The Detail View is now reached only by openDetail(), since no section
-    renders a card to click. It remains the surface §3.4.9 specifies.
-  */
-  it('opens in place, replacing the collection', async () => {
-    const { container } = await renderSettings();
-    selectSection('subscriptions');
-    openDetail('subscriptions', 'sub-1');
-    await tick();
-    expect(get(openObject)).toEqual({ section: 'subscriptions', id: 'sub-1' });
-    expect(container.querySelector('.crumb')).toBeTruthy();
-    expect(container.querySelector('#settings-content .box')).toBeNull();
-  });
-
-  it('the sidebar stays visible in the detail view', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    expect(container.querySelectorAll('.sidebar .nav').length).toBe(6);
-  });
-
-  it('has no Save and no Cancel — auto-apply', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    const labels = [...container.querySelectorAll('#settings-content button')]
-      .map((b) => b.textContent.trim());
-    expect(labels).not.toContain('Save');
-    expect(labels).not.toContain('Cancel');
-    expect(labels).toContain('Done');
-  });
-
-  it('commits a valid field immediately', () => {
-    const err = applyField('engines', 'engine-1', 'threads', 16);
-    expect(err).toBeNull();
-    expect(get(objects).engines[0].threads).toBe(16);
-  });
-
-  it('rejects an invalid field and keeps the last good value', () => {
-    const before = get(objects).engines[0].binaryPath;
-    const err = applyField('engines', 'engine-1', 'binaryPath', '   ');
-    expect(err).toBe('validation.required');
-    expect(get(objects).engines[0].binaryPath).toBe(before);      // nothing written
-  });
-
-  it('validation covers every required field of every object type', () => {
-    for (const [section, type] of Object.entries(OBJECT_TYPES)) {
-      for (const f of type.fields.filter((x) => x.required)) {
-        expect(validateField(f, '')).toBe('validation.required');
-        expect(validateField(f, 'something')).toBeNull();
-      }
-    }
-  });
-
-  it('text fields commit on blur, not on every keystroke', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    const input = container.querySelector('#settings-content input[type="text"]');
-
-    await fireEvent.input(input, { target: { value: '/new/pa' } });   // mid-typing
-    expect(get(objects).engines[0].binaryPath).toBe('/bin/sf');             // not applied yet
-
-    await fireEvent.blur(input);
-    expect(get(objects).engines[0].binaryPath).toBe('/new/pa');             // applied on blur
-  });
-
-  it('a rejected commit keeps the bad input on screen with an error', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    const input = container.querySelector('#settings-content input[type="text"]');
-
-    await fireEvent.input(input, { target: { value: '   ' } });
-    await fireEvent.blur(input);
-    await tick();
-
-    // stored value untouched...
-    expect(get(objects).engines[0].binaryPath).toBe('/bin/sf');
-    // ...but the typed text stays, with an error, so it can be corrected
-    // rather than silently reverted.
-    expect(input.value).toBe('   ');
-    expect(container.querySelector('#settings-content [role="alert"]').textContent)
-      .toContain('cannot be empty');
-  });
-
-  it('correcting a rejected value commits it and clears the error', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    const input = container.querySelector('#settings-content input[type="text"]');
-
-    await fireEvent.input(input, { target: { value: '' } });
-    await fireEvent.blur(input);
-    await tick();
-    expect(container.querySelector('#settings-content [role="alert"]')).toBeTruthy();
-
-    await fireEvent.input(input, { target: { value: '/opt/stockfish' } });
-    await fireEvent.blur(input);
-    await tick();
-    expect(get(objects).engines[0].binaryPath).toBe('/opt/stockfish');
-    expect(container.querySelector('#settings-content [role="alert"]')).toBeNull();
-  });
-
-  it('leaving via the sidebar mid-edit is safe — nothing is pending', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    selectSection('databases');
-    await tick();
-    expect(get(openObject)).toBeNull();
-    expect(container.querySelector('#settings-content h2').textContent.trim()).toBe('Databases');
-  });
-
-  it('the breadcrumb returns to the collection', async () => {
-    const { container } = await renderSettings();
-    selectSection('subscriptions');
-    openDetail('subscriptions', 'sub-1');
-    await tick();
-    await fireEvent.click(container.querySelector('.crumb'));
-    expect(get(openObject)).toBeNull();
-    expect(container.querySelector('#settings-content .box')).toBeTruthy();
-  });
-
-  it('shows the applied indicator after a successful commit', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    const select = container.querySelector('#settings-content select');
-    await fireEvent.change(select, { target: { value: '128 MB' } });
-    await tick();
-    expect(container.querySelector('.applied.show')).toBeTruthy();
-  });
-});
-
-describe('destructive actions need confirmation', () => {
-  it('Remove asks first — auto-apply leaves no Cancel to undo it', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    await fireEvent.click(container.querySelector('.remove'));
-    await tick();
-    expect(container.querySelector('[role="alertdialog"]')).toBeTruthy();
-    expect(get(objects).engines.length).toBe(2);            // nothing removed yet
-  });
-
-  it('cancelling leaves the object intact', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    await fireEvent.click(container.querySelector('.remove'));
-    await tick();
-    await fireEvent.click(container.querySelector('[role="alertdialog"] .quiet'));
-    await tick();
-    expect(get(objects).engines.length).toBe(2);
-    expect(container.querySelector('[role="alertdialog"]')).toBeNull();
-  });
-
-  it('confirming removes it and returns to the collection', async () => {
-    const { container } = await renderSettings();
-    selectSection('engines');
-    openDetail('engines', 'engine-1');
-    await tick();
-    await fireEvent.click(container.querySelector('.remove'));
-    await tick();
-    await fireEvent.click(container.querySelector('[role="alertdialog"] .danger'));
-    await tick();
-    expect(get(objects).engines.length).toBe(1);
-    expect(get(openObject)).toBeNull();
-  });
-
-  it('removing the open object closes the detail view', () => {
-    openDetail('engines', 'engine-1');
-    removeObject('engines', 'engine-1');
-    expect(get(openObject)).toBeNull();
   });
 });
 

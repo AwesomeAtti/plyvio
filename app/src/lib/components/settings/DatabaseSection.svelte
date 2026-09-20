@@ -36,7 +36,7 @@
 
 <div class="chead">
   <h2>{heading}</h2>
-  <button class="add" type="button" onclick={() => addObject('databases')}>
+  <button class="add" type="button" onclick={() => (expanded = addObject('databases'))}>
     <Icon icon={AddGames} size={13} />{$t('settings.addDatabase')}
   </button>
 </div>

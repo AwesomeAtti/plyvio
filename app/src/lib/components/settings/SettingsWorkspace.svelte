@@ -9,16 +9,12 @@
   import { t, locale, locales, setLocale } from '$lib/stores/i18n.js';
   import { theme } from '$lib/stores/theme.js';
   import SettingsSidebar from './SettingsSidebar.svelte';
-  import ObjectSection from './ObjectSection.svelte';
   import DatabaseSection from './DatabaseSection.svelte';
   import EngineSection from './EngineSection.svelte';
   import SubscriptionSection from './SubscriptionSection.svelte';
-  import ObjectDetail from './ObjectDetail.svelte';
   import SettingRow from './SettingRow.svelte';
-  import { SECTIONS, sectionKind } from '$lib/settings/schema.js';
-  import {
-    activeSection, openObject, preferences, applyPreference
-  } from '$lib/stores/settings.js';
+  import { SECTIONS } from '$lib/settings/schema.js';
+  import { activeSection, preferences, applyPreference } from '$lib/stores/settings.js';
   import { OUTCOMES } from '$lib/library/importJob.js';
 
   /* Injected from package.json at build time — see vite.config.js. */
@@ -28,12 +24,6 @@
 
   const section = $derived(SECTIONS.find((s) => s.id === $activeSection) ?? SECTIONS[0]);
   const heading = $derived($t(section.labelKey));
-  const kind = $derived(sectionKind($activeSection));
-
-  // The Detail/Edit View only applies to the section it belongs to.
-  const detail = $derived(
-    $openObject && $openObject.section === $activeSection ? $openObject : null
-  );
 
   function setTheme(v) { theme.set(v === 'Dark' ? 'dark' : 'light'); }
 </script>
@@ -42,10 +32,7 @@
   <SettingsSidebar />
 
   <div class="content" id="settings-content" role="tabpanel" aria-label={heading} tabindex="-1">
-    {#if detail}
-      <ObjectDetail section={detail.section} id={detail.id} sectionLabel={heading} />
-
-    {:else if $activeSection === 'engines'}
+    {#if $activeSection === 'engines'}
       <!-- §3.4.8.2 — rows, not cards. Accepted 4 Sep. -->
       <EngineSection {heading} />
 
@@ -56,9 +43,6 @@
     {:else if $activeSection === 'databases'}
       <!-- §3.4.8 — rows, not cards. Accepted 4 Sep. -->
       <DatabaseSection {heading} />
-
-    {:else if kind === 'objects'}
-      <ObjectSection section={$activeSection} {heading} />
 
     {:else if $activeSection === 'general'}
       <div class="chead"><h2>{heading}</h2></div>

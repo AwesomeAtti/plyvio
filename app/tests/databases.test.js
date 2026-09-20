@@ -69,9 +69,9 @@ describe('§3.4.8 detail line', () => {
     expect(formatBytes(2_400_000)).toBe('2.4 MB');
   });
 
-  it('reads games · players · size', () => {
-    expect(installedDetail(DBS[0])).toBe('2.4M games · 198k players · 1.0 GB');
-    expect(installedDetail(DBS[1])).toBe('812 games · 24 players · 2.4 MB');
+  it('reads games · size', () => {
+    expect(installedDetail(DBS[0])).toBe('2.4M games · 1.0 GB');
+    expect(installedDetail(DBS[1])).toBe('812 games · 2.4 MB');
   });
 
   /* Mid-transfer the line reports the transfer, not the catalogue entry. */
@@ -119,7 +119,7 @@ describe('§3.4.8 Available', () => {
   it('carries the catalogue figures onto the installed object', () => {
     installDatabase('avail-lumbra', { tick: now });
     const db = get(objects).databases.find((d) => d.name === "Lumbra's Gigabase");
-    expect(installedDetail(db)).toBe('9.57M games · 526k players · 4.1 GB');
+    expect(installedDetail(db)).toBe('9.57M games · 4.1 GB');
   });
 
   it('refuses a second transfer of the same entry', () => {
@@ -222,7 +222,7 @@ describe('§3.4.8 the section', () => {
   it('shows counts and size on every installed row', async () => {
     const { container } = await renderDatabases();
     const first = container.querySelector('#settings-content .box .r .dt');
-    expect(first.textContent.trim()).toBe('2.4M games · 198k players · 1.0 GB');
+    expect(first.textContent.trim()).toBe('2.4M games · 1.0 GB');
   });
 
   it('carries a toggle and a chevron, in that order', async () => {
@@ -283,6 +283,28 @@ describe('§3.4.8 the section', () => {
     const { container } = await renderDatabases();
     const add = container.querySelector('#settings-content .chead .add');
     expect(add.textContent.trim()).toBe('Add database');
+  });
+
+  /*
+    REGRESSION — Add used to swap the whole Content Area to a Detail/Edit
+    View (ObjectDetail, driven by the now-deleted openObject store). That
+    view is gone; Add must expand the new row in place, on the same
+    row+expander pattern the chevron already uses, per ACTIONS.md.
+  */
+  it('Add expands the new row in place, on the same collection', async () => {
+    const { container } = await renderDatabases();
+    expect(container.querySelector('#settings-content .exp')).toBeNull();
+    await fireEvent.click(container.querySelector('#settings-content .chead .add'));
+    await tick();
+    // still the collection — two boxed groups, not a Detail/Edit View
+    expect(container.querySelectorAll('#settings-content .box').length).toBe(2);
+    expect(container.querySelector('.crumb')).toBeNull();
+    const exp = container.querySelector('#settings-content .exp');
+    expect(exp).toBeTruthy();
+    expect(exp.textContent).toContain('Name');
+    const names = [...container.querySelectorAll('#settings-content .box .r .nm')]
+      .map((e) => e.textContent.trim());
+    expect(names).toContain('New Database');
   });
 });
 

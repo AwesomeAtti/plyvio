@@ -46,7 +46,7 @@
 
 <div class="chead">
   <h2>{heading}</h2>
-  <button class="add" type="button" onclick={() => addObject('subscriptions')}>
+  <button class="add" type="button" onclick={() => (expanded = addObject('subscriptions'))}>
     <Icon icon={AddGames} size={13} />{$t('settings.addSubscription')}
   </button>
 </div>

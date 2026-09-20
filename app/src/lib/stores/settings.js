@@ -1,5 +1,5 @@
 import { writable, derived, get } from 'svelte/store';
-import { SECTIONS, DEFAULT_SECTION, isSection, OBJECT_TYPES, validateField } from '$lib/settings/schema.js';
+import { SECTIONS, DEFAULT_SECTION, isSection, OBJECT_TYPES } from '$lib/settings/schema.js';
 import { AVAILABLE_DATABASES } from '$lib/settings/databases.js';
 import { AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
 import { configConnection, explorerConnection, isTauri } from '$lib/data/session.js';
@@ -24,9 +24,6 @@ import { locale } from '$lib/stores/i18n.js';
 
 /** Active section per Settings tab. §3.4.3 — reopening restores the last one. */
 export const activeSection = writable(DEFAULT_SECTION);
-
-/** Object currently open in the Detail/Edit View, or null for the collection. */
-export const openObject = writable(null);      // { section, id } | null
 
 /** Set briefly after a successful commit, to drive the "applied" indicator. */
 export const lastApplied = writable(0);
@@ -265,16 +262,6 @@ export async function loadSubscriptions() {
 export function selectSection(id) {
   if (!isSection(id)) return;
   activeSection.set(id);
-  openObject.set(null);          // leaving a Detail view is always safe
-}
-
-export function openDetail(section, id) {
-  if (!OBJECT_TYPES[section]) return;
-  openObject.set({ section, id });
-}
-
-export function closeDetail() {
-  openObject.set(null);
 }
 
 export function findObject(section, id) {
@@ -282,27 +269,6 @@ export function findObject(section, id) {
 }
 
 /* ---------------- auto-apply mutations ------------------------------ */
-
-/**
- * Commit one field. Returns null on success, or a validation message key —
- * in which case NOTHING is written and the object keeps its last good value.
- */
-export function applyField(section, id, fieldId, value) {
-  const type = OBJECT_TYPES[section];
-  if (!type) return 'validation.unknown';
-  const field = type.fields.find((f) => f.id === fieldId);
-  if (!field) return 'validation.unknown';
-
-  const error = validateField(field, value);
-  if (error) return error;                      // rejected before commit
-
-  objects.update((all) => ({
-    ...all,
-    [section]: all[section].map((o) => (o.id === id ? { ...o, [fieldId]: value } : o))
-  }));
-  lastApplied.set(Date.now());
-  return null;
-}
 
 /**
  * Commit one preference. The store updates synchronously, per §3.4.1's
@@ -333,13 +299,17 @@ const NEW_DEFAULTS = {
   databases:     { name: 'New Database',     status: 'not configured', location: '', format: 'PGN', enabled: false }
 };
 
-/** §3.4.8 — the Add action creates the object and opens its configuration. */
+/**
+ * §3.4.8 — the Add action creates the object. The caller (each row section's
+ * own Add button) opens it by setting its local `expanded` state to the
+ * returned id, the same as expanding any existing row — there is no
+ * separate Detail/Edit View to switch to.
+ */
 export function addObject(section) {
   const base = NEW_DEFAULTS[section];
   if (!base) return null;
   const id = nextId(section.slice(0, -1));
   objects.update((all) => ({ ...all, [section]: [...all[section], { ...base, id }] }));
-  openObject.set({ section, id });
   return id;
 }
 
@@ -352,8 +322,6 @@ export function removeObject(section, id) {
     ...all,
     [section]: (all[section] || []).filter((o) => o.id !== id)
   }));
-  const open = get(openObject);
-  if (open && open.section === section && open.id === id) openObject.set(null);
 }
 
 /* ---------------- databases: available and install (§3.4.8) ---------- */
@@ -669,7 +637,6 @@ export function setEngineEnabled(id, enabled) {
 
 export function resetSettings() {
   activeSection.set(DEFAULT_SECTION);
-  openObject.set(null);
   lastApplied.set(0);
 }
 
