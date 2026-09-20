@@ -23,6 +23,8 @@ import {
   findOrCreateCollection,
   findOrCreateTag,
   identify,
+  insertGame,
+  insertGames,
   isConnection,
   movetextOf,
   readCollections,
@@ -255,6 +257,87 @@ suite('a game database through the seam', () => {
   it('has no ply_count to show, which is why the Mvs column is empty', async () => {
     const page = await readGames(games, { limit: 10 });
     expect(page.every((game) => game.plyCount === null)).toBe(true);
+  });
+});
+
+suite('insertGame / insertGames — writing', () => {
+  const fresh = async () => openMemoryDatabase(bytesOf('my-games.db'));
+
+  it('requires pgn, and nothing else', async () => {
+    const db = await fresh();
+    await expect(insertGame(db, { event: 'No PGN' })).rejects.toThrow(/pgn/);
+    await db.close();
+  });
+
+  it('stores pgn verbatim and every recognised tag, leaving the rest NULL', async () => {
+    const db = await fresh();
+    const pgn = [
+      '[Event "Test Open"]',
+      '[Site "Somewhere"]',
+      '[Date "2026.01.05"]',
+      '[Round "3"]',
+      '[White "Player, One"]',
+      '[Black "Player, Two"]',
+      '[Result "1-0"]',
+      '[WhiteElo "2200"]',
+      '[BlackElo "-"]',
+      '',
+      '1. e4 e5 1-0'
+    ].join('\n');
+
+    const id = await insertGame(db, {
+      pgn, event: 'Test Open', site: 'Somewhere', date: '2026.01.05', round: '3',
+      white: 'Player, One', black: 'Player, Two', result: '1-0',
+      white_elo: 2200, black_elo: null, created_at: '2026-01-05T00:00:00Z'
+    });
+
+    const row = await db.get('select * from games where id = ?', [id]);
+    expect(row.pgn).toBe(pgn);
+    expect(row.event).toBe('Test Open');
+    expect(row.white_elo).toBe(2200);
+    expect(row.black_elo).toBeNull();
+    expect(row.eco).toBeNull();
+    expect(row.movetext).toBeNull();
+    await db.close();
+  });
+
+  it('added games are visible to countGames and readGames right away', async () => {
+    const db = await fresh();
+    const before = await countGames(db);
+    await insertGame(db, { pgn: '[Event "A"]\n\n1. e4 *', event: 'A', created_at: 'now' });
+    expect(await countGames(db)).toBe(before + 1);
+    await db.close();
+  });
+
+  it('insertGames returns readGames\' own row shape, in order', async () => {
+    const db = await fresh();
+    const rows = await insertGames(db, [
+      { pgn: '[White "A"]\n\n*', white: 'A', created_at: 'now' },
+      { pgn: '[White "B"]\n\n*', white: 'B', created_at: 'now' }
+    ]);
+    expect(rows.map((r) => r.white)).toEqual(['A', 'B']);
+    expect(Object.keys(rows[0]).sort()).toEqual(
+      ['id', 'date', 'white', 'whiteElo', 'black', 'blackElo', 'event', 'result', 'plyCount', 'createdAt'].sort()
+    );
+    expect(rows[0].id).not.toBe(rows[1].id);
+    await db.close();
+  });
+
+  it('commits nothing from a failed batch — one bad row loses the whole import', async () => {
+    const db = await fresh();
+    const before = await countGames(db);
+    await expect(insertGames(db, [
+      { pgn: '[White "A"]\n\n*', white: 'A', created_at: 'now' },
+      { event: 'No PGN here' }
+    ])).rejects.toThrow();
+    expect(await countGames(db)).toBe(before);
+    await db.close();
+  });
+
+  it('an empty batch is a no-op, not an empty transaction', async () => {
+    const db = await fresh();
+    expect(await insertGames(db, [])).toEqual([]);
+    await db.close();
   });
 });
 

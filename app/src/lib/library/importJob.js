@@ -12,22 +12,32 @@
  * below is discovered here, during the import, rather than in the dialog.
  */
 
+import { gameRowsFromPgnText } from '$lib/pgn/importPgn.js';
+
 /* ---------------- outcomes ------------------------------------------ */
 
 /**
- * The five results an import can have.
+ * The six results an import can have.
  *
- * A real importer derives these from the PGN. The prototype has no PGN, so
- * the result is chosen in Settings → General → Prototype (§ "Simulated import
- * result"). That row is a prototype affordance and is not specified: it exists
- * so every path through §3.2.4.5 is reachable by hand.
+ * `real` means what it says: actually read what was given, no simulation.
+ * It is first because it is the ordinary state now that a real path exists
+ * for Paste (`planRealPasteImport`, below) -- File and Online still have
+ * none, so `OUTCOME_APPLIES` keeps `real` off those tabs until they do.
+ *
+ * The other five remain what they always were: a real importer derives its
+ * result from the PGN, and until every tab has one, the result for that tab
+ * has to be chosen instead. It is chosen in Settings → General → Prototype
+ * (§ "Simulated import result"). That row is a prototype affordance and is
+ * not specified: it exists so every path through §3.2.4.5 is reachable by
+ * hand, including ones a real, well-formed import cannot easily reach.
  */
-export const OUTCOMES = ['clean', 'problems', 'none', 'file', 'network'];
+export const OUTCOMES = ['real', 'clean', 'problems', 'none', 'file', 'network'];
 
 export const DEFAULT_OUTCOME = 'clean';
 
 /** Which tabs each outcome can actually occur on. */
 const OUTCOME_APPLIES = {
+  real:     ['paste'],                     // File and Online: no real path yet
   clean:    ['file', 'online', 'paste'],
   problems: ['file', 'online', 'paste'],
   none:     ['file', 'online', 'paste'],
@@ -142,10 +152,49 @@ const SKIPPED_DUPLICATES = 8;
  */
 let jobSeq = 0;
 
+/**
+ * Paste, for real. §4.3 (a plain PGN document) applied directly: the pasted
+ * text is already in memory (the dialog reads nothing, but the lane may),
+ * so there is no async step and no simulated outcome here at all -- every
+ * paste is read for what it actually is.
+ *
+ * No duplicate detection yet (open per database-schema.md, unspecified --
+ * the product spec's own open item on this): every game the text yields is
+ * added. An empty or unparseable paste yields no rows, which resolves to
+ * the same 'no games found' outcome the simulated tabs already use, so the
+ * rest of the lane (the message, the Status Bar, the report) does not need
+ * to know this import was real rather than simulated.
+ */
+function planRealPasteImport({ draft, destination, duplicates, tags, collections }) {
+  const seed = 900000 + (++jobSeq) * 7919;
+  const rows = gameRowsFromPgnText(draft.text);
+
+  if (!rows.length) {
+    return {
+      tab: 'paste', sources: [], destination, duplicates, tags, collections, seed,
+      outcome: 'none',
+      total: 0, added: 0, skipped: 0, failures: [], failedSources: [],
+      download: false, rows: []
+    };
+  }
+
+  const sources = [{ kind: 'paste', labelKey: 'add.pastedText', detail: null, games: rows.length }];
+  return {
+    tab: 'paste', sources, destination, duplicates, tags, collections, seed,
+    outcome: 'clean',
+    total: rows.length, added: rows.length, skipped: 0, failures: [], failedSources: [],
+    download: false, rows
+  };
+}
+
 export function planImport({ tab, draft, outcome, destination, duplicates, tags, collections }) {
+  const resolved = resolveOutcome(tab, outcome);
+  if (resolved === 'real') {
+    return planRealPasteImport({ draft, destination, duplicates, tags, collections });
+  }
+
   const sources = describeSources(tab, draft);
   const seed = 900000 + (++jobSeq) * 7919;
-  const resolved = resolveOutcome(tab, outcome);
   const declared = sources.reduce((n, s) => n + s.games, 0);
 
   /* The three whole-source failures. Nothing is added, and the import as a

@@ -40,6 +40,9 @@ export {
 
 export {
   LIST_COLUMNS,
+  INSERT_COLUMNS,
+  insertGame,
+  insertGames,
   countGames,
   countNewGamesForSubscription,
   readGames,

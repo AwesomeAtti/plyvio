@@ -83,15 +83,17 @@ export const preferences = writable({
   boardStyle: 'Default',
   pieceSet: 'Merida',
   /*
-    PROTOTYPE ONLY, and not specified.
+    PROTOTYPE ONLY for its non-'real' values, and not specified.
 
-    A real importer derives its result from the PGN. This one reads no PGN, so
-    something has to choose, and the alternative to a visible control is a
-    hidden convention — file names that trigger errors — which makes half of
-    §3.2.4.5 unreachable unless you know the trick. See `OUTCOMES` in
-    library/importJob.js.
+    'real' -- the default -- means Add Games actually reads what it's given;
+    so far that's only true for the Paste tab (see `planRealPasteImport` in
+    library/importJob.js). Every other value forces a fake outcome instead,
+    which exists so the outcomes a real, well-formed import cannot easily
+    produce (a broken file, a dropped connection) stay reachable by hand
+    while File and Online still have no real importer of their own. See
+    `OUTCOMES` in library/importJob.js.
   */
-  simulatedImport: 'clean'
+  simulatedImport: 'real'
 });
 
 /** The camelCase keys `config.db`'s `preferences` table actually has a row for. */

@@ -46,3 +46,9 @@ export {
   positionForBestMove,
   sideForBestMove,
 } from './bestMove.js';
+
+export {
+  splitPgnGames,
+  gameFieldsFromPgn,
+  gameRowsFromPgnText,
+} from './importPgn.js';

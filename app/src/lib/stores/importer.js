@@ -3,6 +3,8 @@ import { browser } from '$app/environment';
 import { games, collections, tags } from '$lib/stores/library.js';
 import { makeImportedGames } from '$lib/library/mock.js';
 import { planImport, notAddedCount, outcomeMessage } from '$lib/library/importJob.js';
+import { insertGames } from '$lib/data/games.js';
+import { libraryConnection } from '$lib/data/session.js';
 
 /**
  * The import lane. §3.2.4.5
@@ -125,6 +127,11 @@ function finishDownload(p) {
 }
 
 function runWrite(p, elapsed) {
+  /* A real import (currently: Paste -- see importJob.js's planRealPasteImport)
+     carries its own rows, already read and parsed, and needs one real write
+     to the database rather than a paced, fabricated one. */
+  if (Array.isArray(p.rows)) { runRealWrite(p); return; }
+
   if (!browser || p.added === 0) { finish(p); return; }
   const next = elapsed + TICK_MS;
   const target = Math.min(p.added, Math.round((next / WRITE_MS) * p.added));
@@ -153,6 +160,47 @@ function appendGames(p, from, count) {
     collections: p.collections.map((c) => c.id)
   });
   games.update((all) => [...batch, ...all]);
+}
+
+/**
+ * Write a real import's rows to the currently open library, through the
+ * same seam `loadGames()` reads from -- `insertGame`/`insertGames` in
+ * `data/games.js`, over whatever connection `libraryConnection()` gives
+ * either backend. One shot, not paced like `appendGames`'s simulated
+ * animation: a paste is small enough that there is nothing to show
+ * progress against.
+ *
+ * Tags and Collections chosen in the dialog are attached to the returned
+ * rows for the Content Table's own display, the same as `appendGames`
+ * does -- not yet written to `tag_games`/`collection_games` themselves;
+ * see `registerOrganisation`'s own comment, which this does not change.
+ *
+ * `libraryConnection()` resolving null (no real backend available -- see
+ * `data/session.js`) leaves the games unwritten; nothing here pretends
+ * otherwise, but `finish(p)` still runs so the lane always reaches 'done'.
+ */
+async function runRealWrite(p) {
+  if (!browser || p.added === 0) { finish(p); return; }
+  try {
+    const connection = await libraryConnection();
+    if (connection) {
+      const inserted = await insertGames(connection, p.rows);
+      const shown = inserted.map((g) => ({
+        ...g,
+        favorite: false,
+        addedDaysAgo: 0,
+        subscription: null,
+        tags: p.tags.map((t) => t.id),
+        collections: p.collections.map((c) => c.id),
+        trashed: false
+      }));
+      games.update((all) => [...shown, ...all]);
+      written.set(inserted.length);
+    }
+  } catch (err) {
+    console.error('Plyvio: failed to write imported games', err);
+  }
+  finish(p);
 }
 
 /* ---------------- finishing ------------------------------------------- */

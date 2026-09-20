@@ -7,6 +7,8 @@
  * nothing here loads a table into memory to filter it in JavaScript.
  */
 
+import { DataError } from './connection.js';
+
 /** The eight columns of §3.2.4.2, in the order the table draws them. */
 export const LIST_COLUMNS = [
   'id', 'date', 'white', 'white_elo', 'black', 'black_elo', 'event', 'result', 'ply_count'
@@ -86,6 +88,88 @@ export const readGames = async (connection, { limit = 200, offset = 0, order = '
     plyCount: row.ply_count,
     createdAt: row.created_at
   }));
+};
+
+/**
+ * The columns `insertGame` can supply, in the order database-schema.md's §1
+ * lists them. Only `pgn` and `created_at` are always present -- the rest come
+ * from whichever PGN tags the source actually wrote (§4: "Application fields
+ * with no source value remain NULL unless they can be derived safely").
+ */
+export const INSERT_COLUMNS = [
+  'pgn', 'event', 'site', 'date', 'round', 'white', 'black', 'result',
+  'white_elo', 'black_elo', 'eco', 'time_control', 'fen', 'termination',
+  'ply_count', 'created_at'
+];
+
+/**
+ * Insert one game. §1, §4 -- every import stores the source PGN verbatim,
+ * lifts each PGN tag it recognises into its field, and leaves `movetext`
+ * NULL (§3.1: NULL means "read `pgn`"). `movetext` is never written here.
+ *
+ * Only `pgn` is required (§1: "Only `id` and `pgn` are required"); every
+ * other column in `INSERT_COLUMNS` is optional and stored NULL when
+ * `fields` does not supply it. A key `fields` carries that is not in
+ * `INSERT_COLUMNS` is ignored rather than inserted, so a caller that hands
+ * this an object with extra bookkeeping on it (a parser's own scratch
+ * fields, say) cannot corrupt the row by accident.
+ *
+ * @param {import('./connection.js').Connection} connection
+ * @param {Record<string, unknown>} fields schema-spelled (snake_case) column
+ *   values -- see `INSERT_COLUMNS`.
+ * @returns {Promise<number>} the new row's id.
+ */
+export const insertGame = async (connection, fields) => {
+  if (!fields || fields.pgn === undefined || fields.pgn === null) {
+    throw new DataError('insertGame requires pgn');
+  }
+  const columns = INSERT_COLUMNS.filter((c) => fields[c] !== undefined);
+  const sql =
+    `insert into games (${columns.join(', ')}) values (${columns.map(() => '?').join(', ')})`;
+  await connection.run(sql, columns.map((c) => fields[c] ?? null));
+  return Number(await connection.value('select last_insert_rowid()'));
+};
+
+/**
+ * Insert several games, in order, and return each as `readGames`'s own row
+ * shape -- the same fields, the same camelCase -- so a row just inserted and
+ * a row just reloaded from the database are indistinguishable to a caller.
+ *
+ * Sequential, inside one transaction: `INSERT_COLUMNS` is small and an
+ * import batch is not a hot loop, but a half-written import (some games
+ * committed, the rest lost to an error partway through) is worse than a
+ * slower one, so the whole batch commits together or not at all.
+ *
+ * @param {import('./connection.js').Connection} connection
+ * @param {Record<string, unknown>[]} rows one per game -- see `insertGame`.
+ * @returns {Promise<object[]>}
+ */
+export const insertGames = async (connection, rows) => {
+  if (!rows.length) return [];
+  await connection.run('begin');
+  try {
+    const inserted = [];
+    for (const fields of rows) {
+      const id = await insertGame(connection, fields);
+      inserted.push({
+        id,
+        date: fields.date ?? null,
+        white: fields.white ?? null,
+        whiteElo: fields.white_elo ?? null,
+        black: fields.black ?? null,
+        blackElo: fields.black_elo ?? null,
+        event: fields.event ?? null,
+        result: fields.result ?? null,
+        plyCount: fields.ply_count ?? null,
+        createdAt: fields.created_at ?? null
+      });
+    }
+    await connection.run('commit');
+    return inserted;
+  } catch (cause) {
+    await connection.run('rollback');
+    throw cause;
+  }
 };
 
 /**
