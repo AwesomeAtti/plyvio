@@ -63,6 +63,27 @@ async function main() {
   */
   await cp(path.join(SITE, 'index.html'), path.join(BUILD, '404.html'));
 
+  /*
+    macOS metadata does not get published.
+
+    The recursive copy above is deliberate — `.nojekyll` is a dotfile and
+    dropping it breaks the deploy — but it takes `.DS_Store` with it, and the
+    deploy repo `build/` becomes is created by `git init` with no `.gitignore`
+    at all, so `git add -A` published one on every deploy. A `.DS_Store`
+    describes the folder it sits in, so that put Finder's record of `site/`
+    on a public branch for no reason.
+
+    Swept rather than filtered out of the copy, and over the WHOLE tree: the
+    adapter writes `build/app/` and Finder can leave one there too, so
+    filtering only the `site/` copy would miss half the problem. Missing
+    files are not an error here — the usual case is that there are none.
+  */
+  for (const entry of await readdir(BUILD, { recursive: true })) {
+    if (path.basename(entry) === '.DS_Store') {
+      await rm(path.join(BUILD, entry), { force: true });
+    }
+  }
+
   const written = (await readdir(BUILD)).sort();
   console.log(`  Assembled site root from site/ → build/`);
   console.log(`  ${written.join('  ')}`);
