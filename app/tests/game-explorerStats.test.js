@@ -29,7 +29,8 @@ const STATS_DB2 = [
 
 vi.mock('$lib/data/session.js', () => ({
   libraryConnection: vi.fn(async () => null),
-  explorerConnection: vi.fn()
+  explorerConnection: vi.fn(),
+  isTauri: () => false
 }));
 vi.mock('$lib/data/games.js', async (importOriginal) => ({
   ...(await importOriginal()),

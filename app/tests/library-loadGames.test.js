@@ -19,7 +19,8 @@ const tagRows = [{ id: 10, name: 'Blunder' }];
 const collectionRows = [{ id: 20, name: 'Opening Prep', smart: false, criteria: null }];
 
 vi.mock('$lib/data/session.js', () => ({
-  libraryConnection: vi.fn()
+  libraryConnection: vi.fn(),
+  isTauri: () => false
 }));
 vi.mock('$lib/data/games.js', () => ({
   readGames: vi.fn(async () => rows),
@@ -56,15 +57,17 @@ beforeEach(() => {
 });
 
 describe('loadGames', () => {
-  it('is a no-op when the active library has no real connection (libraryConnection() resolves null)', async () => {
+  it('clears games (not a no-op) when the active library has no real connection', async () => {
     libraryConnection.mockResolvedValue(null);
     games.set([{ id: 'placeholder' }]);
     await loadGames();
-    expect(get(games)).toEqual([{ id: 'placeholder' }]);
+    // id 42 isn't the PWA's seeded Sample Games row (`db-2`), so there is
+    // nothing to fall back to — `games` is reset rather than left stale.
+    expect(get(games)).toEqual([]);
     expect(dataGames.readGames).not.toHaveBeenCalled();
   });
 
-  it('is a no-op when no library is selected', async () => {
+  it('clears games when no library is selected', async () => {
     activeLibraryId.set(null);
     // `activeLibraryId` also drives a module-level subscribe in
     // `stores/library.js` that fires its own fire-and-forget `loadGames()`
@@ -75,12 +78,12 @@ describe('loadGames', () => {
     libraryConnection.mockReset();
     games.set([{ id: 'placeholder' }]);
     await loadGames();
-    expect(get(games)).toEqual([{ id: 'placeholder' }]);
+    expect(get(games)).toEqual([]);
     expect(dataGames.readGames).not.toHaveBeenCalled();
     expect(libraryConnection).not.toHaveBeenCalled();
   });
 
-  it('is a no-op for a still-mock/seeded row with no real database behind it', async () => {
+  it('clears games for a still-mock/seeded row with no PWA stand-in data (Master Games)', async () => {
     objects.update((o) => ({
       ...o,
       databases: [{ id: 'db-1', name: 'Master Games', enabled: true, status: 'indexed' }]
@@ -90,9 +93,29 @@ describe('loadGames', () => {
     libraryConnection.mockReset();
     games.set([{ id: 'placeholder' }]);
     await loadGames();
-    expect(get(games)).toEqual([{ id: 'placeholder' }]);
+    // Master Games has no PWA-side mock corpus standing in for desktop's
+    // real, subscription-synced games -- unlike Sample Games below, there
+    // is nothing to fall back to, so this stays empty.
+    expect(get(games)).toEqual([]);
     expect(dataGames.readGames).not.toHaveBeenCalled();
     expect(libraryConnection).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the mock sample-games corpus for the seeded Sample Games row (db-2), a PWA stopgap', async () => {
+    objects.update((o) => ({
+      ...o,
+      databases: [{ id: 'db-2', name: 'Sample Games', enabled: true, status: 'indexed' }]
+    }));
+    activeLibraryId.set('db-2');
+    await Promise.resolve(); // see the comment above
+    libraryConnection.mockReset();
+    games.set([{ id: 'placeholder' }]);
+    await loadGames();
+    expect(dataGames.readGames).not.toHaveBeenCalled();
+    expect(libraryConnection).not.toHaveBeenCalled();
+    const loaded = get(games);
+    expect(loaded).toHaveLength(40);
+    expect(loaded.every((g) => typeof g.white === 'string' && typeof g.sortDate === 'number')).toBe(true);
   });
 
   it('replaces games with rows read through the seam', async () => {

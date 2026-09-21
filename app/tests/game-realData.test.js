@@ -26,7 +26,8 @@ const REAL_RECORD = { site: 'Vienna Chess Arena', round: '3' };
  */
 vi.mock('$lib/data/session.js', () => ({
   libraryConnection: vi.fn(),
-  explorerConnection: vi.fn(async () => null)
+  explorerConnection: vi.fn(async () => null),
+  isTauri: () => false
 }));
 /*
  * A partial mock: `movetextFromRow` is real, because the MOCK game path

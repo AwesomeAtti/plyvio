@@ -9,7 +9,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 vi.mock('$lib/data/session.js', () => ({
-  configConnection: vi.fn()
+  configConnection: vi.fn(),
+  libraryConnection: vi.fn(),
+  isTauri: () => false
 }));
 vi.mock('$lib/data/config.js', async (importOriginal) => ({
   ...(await importOriginal()),
