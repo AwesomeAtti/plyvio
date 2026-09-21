@@ -334,6 +334,25 @@ export const derivePlyCount = async (connection, id, count) => {
  *
  * @returns {Promise<{move: string, games: number, white: number, draws: number, black: number}[]>}
  */
+/**
+ * TWO DIFFERENT EMPTIES, and the caller needs to tell them apart.
+ *
+ * `[]` means the table answered and holds nothing for this position — §6.3's
+ * "absence is not evidence", the genuine out-of-book state the Section draws.
+ * `null` means there was nothing to ask: the query threw, which for a game
+ * database is §6's documented and valid case of carrying no `positions` table
+ * at all ("a game database supplied by another application will not have
+ * one"). A database that cannot answer and a database that answers "none" are
+ * not the same fact, and collapsing both to `[]` — which this did — left the
+ * Section unable to distinguish them.
+ *
+ * The distinction is what the Explorer's mock fallback keys off (`stores/
+ * game.js`), so it is load-bearing rather than cosmetic. It stays correct
+ * once every database carries the table: `null` simply stops occurring.
+ *
+ * @returns {Promise<Array|null>} rows, or `null` when the table cannot be
+ *   queried.
+ */
 export const readPositionStats = async (connection, posKey) => {
   try {
     return await connection.all(
@@ -341,7 +360,7 @@ export const readPositionStats = async (connection, posKey) => {
       [posKey]
     );
   } catch {
-    return [];
+    return null;
   }
 };
 

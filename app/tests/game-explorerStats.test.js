@@ -44,6 +44,7 @@ const { activeId } = await import('../src/lib/stores/tabs.js');
 const { explorerConnection } = await import('$lib/data/session.js');
 const { readPositionStats } = await import('$lib/data/games.js');
 const { positionKey } = await import('../src/lib/game/explorer.js');
+const { positionStats } = await import('../src/lib/game/explorerMock.js');
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
@@ -113,13 +114,45 @@ describe('the Explorer Section’s real position statistics', () => {
     expect(g.explorer.rows.map((r) => r.move)).toEqual(['Nf3']);
   });
 
-  it('degrades to empty rows, not a crash, with no connection for the library', async () => {
+  /*
+    THE STOPGAP. No connection means there was nothing to ask — the PWA, which
+    has no database to open — which is not the same fact as a table answering
+    "nothing played from here". The Section falls back to `explorerMock.js`
+    rather than drawing its empty state, and the two tests below hold the
+    distinction the fallback rests on.
+  */
+  it('falls back to the mock, not empty rows, with no connection for the library', async () => {
     explorerConnection.mockResolvedValue(null);
     ensureGameState('t1', null);
     activeId.set('t1');
     await flush();
 
     expect(readPositionStats).not.toHaveBeenCalled();
+    const g = get(activeGame);
+    expect(g.explorer.rows.length).toBeGreaterThan(0);
+    // Deterministic, and the same call `activeGame` makes — not merely "some rows".
+    const fen = g.plies[g.ply].f;
+    const played = g.plies[g.ply + 1]?.s ?? null;
+    expect(g.explorer.rows.map((r) => r.move))
+      .toEqual(positionStats(fen, g.ply, g.explorer.library, played).map((r) => r.move));
+  });
+
+  it('draws the empty state — not the mock — when a table answers with no rows', async () => {
+    readPositionStats.mockResolvedValue([]);      // the table exists and holds nothing
+    ensureGameState('t1', null);
+    activeId.set('t1');
+    await flush();
+
+    expect(readPositionStats).toHaveBeenCalled();
+    expect(get(activeGame).explorer.rows).toEqual([]);
+  });
+
+  it('does not flash mock rows while a real read is still in flight', async () => {
+    readPositionStats.mockImplementation(() => new Promise(() => {}));   // never resolves
+    ensureGameState('t1', null);
+    activeId.set('t1');
+    await flush();
+
     expect(get(activeGame).explorer.rows).toEqual([]);
   });
 

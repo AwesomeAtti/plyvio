@@ -4,7 +4,7 @@ import { GAMES } from '$lib/mock-data/sample-games.js';
 import { pliesFor, engineFor, readGame } from '$lib/game/plies.js';
 import { SECTIONS, DEFAULT_VISIBILITY } from '$lib/game/sections.js';
 import { explorerRows, positionGames, explorerHeight, positionKey } from '$lib/game/explorer.js';
-import { explorerLibraries } from '$lib/game/explorerMock.js';
+import { explorerLibraries, positionStats } from '$lib/game/explorerMock.js';
 import {
   engineSources, engineHeight, clampLines, clampDepth,
   ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH
@@ -237,13 +237,25 @@ export const explorerStats = writable({});
  * Fetch one position's stats for a tab's selected library, into
  * `explorerStats`. Same fire-and-forget shape as `loadRealGame`.
  *
- * A missing connection — outside Tauri, or a library id `data/session.js`'s
- * `explorerConnection` has no path for — and a read against a database with
- * no `positions` table both resolve the same way: `readPositionStats`
- * itself returns `[]` for the latter (§6: "a game database without one is
- * valid… any feature that needs them is unavailable until the table is
- * present"), and this treats "no connection" identically rather than
- * inventing a second empty shape.
+ * THREE OUTCOMES, not two, and `status` carries which:
+ *
+ *   `loading`      the read is in flight; nothing is known yet
+ *   `ready`        a `positions` table answered — `rows` is its answer,
+ *                  `[]` included, which is §6.3's genuine out-of-book state
+ *   `unavailable`  there was nothing to ask: no connection (the PWA, which
+ *                  has no database to open at all), or a database carrying
+ *                  no `positions` table (§6's valid case —
+ *                  `readPositionStats` returns `null` for it)
+ *
+ * The old shape collapsed all of those to `[]`, which is why the Section has
+ * drawn its empty state on every position since it moved onto this path: no
+ * sample database carries the table, so every read was "unavailable" wearing
+ * "out of book"'s clothes. `activeGame` reads `unavailable` and falls back
+ * to `explorerMock.js` — see there.
+ *
+ * `loading` deliberately does NOT fall back. A desktop database that does
+ * answer would otherwise flash invented rows for the length of a round trip
+ * and then replace them with real ones.
  */
 function loadExplorerStats(tabId, libraryId, posKey) {
   const cacheKey = `${libraryId}|${posKey}`;
@@ -252,18 +264,24 @@ function loadExplorerStats(tabId, libraryId, posKey) {
   explorerStats.update((s) => ({ ...s, [tabId]: { key: cacheKey, status: 'loading', rows: [] } }));
 
   (async () => {
-    let rows = [];
+    let rows = null;
     try {
       const connection = await explorerConnection(libraryId);
-      rows = connection ? await readPositionStats(connection, posKey) : [];
+      rows = connection ? await readPositionStats(connection, posKey) : null;
     } catch (err) {
       console.error(`Plyvio: failed to load Explorer stats for ${libraryId}`, err);
+      /* A thrown read is "could not ask", the same as no table: it is not
+         evidence that the position was never played. */
+      rows = null;
     }
+    const status = rows ? 'ready' : 'unavailable';
     /* The tab may by now be asking about a different position or library —
        ply navigation is faster than a round trip. Only the still-wanted
        answer is written. */
     explorerStats.update((s) =>
-      s[tabId]?.key === cacheKey ? { ...s, [tabId]: { key: cacheKey, status: 'ready', rows } } : s
+      s[tabId]?.key === cacheKey
+        ? { ...s, [tabId]: { key: cacheKey, status, rows: rows ?? [] } }
+        : s
     );
   })();
 }
@@ -412,8 +430,23 @@ export const activeGame = derived(
     selection changes) keeps `explorerStats` current for the tab; this only
     reads it. `explorerCacheKey` not matching what's stored means the fetch
     for the position now on the board hasn't landed (or there's nothing to
-    fetch — no library selected, or no FEN yet), and `stats` is `[]` either
-    way — the Section's already-established empty state, not a new one.
+    fetch — no library selected, or no FEN yet), and `stats` is `[]`.
+
+    STOPGAP — `status: 'unavailable'` falls back to `explorerMock.js`.
+
+    §5.6.3 says the Section reads figures held by the game database and does
+    not derive them, and that remains the specification: this does not change
+    the clause, it diverges from it while nothing can answer the query. No
+    sample database carries a `positions` table (`build_samples.py` predates
+    §6) and the PWA has no database to open at all, so without this the
+    Section draws its empty state on every position of every game — which it
+    has done since the read path landed.
+
+    It retires ITSELF, per database rather than per platform. `unavailable`
+    stops occurring for any library whose database carries the table, so
+    desktop leaves the mock behind the moment the samples are rebuilt with
+    one, with no code change; the PWA keeps it until it has real storage.
+    Removal is tracked in ACTIONS.md.
   */
   const libraries = explorerLibraries($objects?.databases ?? []);
   const library = libraries.find((l) => l.id === st.explorerLibraryId) ?? null;
@@ -421,7 +454,10 @@ export const activeGame = derived(
   const fen = plies[ply]?.f;
   const explorerCacheKey = library && fen ? `${library.id}|${positionKey(fen)}` : null;
   const explorerEntry = explorerCacheKey ? $explorerStats[$id] : null;
-  const stats = explorerEntry?.key === explorerCacheKey ? explorerEntry.rows : [];
+  const entry = explorerEntry?.key === explorerCacheKey ? explorerEntry : null;
+  const stats = entry?.status === 'unavailable'
+    ? positionStats(fen, ply, library, played)
+    : (entry?.status === 'ready' ? entry.rows : []);
   const rows = explorerRows(stats);
 
   /*
