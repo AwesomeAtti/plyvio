@@ -1,6 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
-import { games, collections, tags, connectionForLibrary } from '$lib/stores/library.js';
+import { games, collections, tags, connectionForLibrary, loadGames } from '$lib/stores/library.js';
+import { activeLibraryId } from '$lib/stores/libraries.js';
 import { makeImportedGames } from '$lib/library/mock.js';
 import { planImport, notAddedCount, outcomeMessage } from '$lib/library/importJob.js';
 import { insertGames } from '$lib/data/games.js';
@@ -174,10 +175,26 @@ function appendGames(p, from, count) {
  * animation: a paste is small enough that there is nothing to show
  * progress against.
  *
+ * THIS FUNCTION'S JOB ENDS AT THE COMMIT. It used to also splice the
+ * inserted rows straight into `games` itself -- an optimistic update meant
+ * to show the result immediately -- but that let this write race a
+ * `loadGames()` already in flight from the library switch that got the user
+ * here (whichever one's reads resolved LAST would win, even if it started
+ * first, silently reverting a real write back to empty). `games` now has
+ * exactly one writer, `loadGames()` -- this just asks for a reload, and only
+ * when there is something for the Library view to show differently: when
+ * the destination IS the library currently on screen. Writing to a library
+ * you're not looking at leaves `games` untouched; switching to it later
+ * already reloads correctly, per `activeLibraryId.subscribe` in
+ * `stores/library.js`.
+ *
  * Tags and Collections chosen in the dialog are attached to the returned
  * rows for the Content Table's own display, the same as `appendGames`
  * does -- not yet written to `tag_games`/`collection_games` themselves;
  * see `registerOrganisation`'s own comment, which this does not change.
+ * (`loadGames()`'s own read doesn't know about them yet either, for the
+ * same reason -- this reload doesn't regress that, it's the same gap as
+ * before.)
  *
  * `connectionForLibrary()` resolving null (no real backend available, or
  * the chosen destination has no real database behind it -- see `stores/
@@ -190,16 +207,8 @@ async function runRealWrite(p) {
     const connection = await connectionForLibrary(p.destination);
     if (connection) {
       const inserted = await insertGames(connection, p.rows);
-      const shown = inserted.map((g) => ({
-        ...g,
-        favorite: false,
-        subscription: null,
-        tags: p.tags.map((t) => t.id),
-        collections: p.collections.map((c) => c.id),
-        trashed: false
-      }));
-      games.update((all) => [...shown, ...all]);
       written.set(inserted.length);
+      if (p.destination === get(activeLibraryId)) await loadGames();
     }
   } catch (err) {
     console.error('Plyvio: failed to write imported games', err);

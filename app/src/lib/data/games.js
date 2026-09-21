@@ -135,10 +135,42 @@ export const insertGame = async (connection, fields) => {
  * shape -- the same fields, the same camelCase -- so a row just inserted and
  * a row just reloaded from the database are indistinguishable to a caller.
  *
- * Sequential, inside one transaction: `INSERT_COLUMNS` is small and an
- * import batch is not a hot loop, but a half-written import (some games
- * committed, the rest lost to an error partway through) is worse than a
- * slower one, so the whole batch commits together or not at all.
+ * ONE STATEMENT, not `begin` / one `insertGame` per row / `commit` (what
+ * this used to do). That pattern sent four-plus separate calls to the
+ * connection and relied on all of them sharing one physical connection to
+ * behave as a single transaction. `@tauri-apps/plugin-sql` pools
+ * connections -- each `run()`/`value()` call is its own IPC round trip that
+ * can land on any connection in the pool -- so nothing guaranteed `begin`,
+ * the inserts and `commit` ran on the same one; when they didn't, `commit`
+ * (or the recovery `rollback`) failed with "no transaction is active" and
+ * the whole batch silently never wrote (20 Sep 2026 -- caught live, via
+ * Plyvio's own Add Games: pasting into a library whose `loadGames()` had
+ * just run reliably triggered it, because that's exactly the kind of
+ * concurrent connection demand that makes two calls land on different pooled
+ * connections). A single multi-row INSERT can't have this problem: SQLite
+ * commits one statement as an atomic unit on its own, and there is only one
+ * call to route, so there's nothing left to split across connections. See
+ * `data/backends/tauri.js`'s own header comment on `last_insert_rowid()`
+ * for the earlier instance of this exact class of bug.
+ *
+ * Every row in one INSERT must supply the same columns, so `columns` is the
+ * union of whatever any row in the batch actually carries (in
+ * `INSERT_COLUMNS`' own order) -- a row that doesn't carry one of them gets
+ * an explicit NULL for it, the same value an omitted column would already
+ * default to, so this changes nothing about what gets stored.
+ *
+ * Validated up front, before anything touches the connection: a batch with
+ * a `pgn`-less row throws before the INSERT is even built, so a bad row
+ * still loses the whole import (nothing partial to roll back, because
+ * nothing partial was ever sent).
+ *
+ * Ids: SQLite assigns a multi-row INSERT's own rowids sequentially, in the
+ * order the rows were listed, when -- as here -- no row supplies its own
+ * `id` (`INSERT_COLUMNS` never includes it). `last_insert_rowid()` reports
+ * the LAST row's id, so the batch's ids run backward from it. This depends
+ * on nothing else inserting into `games` between this statement and reading
+ * its result, which is exactly what `stores/importer.js`'s own single-lane
+ * rule ("EXACTLY ONE IMPORT AT A TIME") already guarantees.
  *
  * @param {import('./connection.js').Connection} connection
  * @param {Record<string, unknown>[]} rows one per game -- see `insertGame`.
@@ -146,30 +178,35 @@ export const insertGame = async (connection, fields) => {
  */
 export const insertGames = async (connection, rows) => {
   if (!rows.length) return [];
-  await connection.run('begin');
-  try {
-    const inserted = [];
-    for (const fields of rows) {
-      const id = await insertGame(connection, fields);
-      inserted.push({
-        id,
-        date: fields.date ?? null,
-        white: fields.white ?? null,
-        whiteElo: fields.white_elo ?? null,
-        black: fields.black ?? null,
-        blackElo: fields.black_elo ?? null,
-        event: fields.event ?? null,
-        result: fields.result ?? null,
-        plyCount: fields.ply_count ?? null,
-        createdAt: fields.created_at ?? null
-      });
+
+  for (const fields of rows) {
+    if (!fields || fields.pgn === undefined || fields.pgn === null) {
+      throw new DataError('insertGame requires pgn');
     }
-    await connection.run('commit');
-    return inserted;
-  } catch (cause) {
-    await connection.run('rollback');
-    throw cause;
   }
+
+  const columns = INSERT_COLUMNS.filter((c) => rows.some((fields) => fields[c] !== undefined));
+  const placeholders = `(${columns.map(() => '?').join(', ')})`;
+  const sql =
+    `insert into games (${columns.join(', ')}) values ${rows.map(() => placeholders).join(', ')}`;
+  const params = rows.flatMap((fields) => columns.map((c) => fields[c] ?? null));
+
+  await connection.run(sql, params);
+  const lastId = Number(await connection.value('select last_insert_rowid()'));
+  const firstId = lastId - (rows.length - 1);
+
+  return rows.map((fields, i) => ({
+    id: firstId + i,
+    date: fields.date ?? null,
+    white: fields.white ?? null,
+    whiteElo: fields.white_elo ?? null,
+    black: fields.black ?? null,
+    blackElo: fields.black_elo ?? null,
+    event: fields.event ?? null,
+    result: fields.result ?? null,
+    plyCount: fields.ply_count ?? null,
+    createdAt: fields.created_at ?? null
+  }));
 };
 
 /**

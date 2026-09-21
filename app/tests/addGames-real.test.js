@@ -14,7 +14,20 @@ import { get } from 'svelte/store';
 import { planImport, resolveOutcome } from '../src/lib/library/importJob.js';
 
 vi.mock('$lib/data/session.js', () => ({ libraryConnection: vi.fn() }));
-vi.mock('$lib/data/games.js', () => ({ insertGames: vi.fn() }));
+vi.mock('$lib/data/games.js', () => ({
+  insertGames: vi.fn(),
+  // `runRealWrite()` no longer patches `games` itself -- a write that lands
+  // on the active library now asks `loadGames()` to reload for real, so
+  // these need mocking too, the same as `tests/library-loadGames.test.js`
+  // already does for `loadGames()` on its own.
+  readGames: vi.fn(async () => []),
+  readFavoriteIds: vi.fn(async () => []),
+  readTrashedIds: vi.fn(async () => []),
+  readTags: vi.fn(async () => []),
+  readCollections: vi.fn(async () => []),
+  readTagIdsByGame: vi.fn(async () => ({})),
+  readCollectionIdsByGame: vi.fn(async () => ({}))
+}));
 
 const pasteDraft = (text) => ({ files: [], text, source: 'chesscom', username: '', range: 'all' });
 
@@ -81,7 +94,10 @@ const { startImport, resetImporter, phase, notice } = await import('../src/lib/s
 const { libraryConnection } = await import('$lib/data/session.js');
 const { objects } = await import('../src/lib/stores/settings.js');
 const { activeLibraryId } = await import('../src/lib/stores/libraries.js');
-const { insertGames } = await import('$lib/data/games.js');
+const {
+  insertGames, readGames, readFavoriteIds, readTrashedIds,
+  readTags, readCollections, readTagIdsByGame, readCollectionIdsByGame
+} = await import('$lib/data/games.js');
 
 describe('the lane writes a real Paste import to the database', () => {
   beforeEach(() => {
@@ -91,6 +107,10 @@ describe('the lane writes a real Paste import to the database', () => {
     resetImporter();
     libraryConnection.mockReset();
     insertGames.mockReset();
+    for (const fn of [readGames, readFavoriteIds, readTrashedIds, readTags, readCollections, readTagIdsByGame, readCollectionIdsByGame]) {
+      fn.mockReset();
+      fn.mockImplementation(async () => (fn === readTagIdsByGame || fn === readCollectionIdsByGame ? {} : []));
+    }
     // `runRealWrite()` (via `connectionForLibrary()`) writes to the
     // request's own `destination` ('db-1', the shared `request()` helper's
     // default) — NOT necessarily the active library; `id: 7` here is a
@@ -107,9 +127,25 @@ describe('the lane writes a real Paste import to the database', () => {
   });
   afterEach(() => resetImporter());
 
-  const flush = () => new Promise((r) => setTimeout(r, 0));
+  // `runRealWrite()` now `await`s `loadGames()` itself before `finish(p)`
+  // runs (when the destination is the active library), so a plain
+  // `setTimeout(0)` flush that was enough for the old synchronous splice is
+  // no longer reliably enough once a real reload's own chain of awaited
+  // reads is in the mix. Waiting on `phase` to reach 'done' is exact rather
+  // than a timing guess.
+  const flush = () => new Promise((resolve) => {
+    const unsub = phase.subscribe((p) => { if (p === 'done') { unsub(); resolve(); } });
+  });
 
-  it('inserts the parsed rows through the seam and shows them in the Library', async () => {
+  it('inserts the parsed rows into the request\'s destination, and leaves the Library view alone when that destination is not the active library', async () => {
+    // 20 Sep 2026 -- `runRealWrite()` used to splice its inserted rows
+    // straight into `games` regardless of which library was active, which
+    // is exactly the bug this fixes: the Library view showed a game from a
+    // library the user wasn't even looking at. The destination here ('db-1')
+    // is deliberately NOT the active library (7, from `beforeEach`), so the
+    // correct outcome is that the write happens for real but `games` -- the
+    // active library's own view -- is untouched. Switching to 'db-1' later
+    // is what `library-loadGames.test.js` already covers.
     const connection = {};
     libraryConnection.mockResolvedValue(connection);
     insertGames.mockResolvedValue([
@@ -129,21 +165,45 @@ describe('the lane writes a real Paste import to the database', () => {
     // silently ignored.
     expect(libraryConnection).toHaveBeenCalledWith('db-1');
     expect(get(phase)).toBe('done');
-    expect(get(games)).toHaveLength(1);
-    expect(get(games)[0].white).toBe('Carlsen, Magnus');
-    expect(get(games)[0].id).toBe(501);
+    expect(get(games)).toEqual([]);
+    expect(readGames).not.toHaveBeenCalled();
     expect(get(notice).kind).toBe('clean');
   });
 
-  it('applies chosen tags and collections to the rows shown, same as a simulated import', async () => {
-    libraryConnection.mockResolvedValue({});
-    insertGames.mockResolvedValue([{ id: 1, white: 'A', black: 'B' }]);
+  it('reloads the Library view from the database when the destination IS the active library', async () => {
+    // The other half of the same fix: when you're looking at the library you
+    // just added to, the view must actually update -- through a real reload,
+    // not a hand-spliced copy of the inserted row. Setting up readGames() et
+    // al. to answer with the post-insert state (rather than asserting
+    // against the row shape `insertGames()` returned) is what proves this
+    // goes through `loadGames()` for real, not a shortcut that happens to
+    // look similar.
+    activeLibraryId.set('db-1');
+    const connection = {};
+    libraryConnection.mockResolvedValue(connection);
+    insertGames.mockResolvedValue([
+      { id: 501, date: null, white: 'Carlsen, Magnus', whiteElo: 2830, black: 'Nepomniachtchi, Ian',
+        blackElo: null, event: 'Test Open', result: '1-0', plyCount: null, createdAt: 'now' }
+    ]);
+    readGames.mockResolvedValue([
+      { id: 501, date: null, white: 'Carlsen, Magnus', whiteElo: 2830, black: 'Nepomniachtchi, Ian',
+        blackElo: null, event: 'Test Open', result: '1-0', plyCount: null, createdAt: 'now' }
+    ]);
 
-    startImport(request({ tags: [{ id: 5, name: 'Blitz' }], collections: [{ id: 9, name: 'Prep' }] }));
+    expect(startImport(request({ tags: [{ id: 5, name: 'Blitz' }], collections: [{ id: 9, name: 'Prep' }] }))).toBe(true);
     await flush();
 
-    expect(get(games)[0].tags).toEqual([5]);
-    expect(get(games)[0].collections).toEqual([9]);
+    expect(readGames).toHaveBeenCalledWith(connection, expect.objectContaining({ limit: expect.any(Number) }));
+    expect(get(games)).toHaveLength(1);
+    expect(get(games)[0].white).toBe('Carlsen, Magnus');
+    expect(get(games)[0].id).toBe(501);
+    // Tags/Collections chosen in the dialog are not yet written to
+    // `tag_games`/`collection_games` (`registerOrganisation`'s own comment,
+    // unchanged by this fix), so a real reload -- correctly -- does not show
+    // them on the row the way the old optimistic splice used to pretend.
+    // This is the existing, known gap, not a regression from this change.
+    expect(get(games)[0].tags).toEqual([]);
+    expect(get(games)[0].collections).toEqual([]);
   });
 
   it('finishes cleanly, without writing anything, when there is no real connection', async () => {

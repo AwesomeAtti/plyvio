@@ -71,6 +71,17 @@ export async function activeLibraryConnection() {
 }
 
 /**
+ * `loadGames()`'s own call sequence — bumped at the start of every call, so
+ * a call can tell whether it is still the most recent one once its awaits
+ * resolve. This is what makes it safe to call `loadGames()` from more than
+ * one trigger (a library switch, or a write that lands on the active
+ * library) without the two racing each other: whichever call started LAST
+ * wins, regardless of which one's reads happen to resolve last. Module-level
+ * rather than per-call state on purpose — every caller shares one sequence.
+ */
+let loadGamesSequence = 0;
+
+/**
  * Replace `games` with rows read from the active library's game database,
  * through the seam in `$lib/data`.
  *
@@ -82,13 +93,27 @@ export async function activeLibraryConnection() {
  * sample database's size rather than to `readGames`'s own default page.
  *
  * Runs on mount and again every time `activeLibraryId` changes (see the
- * subscribe below) — switching libraries in the switcher reloads the
- * Content Table with that library's own games. A no-op when
+ * subscribe below), and again whenever a write lands on a Library-view field
+ * of the active library (`stores/importer.js`'s `runRealWrite` — a real
+ * import's rows; a future favorite/trash/tag/collection write follows the
+ * same rule). It deliberately does NOT run for a write that touches only
+ * fields this query never reads — movetext, comments, engine data — since
+ * `readGames()` below has nothing to show differently for those.
+ *
+ * STALE RESULTS ARE DISCARDED, NOT APPLIED. Two callers can legitimately
+ * overlap — a switch's reload still in flight when an import's reload
+ * starts, say — and without a guard, whichever one's reads happen to
+ * resolve last would win even if it started first, silently reverting a
+ * newer, correct write. `loadGamesSequence` (above) fixes that: each call
+ * captures the sequence number current when IT started, and only applies
+ * its result if nothing newer has started in the meantime. A no-op when
  * `activeLibraryConnection()` resolves `null` (no library selected, no real
  * backend available, or a still-mock row with nothing to open) — `games` is
  * left exactly as whatever set it last, same as before this was wired up.
  */
 export async function loadGames({ limit = 5000 } = {}) {
+  const sequence = ++loadGamesSequence;
+
   const connection = await activeLibraryConnection();
   if (!connection) return;
 
@@ -102,6 +127,11 @@ export async function loadGames({ limit = 5000 } = {}) {
       readTagIdsByGame(connection),
       readCollectionIdsByGame(connection)
     ]);
+
+  // A newer call has started since this one began — its result, once it
+  // lands, is the authoritative one. Applying this older result now would
+  // silently undo whatever the newer call already found or is about to.
+  if (sequence !== loadGamesSequence) return;
 
   const favorite = new Set(favoriteIds);
   const trashed = new Set(trashedIds);
