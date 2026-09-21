@@ -136,7 +136,7 @@ export const defaultLibrariesDirDisplay = async () => {
 
 /**
  * `samples/config.db`'s own `libraries.game_db_path` values are bare
- * filenames (`'my-games.db'`) rather than absolute paths — §5.1 documents the
+ * filenames (`'sample-games.db'`) rather than absolute paths — §5.1 documents the
  * column as "the filesystem path to the game database" but says nothing
  * about relative paths, and the sample data doesn't follow its own engines
  * table's convention (`binary_path` is absolute there). Until that's settled

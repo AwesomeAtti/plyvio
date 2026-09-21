@@ -70,9 +70,11 @@ describe('library rows for games that exist', () => {
   });
 
   it('sorts them to the top by date without being pinned there', () => {
-    // Generated games stop at 2025; the real ones are 2026, so date order is enough.
+    // Generated games stop at 2025; most real ones are 2026, so date order is enough --
+    // except the ten curated historical games (1858-2017), which sink below the 2025
+    // cutoff on their own real dates and are excluded from "the top" on that basis.
     const all = makeGames();
-    const newest = [...all].sort((a, b) => b.sortDate - a.sortDate).slice(0, GAMES.length - 4);
+    const newest = [...all].sort((a, b) => b.sortDate - a.sortDate).slice(0, GAMES.length - 10);
     for (const row of newest) expect(GAMES.some((g) => g.id === row.id), row.id).toBe(true);
   });
 

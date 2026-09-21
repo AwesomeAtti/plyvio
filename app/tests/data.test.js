@@ -1,7 +1,7 @@
 /**
  * The data seam, against the real sample databases.
  *
- * These open `samples/config.db` and `samples/my-games.db` through the seam, with
+ * These open `samples/config.db` and `samples/sample-games.db` through the seam, with
  * the same SQLite build the application uses. What they prove is the schema and
  * the queries. What they cannot prove is the storage layer — no worker, no OPFS —
  * which is the browser's half and needs a browser.
@@ -135,7 +135,7 @@ suite('config.db through the seam', () => {
     // business asserting against.
     const libraries = await readLibraries(config);
     const byName = Object.fromEntries(libraries.map((l) => [l.name, l]));
-    expect(byName['My Games']).toMatchObject({ path: 'my-games.db', enabled: true });
+    expect(byName['Sample Games']).toMatchObject({ path: 'sample-games.db', enabled: true });
     expect(byName['Master Games']).toBeTruthy();
   });
 
@@ -160,7 +160,7 @@ suite('config.db through the seam', () => {
 
   it('leaves the original untouched when a copy is renamed or disabled', async () => {
     const libraries = await readLibraries(config);
-    expect(libraries[0]).toMatchObject({ name: 'My Games', enabled: true });
+    expect(libraries[0]).toMatchObject({ name: 'Master Games', enabled: true });
   });
 
   it('reads the engines, translated to camelCase', async () => {
@@ -192,21 +192,21 @@ suite('config.db through the seam', () => {
 
   it('reads the subscriptions, translated to camelCase', async () => {
     const subs = await readSubscriptions(config);
-    expect(subs.map((s) => s.name)).toEqual(['MagnusCarlsen', 'Hikaru', 'GothamChess']);
+    expect(subs.map((s) => s.name)).toEqual(['Hikaru', 'GothamChess']);
     expect(subs[0]).toMatchObject({
-      sourceType: 'chess_com_player', sourceIdentifier: 'magnuscarlsen', libraryId: 1,
-      syncInterval: 'daily', lastViewedAt: '2026-09-10T19:05:00Z'
+      sourceType: 'chess_com_player', sourceIdentifier: 'hikaru', libraryId: 2,
+      syncInterval: 'hourly', lastViewedAt: '2026-09-11T21:30:00Z'
     });
   });
 
   it('counts a subscription\'s new games against its destination library', async () => {
-    const games = await openMemoryDatabase(bytesOf('my-games.db'));
+    const games = await openMemoryDatabase(bytesOf('master-games.db'));
     // Never viewed: every row in subscription_games counts.
-    expect(await countNewGamesForSubscription(games, 1, null)).toBe(104);
+    expect(await countNewGamesForSubscription(games, 2, null)).toBe(493);
     // Every sample game predates this subscription's real last_viewed_at.
-    expect(await countNewGamesForSubscription(games, 1, '2026-09-10T19:05:00Z')).toBe(0);
+    expect(await countNewGamesForSubscription(games, 2, '2026-09-11T21:30:00Z')).toBe(0);
     // A date before every sample game counts them all.
-    expect(await countNewGamesForSubscription(games, 1, '2026-01-01T00:00:00Z')).toBe(104);
+    expect(await countNewGamesForSubscription(games, 2, '2026-01-01T00:00:00Z')).toBe(493);
     await games.close();
   });
 
@@ -233,7 +233,11 @@ suite('config.db through the seam', () => {
 suite('a game database through the seam', () => {
   let games;
   beforeAll(async () => {
-    games = await openMemoryDatabase(bytesOf('my-games.db'));
+    // master-games.db, not sample-games.db: the "no ply_count" check below needs a
+    // database where that column is uniformly unfilled, which holds for
+    // hikaru.pgn/gothamchess-annotated.pgn (neither carries a PlyCount tag) but no
+    // longer holds for sample-games.pgn (its Live Chess games do carry one).
+    games = await openMemoryDatabase(bytesOf('master-games.db'));
   });
   afterAll(async () => games?.close());
 
@@ -244,7 +248,7 @@ suite('a game database through the seam', () => {
   });
 
   it('counts its games', async () => {
-    expect(await countGames(games)).toBe(104);
+    expect(await countGames(games)).toBe(1026);
   });
 
   it('reads a page shaped for the Content Table', async () => {
@@ -269,7 +273,7 @@ suite('a game database through the seam', () => {
 });
 
 suite('insertGame / insertGames — writing', () => {
-  const fresh = async () => openMemoryDatabase(bytesOf('my-games.db'));
+  const fresh = async () => openMemoryDatabase(bytesOf('sample-games.db'));
 
   it('requires pgn, and nothing else', async () => {
     const db = await fresh();
@@ -353,7 +357,7 @@ suite('§3.1 — movetext precedence and complete replacement', () => {
   let games;
   let id;
   beforeAll(async () => {
-    games = await openMemoryDatabase(bytesOf('my-games.db'));
+    games = await openMemoryDatabase(bytesOf('master-games.db'));
     id = (await games.get('select id from games order by id limit 1')).id;
   });
   afterAll(async () => games?.close());
@@ -403,7 +407,7 @@ suite('an annotation round trip through the database', () => {
   let games;
   let id;
   beforeAll(async () => {
-    games = await openMemoryDatabase(bytesOf('my-games.db'));
+    games = await openMemoryDatabase(bytesOf('master-games.db'));
     // A game carrying the engine context and the two commands chessops does not know.
     const row = await games.get(
       "select id from games where pgn like '%[%bestmove%' and pgn like '%[%engine%' limit 1"
@@ -441,15 +445,15 @@ suite('an annotation round trip through the database', () => {
 suite('favorites, trash, tags and collections — reading', () => {
   let games;
   beforeAll(async () => {
-    games = await openMemoryDatabase(bytesOf('my-games.db'));
+    games = await openMemoryDatabase(bytesOf('master-games.db'));
   });
   afterAll(async () => games?.close());
 
   it('reads which games are favorited or trashed', async () => {
     const favorites = await readFavoriteIds(games);
     const trashed = await readTrashedIds(games);
-    expect(favorites).toHaveLength(1);
-    expect(trashed).toHaveLength(1);
+    expect(favorites).toHaveLength(34);
+    expect(trashed).toHaveLength(3);
   });
 
   it('reads the tags, ordered by name', async () => {
@@ -474,7 +478,7 @@ suite('favorites, trash, tags and collections — reading', () => {
     const [{ id: tagId }] = await readTags(games);
     const gameIds = await readGameIdsForTag(games, tagId);
     expect(counts[tagId]).toBe(gameIds.length);
-    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(13);
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(134);
   });
 
   it('reads the collections, including the Smart one, with smart as a boolean', async () => {
@@ -482,7 +486,7 @@ suite('favorites, trash, tags and collections — reading', () => {
     expect(collections).toHaveLength(3);
     const smart = collections.find((c) => c.smart);
     expect(smart).toBeTruthy();
-    expect(smart.criteria).toContain('MagnusCarlsen');
+    expect(smart.criteria).toContain('Hikaru');
     for (const c of collections) expect(typeof c.smart).toBe('boolean');
   });
 
@@ -499,14 +503,14 @@ suite('favorites, trash, tags and collections — reading', () => {
     const collections = await readCollections(games);
     const smart = collections.find((c) => c.smart);
     expect(smart.id in counts).toBe(false);
-    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(7);
+    expect(Object.values(counts).reduce((a, b) => a + b, 0)).toBe(117);
   });
 });
 
 /* ==================== §7 — Library features, write side ================= */
 
 suite('favorites, trash, tags and collections — writing', () => {
-  const fresh = async () => openMemoryDatabase(bytesOf('my-games.db'));
+  const fresh = async () => openMemoryDatabase(bytesOf('sample-games.db'));
 
   it('favoriting and unfavoriting a game is idempotent either way', async () => {
     const db = await fresh();
@@ -600,14 +604,14 @@ suite('favorites, trash, tags and collections — writing', () => {
 suite('tag and collection membership, as bulk maps', () => {
   let games;
   beforeAll(async () => {
-    games = await openMemoryDatabase(bytesOf('my-games.db'));
+    games = await openMemoryDatabase(bytesOf('master-games.db'));
   });
   afterAll(async () => games?.close());
 
   it('maps every game to its tag ids, matching the per-tag query summed', async () => {
     const byGame = await readTagIdsByGame(games);
     const total = Object.values(byGame).reduce((a, ids) => a + ids.length, 0);
-    expect(total).toBe(13);
+    expect(total).toBe(134);
     const [gameId] = Object.keys(byGame);
     const tagIds = await readTagIdsForGame(games, Number(gameId));
     expect(byGame[gameId]).toEqual(tagIds);
@@ -616,7 +620,7 @@ suite('tag and collection membership, as bulk maps', () => {
   it('maps every game to its regular-Collection ids, omitting the Smart one', async () => {
     const byGame = await readCollectionIdsByGame(games);
     const total = Object.values(byGame).reduce((a, ids) => a + ids.length, 0);
-    expect(total).toBe(7);
+    expect(total).toBe(117);
     const collections = await readCollections(games);
     const smart = collections.find((c) => c.smart);
     for (const ids of Object.values(byGame)) expect(ids).not.toContain(smart.id);

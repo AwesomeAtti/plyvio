@@ -41,11 +41,12 @@ import { games as libraryGames } from '../src/lib/stores/library.js';
 const readSrc = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
 /**
- * Four historical games carry no annotation; every other shipped game carries a full one.
+ * Forty curated games carry no engine annotation; twenty-six carry a full one (row 1
+ * plus the twenty-five in annotated.js).
  *
- * The classics are named rather than derived, because "everything that is not the annotated
- * one" stopped identifying them the moment a second annotated game shipped. A new sample
- * game is annotated unless it is added to this list.
+ * Detected by content, not by name or id: §2.1 makes the id a row number that carries
+ * no meaning, and a hardcoded name list would silently stop covering the set the moment
+ * a game was renamed or another one added without updating it here too.
  */
 /*
  * Games are found by their tags, never by their id: §2.1 makes the id a row number that
@@ -55,13 +56,11 @@ const readSrc = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 const game = (white, black) =>
   GAMES.find((g) => g.white.startsWith(white) && g.black.startsWith(black));
 
-const CLASSICS = [
-  game('Kasparov', 'Topalov'), game('Morphy', 'Duke'),
-  game('Byrne', 'Fischer'), game('Fischer', 'Spassky')
-];
+const isEngineAnnotated = (g) => g.pgn.includes('[%eval ');
+
 const ANNOTATED = game('GothamChess', 'EmperorSixSeven');
-const CLASSIC_SET = new Set(CLASSICS);
-const ANNOTATED_GAMES = GAMES.filter((g) => !CLASSIC_SET.has(g));
+const ANNOTATED_GAMES = GAMES.filter(isEngineAnnotated);
+const UNANNOTATED_GAMES = GAMES.filter((g) => !isEngineAnnotated(g));
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 beforeEach(() => {
@@ -415,9 +414,9 @@ describe('§5.4.2 Section allocation', () => {
 
 describe('sample games', () => {
   it('looks like a real row: pgn present, movetext null, nothing derived', () => {
-    expect(GAMES.length).toBe(30);
-    expect(CLASSICS).toHaveLength(4);
-    expect(ANNOTATED_GAMES).toHaveLength(26);
+    expect(GAMES.length).toBe(66);
+    expect(UNANNOTATED_GAMES).toHaveLength(30);
+    expect(ANNOTATED_GAMES).toHaveLength(36);
     for (const g of GAMES) {
       // Every row in samples/ is in this state — import writes pgn and leaves
       // movetext NULL (§4) — so the sample games are shaped the same way.
@@ -461,7 +460,7 @@ describe('sample games', () => {
       const rating = (tag) => (/^\d+$/.test(tag ?? '') ? Number(tag) : null);
       expect(rating(tags.WhiteElo)).toBe(g.white_elo);
       expect(rating(tags.BlackElo)).toBe(g.black_elo);
-      expect(tags.ECO).toBe(g.eco);
+      expect(tags.ECO ?? null).toBe(g.eco);
     }
   });
 
@@ -475,7 +474,7 @@ describe('sample games', () => {
       expect(source).toBe('pgn');
       // Tag pairs stripped. An annotated game opens with its [%engine] comment, so the
       // movetext may begin with a comment rather than with move 1.
-      expect(movetext).toMatch(/^(\{[^}]*\}\s*)?1\. /);
+      expect(movetext).toMatch(/^(\{[^}]*\}\s*)?1\.\s*/);
       expect(movetext).not.toMatch(/\[Event /);
     }
   });
@@ -511,8 +510,8 @@ describe('sample games', () => {
   });
 
   it('ends the two mates on the move that gives them', () => {
-    const white = game('Morphy', 'Duke');
-    const black = game('Byrne', 'Fischer');
+    const white = game('Morhpy, Paul', 'Allies');
+    const black = game('Donald Byrne', 'Robert James Fischer');
     expect(pliesFor(white).at(-1).s).toBe('Rd8#');
     expect(pliesFor(black).at(-1).s).toBe('Rc2#');
     expect(pliesFor(white).at(-1).k).toBe(true);
@@ -525,26 +524,30 @@ describe('sample games', () => {
    * rather than the one the king is standing on.
    */
   it('reports the square the king lands on when castling, not the rook it took', () => {
-    const kasparov = pliesFor(game('Kasparov', 'Topalov'));
+    const kasparov = pliesFor(game('Garry Kasparov', 'Veselin Topalov'));
     expect(kasparov.find((p) => p.s === 'O-O-O' && p.m[0] === 'e1').m).toEqual(['e1', 'c1']);
     expect(kasparov.find((p) => p.s === 'O-O-O' && p.m[0] === 'e8').m).toEqual(['e8', 'c8']);
 
-    const spassky = pliesFor(game('Fischer', 'Spassky'));
-    expect(spassky.find((p) => p.s === 'O-O' && p.m[0] === 'e8').m).toEqual(['e8', 'g8']);
-    expect(spassky.find((p) => p.s === 'O-O' && p.m[0] === 'e1').m).toEqual(['e1', 'g1']);
+    const castledAt = (g, from) => pliesFor(g).find((p) => p.s === 'O-O' && p.m[0] === from);
+    const bothCastledShort = GAMES.find((g) => castledAt(g, 'e1') && castledAt(g, 'e8'));
+    expect(bothCastledShort).toBeTruthy();
+    expect(castledAt(bothCastledShort, 'e8').m).toEqual(['e8', 'g8']);
+    expect(castledAt(bothCastledShort, 'e1').m).toEqual(['e1', 'g1']);
   });
 
   /*
-   * Four historical games carry nothing; one annotated game carries everything. The
-   * second exists so the comment control, the banner and the Evaluation Bar's populated
+   * Forty curated games carry no annotation; twenty-six carry a full one. The annotated
+   * set exists so the comment control, the banner and the Evaluation Bar's populated
    * state are reachable from shipped data rather than only from a test fixture.
    */
-  it('leaves the four classics unevaluated', () => {
-    for (const g of CLASSICS) for (const p of pliesFor(g)) {
+  it('leaves the unannotated games unevaluated', () => {
+    for (const g of UNANNOTATED_GAMES) for (const p of pliesFor(g)) {
       expect(p.e).toBeNull();
       expect(p.x).toBeNull();
       expect(p.b).toBeNull();
-      expect(p.c).toBeNull();
+      // Not p.c: several of these games carry real prose commentary (§ the curated
+      // historical set) despite having no engine evaluation -- a comment is not
+      // evidence of annotation the way [%eval]/[%bestmove] are.
     }
   });
 
@@ -1448,7 +1451,7 @@ describe('§5.4.2 Moves — comment banner', () => {
   });
 
   it('reports no engine for a game that declares none', () => {
-    for (const g of CLASSICS) expect(engineFor(g)).toBeNull();
+    for (const g of UNANNOTATED_GAMES) expect(engineFor(g)).toBeNull();
   });
 
   /*

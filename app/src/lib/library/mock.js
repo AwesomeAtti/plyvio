@@ -80,7 +80,13 @@ const RESULTS = ['1-0', '0-1', '½-½', '½-½', '1-0', '0-1', '½-½'];
  */
 export function realRows() {
   return GAMES.map((g, i) => {
-    const [y, m, d] = g.date.split('.').map(Number);
+    // A real game's date can be partial -- PGN's own placeholder for an unknown
+    // component is "??" (`1858.??.??`, a known year with an unrecorded month and
+    // day), which `Number('??')` turns into `NaN` rather than 0. The generated rows
+    // below already have an explicit unknownDate case for this; a real row needs the
+    // same per-component fallback, since unlike the generated set it isn't all-or-
+    // nothing -- the year alone is still real, ordering information.
+    const [y, m, d] = g.date.split('.').map((part) => Number(part) || 0);
     return {
       id: g.id,
       date: g.date,

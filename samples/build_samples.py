@@ -4,8 +4,8 @@ Build the Plyvio sample databases.
 Creates, beside one another:
 
     config.db          Plyvio configuration (schema reference v009 section 5)
-    my-games.db        Library "My Games"     - magnuscarlsen.pgn
     master-games.db    Library "Master Games" - hikaru.pgn, gothamchess-annotated.pgn
+    sample-games.db    Library "Sample Games" - sample-games.pgn
 
 Rules this build follows (see working notes/sample-db-design.md):
 
@@ -228,21 +228,6 @@ CREATE TABLE ui_state (
 # Library name, database filename, and the PGN files that fill it.
 LIBRARIES = [
     {
-        "id": 1,
-        "name": "My Games",
-        "file": "my-games.db",
-        "version": "1.0",
-        "created_at": "2026-09-01T09:15:00Z",
-        "last_opened_at": "2026-09-11T20:42:00Z",
-        "sources": [("magnuscarlsen.pgn", 1)],          # (pgn file, subscription id)
-        "tags": ["Brilliancy", "To Analyse", "Miniature", "Blunder"],
-        "collections": [
-            ("Opening Prep", 0, None),
-            ("Endgame Studies", 0, None),
-            ("Wins as White", 1, '{"white": "MagnusCarlsen", "result": "1-0"}'),
-        ],
-    },
-    {
         "id": 2,
         "name": "Master Games",
         "file": "master-games.db",
@@ -257,14 +242,28 @@ LIBRARIES = [
             ("Hikaru as White", 1, '{"white": "Hikaru"}'),
         ],
     },
+    {
+        "id": 3,
+        "name": "Sample Games",
+        "file": "sample-games.db",
+        "version": "1.0",
+        "created_at": "2026-09-21T00:00:00Z",
+        "last_opened_at": None,                          # never opened
+        # A curated, hand-picked PGN (ten historical/reference games plus thirty of
+        # AwesomeAtti's own Live Chess games), not a subscription sync — so there is no
+        # subscription id to attach it to (None; see build_game_db()'s handling of it).
+        "sources": [("sample-games.pgn", None)],
+        "tags": ["Brilliancy", "To Analyse", "Miniature", "Blunder"],
+        "collections": [
+            ("Opening Prep", 0, None),
+            ("Endgame Studies", 0, None),
+        ],
+    },
 ]
 
 SUBSCRIPTIONS = [
     # id, name, source_identifier, library_id, enabled, interval,
     # last_checked_at, last_status, message, last_synced_at, last_viewed_at
-    (1, "MagnusCarlsen", "magnuscarlsen", 1, 1, "daily",
-     "2026-09-12T08:00:00Z", "success", "3 new games imported",
-     "2026-09-12T08:00:00Z", "2026-09-10T19:05:00Z"),
     (2, "Hikaru", "hikaru", 2, 1, "hourly",
      "2026-09-12T11:00:00Z", "error", "Source temporarily unavailable",
      "2026-09-11T23:00:00Z", "2026-09-11T21:30:00Z"),
@@ -440,11 +439,15 @@ def build_game_db(library, pgn_dir, out_dir):
             cursor = db.execute(statement, [row[column] for column in columns])
             game_id = cursor.lastrowid
 
-            db.execute(
-                "INSERT INTO subscription_games (subscription_id, game_id) "
-                "VALUES (?, ?)",
-                (subscription_id, game_id),
-            )
+            # subscription_id is None for a source that was not imported through a
+            # subscription sync (a curated/pasted PGN, say) -- nothing to record in
+            # subscription_games for those rows.
+            if subscription_id is not None:
+                db.execute(
+                    "INSERT INTO subscription_games (subscription_id, game_id) "
+                    "VALUES (?, ?)",
+                    (subscription_id, game_id),
+                )
 
             game_ids.append(game_id)
             imported += 1
