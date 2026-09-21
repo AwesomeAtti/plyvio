@@ -17,7 +17,8 @@ import {
 } from './library.js';
 import { known, ratingText, resultText, infoContentHeight } from '$lib/game/info.js';
 import { readMovetextFor, readRecordFields, readPositionStats } from '$lib/data/games.js';
-import { explorerConnection } from '$lib/data/session.js';
+import { explorerConnection, isTauri } from '$lib/data/session.js';
+import { activeLibraryId } from './libraries.js';
 
 /**
  * Game Workspace state — §5.3, §2.3.
@@ -52,6 +53,19 @@ export const gameEdits = writable({});
 /** The prototype has four real games; a library row is mapped onto one. */
 function gameForLibraryId(libraryId) {
   if (!libraryId) return GAMES[0];
+  /*
+    A NUMERIC id is a row key, not a string to hash. `charCodeAt` does not
+    exist on a number, so the loop below never ran for one and every such tab
+    resolved to `GAMES[0]` — harmless while the only numeric ids were real
+    database rows (which never reach this function), wrong the moment the PWA
+    stopgap started handing out `sample-games.js`'s own ids. Resolve by id
+    where the id names a row, and fall through to the hash otherwise so a
+    tab opened on a generated stress row still gets a game rather than
+    nothing.
+  */
+  if (typeof libraryId === 'number') {
+    return GAMES.find((g) => g.id === libraryId) ?? GAMES[0];
+  }
   let h = 0;
   for (let i = 0; i < libraryId.length; i++) h = (h * 31 + libraryId.charCodeAt(i)) | 0;
   return GAMES[Math.abs(h) % GAMES.length];
@@ -64,10 +78,49 @@ function gameForLibraryId(libraryId) {
  * library rows built from them) — a `number`. The test suite's fixture
  * tabs, and any tab opened with no library row at all, use a string
  * sentinel or `null`, which is also what `gameForLibraryId`'s hash was
- * built for. `typeof` is the whole test: no games.js row and no test
- * fixture happens to produce a number today except a genuine database id.
+ * built for.
+ *
+ * `typeof` alone is NO LONGER the whole test. It was, until the PWA
+ * stopgap in `stores/library.js`'s `loadGames()` began filling `games`
+ * from `library/mock.js`'s `realRows()` — whose ids are
+ * `sample-games.js`'s own 1–40, integers like any other. A tab opened on
+ * one of those took the real-database path, found no connection, and sat
+ * on `EMPTY_REAL_GAME`: a board at the starting position with no moves,
+ * which is what an opened Sample Games game looked like. `mockLibraryGame`
+ * below is the second half of the test.
  */
 const isRealGameId = (libraryGameId) => typeof libraryGameId === 'number';
+
+/**
+ * The `sample-games.js` row a library id names, when the active library is
+ * the PWA's seeded Sample Games row and there is no real database behind it.
+ *
+ * MIRRORS `loadGames()`'s own stopgap condition (`!isTauri()` and the seeded
+ * `db-2`) deliberately and in full, rather than inferring "mock" from a
+ * failed connection: on desktop a connection that fails is a fault to show,
+ * not a cue to display some other game's moves. Desktop never reaches this —
+ * `isTauri()` is true there — so its path is unchanged.
+ *
+ * TEMPORARY, and paired with that stopgap: both come out together when the
+ * PWA gets real per-library storage. See ACTIONS.md, "Remove the
+ * `loadGames()` PWA stopgap and its `isTauri()` exception".
+ */
+function mockLibraryGame(libraryGameId) {
+  if (!isRealGameId(libraryGameId)) return null;
+  if (isTauri() || get(activeLibraryId) !== 'db-2') return null;
+  return GAMES.find((g) => g.id === libraryGameId) ?? null;
+}
+
+/**
+ * Does this tab read the real database, or `sample-games.js`?
+ *
+ * Decided ONCE, when the tab's state is built, and carried on the state —
+ * not recomputed per read. A tab is opened from a library and keeps that
+ * row (`libraryGameId`); switching the switcher afterwards must not change
+ * what an already-open tab is showing. Falls back to the id test for a
+ * state built before this field existed.
+ */
+const readsRealGame = (st) => st.realGame ?? isRealGameId(st.libraryGameId);
 
 /**
  * A REAL game's movetext, read and parsed — §5.3's other half.
@@ -158,7 +211,7 @@ function loadRealGame(libraryGameId) {
  * the two do not each grow their own idea of where a game's moves come from.
  */
 function pliesForState(st) {
-  if (isRealGameId(st.libraryGameId)) {
+  if (readsRealGame(st)) {
     return (get(realGames).get(st.libraryGameId) ?? EMPTY_REAL_GAME).plies;
   }
   return pliesFor(gameById(st.gameId));
@@ -240,10 +293,18 @@ function refreshExplorerStats(tabId) {
 export function ensureGameState(tabId, libraryGameId = null) {
   const existing = get(gameStates)[tabId];
   if (existing) return existing;
-  if (isRealGameId(libraryGameId)) loadRealGame(libraryGameId);
-  const game = gameForLibraryId(libraryGameId);
+  const mockRow = mockLibraryGame(libraryGameId);
+  const realGame = !mockRow && isRealGameId(libraryGameId);
+  if (realGame) loadRealGame(libraryGameId);
+  const game = mockRow ?? gameForLibraryId(libraryGameId);
   const state = {
     gameId: game.id,
+    /*
+      Whether this tab's moves come from the database or from
+      `sample-games.js` — see `readsRealGame`. Resolved here so the answer
+      cannot change under an open tab.
+    */
+    realGame,
     /*
       The LIBRARY ROW this tab was opened from, kept rather than discarded.
 
@@ -335,7 +396,7 @@ export const activeGame = derived(
     with no library row (a sandbox tab, or a test), which keeps the mock
     path exactly as it was for those.
   */
-  const real = isRealGameId(st.libraryGameId)
+  const real = readsRealGame(st)
     ? ($realGames.get(st.libraryGameId) ?? { status: 'loading', ...EMPTY_REAL_GAME })
     : null;
   const loading = !!real && real.status !== 'ready';

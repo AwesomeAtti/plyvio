@@ -37,6 +37,8 @@ import {
   setEngineOn, setEngineSource, setEngineLines, setEngineDepth, engineContentHeight
 } from '../src/lib/stores/game.js';
 import { games as libraryGames } from '../src/lib/stores/library.js';
+import { activeLibraryId } from '../src/lib/stores/libraries.js';
+import { realRows } from '../src/lib/library/mock.js';
 
 const readSrc = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
@@ -1644,6 +1646,47 @@ describe('Game Info reads the real library row when one is open', () => {
     const info = get(activeGame).info;
     expect(info.hasRow).toBe(false);
     expect(info.white).toBe(GAMES[0].white);
+  });
+});
+
+/*
+  THE PWA'S SEEDED SAMPLE GAMES LIBRARY — the stopgap's other half.
+
+  `loadGames()` fills `games` from `library/mock.js`'s `realRows()` for the
+  seeded `db-2` row on a non-Tauri build, and those rows carry
+  `sample-games.js`'s own ids: integers, exactly like a real `games.id`. A tab
+  opened on one used to take the real-database path, find no connection, and
+  show an empty board. These two guard both halves of the discriminator.
+*/
+describe('PWA stopgap: opening a game from the seeded Sample Games library', () => {
+  const libraryDefault = get(activeLibraryId);
+  afterEach(() => { libraryGames.set([]); activeLibraryId.set(libraryDefault); });
+
+  it('reads the sample game the row names — its own moves, not an empty board', () => {
+    activeLibraryId.set('db-2');
+    libraryGames.set(realRows());
+    resetGameState();
+
+    const target = GAMES[4];
+    ensureGameState('pwa-1', target.id);
+    activeId.set('pwa-1');
+
+    const view = get(activeGame);
+    expect(view.state.realGame).toBe(false);
+    expect(view.state.gameId).toBe(target.id);          // not GAMES[0], the old hash's answer
+    expect(view.plies).toEqual(pliesFor(target));
+    expect(view.plies.length).toBeGreaterThan(1);
+  });
+
+  it('still takes the real-database path for a numeric id under a real library', () => {
+    activeLibraryId.set(99);                            // a real libraries.id, not the seeded row
+    libraryGames.set([]);
+    resetGameState();
+
+    ensureGameState('pwa-2', GAMES[4].id);
+    activeId.set('pwa-2');
+
+    expect(get(activeGame).state.realGame).toBe(true);
   });
 });
 
