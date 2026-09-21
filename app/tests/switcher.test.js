@@ -25,7 +25,7 @@ const uniform = (s) => s.length;
 
 const DBS = [
   { id: 'db-1', name: 'Master Games', status: 'indexed', enabled: true, meta: '2.4M games' },
-  { id: 'db-2', name: 'My Games', status: 'indexed', enabled: true, meta: '812 games' }
+  { id: 'db-2', name: 'Sample Games', status: 'indexed', enabled: true, meta: '812 games' }
 ];
 
 beforeEach(() => {
@@ -45,7 +45,7 @@ afterEach(cleanup);
 
 describe('Library switcher — middle truncation', () => {
   it('returns the text untouched when it fits', () => {
-    expect(middleTruncate('My Games', 100, uniform)).toBe('My Games');
+    expect(middleTruncate('Sample Games', 100, uniform)).toBe('Sample Games');
   });
 
   /*
@@ -153,7 +153,7 @@ describe('§3.2.3.10 the truncation budget', () => {
 
 describe('Library switcher — the library list', () => {
   it('comes from Settings → Databases, not a second source', () => {
-    expect(get(libraries).map((l) => l.name)).toEqual(['Master Games', 'My Games']);
+    expect(get(libraries).map((l) => l.name)).toEqual(['Master Games', 'Sample Games']);
     objects.update((o) => ({
       ...o,
       databases: [...o.databases, { id: 'db-3', name: 'Added Later', status: 'indexed', enabled: true, meta: '5 games' }]
@@ -184,7 +184,7 @@ describe('Library switcher — the library list', () => {
   it('switches between selectable libraries', () => {
     expect(get(activeLibrary).name).toBe('Master Games');
     expect(selectLibrary('db-2')).toBe(true);
-    expect(get(activeLibrary).name).toBe('My Games');
+    expect(get(activeLibrary).name).toBe('Sample Games');
   });
 
   /*
@@ -295,7 +295,7 @@ describe('the switcher in the sidebar', () => {
     await fireEvent.click(container.querySelector('.side .head .trigger'));
     const names = [...container.querySelectorAll('.side .menu .mrow .nm')].map((e) => e.textContent.trim());
     expect(names).toContain('Master Games');
-    expect(names).toContain('My Games');
+    expect(names).toContain('Sample Games');
     expect(names).toContain('Settings…');
   });
 
@@ -303,10 +303,10 @@ describe('the switcher in the sidebar', () => {
     const { container } = render(AppShell);
     await fireEvent.click(container.querySelector('.side .head .trigger'));
     const row = [...container.querySelectorAll('.side .menu .mrow')]
-      .find((b) => b.textContent.includes('My Games'));
+      .find((b) => b.textContent.includes('Sample Games'));
     await fireEvent.click(row);
     await tick();
-    expect(get(activeLibrary).name).toBe('My Games');
+    expect(get(activeLibrary).name).toBe('Sample Games');
     expect(container.querySelector('.side .menu')).toBeNull();
   });
 

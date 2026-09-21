@@ -45,8 +45,8 @@ async function waitFor(predicate, { timeout = 2000, interval = 10 } = {}) {
 
 const DBS = [
   { id: 'db-1', name: 'Master Games', status: 'indexed', version: '2.1', enabled: true },
-  { id: 'db-2', name: 'My Games', status: 'indexed', version: '1.0', enabled: true,
-    location: '/Users/x/Library/Application Support/Plyvio/Libraries/my-games.db' }
+  { id: 'db-2', name: 'Sample Games', status: 'indexed', version: '1.0', enabled: true,
+    location: '/Users/x/Library/Application Support/Plyvio/Libraries/sample-games.db' }
 ];
 
 beforeEach(() => {
@@ -124,13 +124,13 @@ describe('DB‑05 — validation, one shared message area', () => {
     await fireEvent.click(container.querySelector('#settings-content .chead .add'));
     await tick();
     let { nameInput, createBtn } = draftFields(container);
-    await fireEvent.input(nameInput, { target: { value: 'My Games' } });
+    await fireEvent.input(nameInput, { target: { value: 'Sample Games' } });
     await tick();
     ({ nameInput, createBtn } = draftFields(container));
     expect(nameInput.className).toContain('err');
     expect(createBtn.disabled).toBe(true);
     const msg = container.querySelector('#settings-content .formmsg');
-    expect(msg.textContent).toContain('My Games');
+    expect(msg.textContent).toContain('Sample Games');
     expect(msg.textContent).toContain('already exists');
   });
 
@@ -154,12 +154,12 @@ describe('DB‑05 — validation, one shared message area', () => {
     await fireEvent.input(nameInput, { target: { value: 'New One' } });
     await tick();
     ({ nameInput, filenameInput } = draftFields(container));
-    await fireEvent.input(filenameInput, { target: { value: 'my-games.db' } });
+    await fireEvent.input(filenameInput, { target: { value: 'sample-games.db' } });
     await tick();
     ({ filenameInput } = draftFields(container));
     expect(filenameInput.className).toContain('err');
     const msg = container.querySelector('#settings-content .formmsg');
-    expect(msg.textContent).toContain('my-games.db');
+    expect(msg.textContent).toContain('sample-games.db');
     expect(container.querySelector('#settings-content .actions .b.pri').disabled).toBe(true);
   });
 
@@ -255,7 +255,7 @@ describe('createDatabase() — the store function directly', () => {
     const { createDatabase } = await import('../src/lib/stores/settings.js');
     const id = addObject('databases');
     const before = get(objects).databases.length;
-    const error = await createDatabase(id, { name: 'My Games', filename: 'my-games-2.db' });
+    const error = await createDatabase(id, { name: 'Sample Games', filename: 'sample-games-2.db' });
     expect(error).toMatchObject({ field: 'name' });
     expect(get(objects).databases.length).toBe(before);
     expect(findObject('databases', id).draft).toBe(true);

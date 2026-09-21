@@ -66,7 +66,7 @@ export const objects = writable({
   databases: [
     { id: 'db-1', name: 'Master Games', status: 'indexed', version: '2.1',
       games: 2_400_000, players: 198_000, bytes: 1_000_000_000, enabled: true },
-    { id: 'db-2', name: 'My Games', status: 'indexed', version: '1.0',
+    { id: 'db-2', name: 'Sample Games', status: 'indexed', version: '1.0',
       games: 812, players: 24, bytes: 2_400_000, enabled: true }
   ]
 });

@@ -43,7 +43,7 @@ export const tags = writable([]);
  * when the row has no real database behind it — a still-mock/seeded row
  * (`'location' in db` is `false`: no key at all, not even `null`) that
  * predates a real library ever being created for it, e.g. the two sample
- * rows the PWA still seeds (`Master Games`, `My Games` — its `libraries`
+ * rows the PWA still seeds (`Master Games`, `Sample Games` — its `libraries`
  * table has no real counterpart for them; see `data/session.js`'s own
  * comment). Resolving one of those is deliberately inert for now: there is
  * nothing real to open, so this resolves `null` and every caller's own

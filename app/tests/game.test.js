@@ -41,8 +41,9 @@ import { games as libraryGames } from '../src/lib/stores/library.js';
 const readSrc = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
 /**
- * Forty curated games carry no engine annotation; twenty-six carry a full one (row 1
- * plus the twenty-five in annotated.js).
+ * Thirty of the forty sample games carry no engine annotation; ten carry a full one
+ * (the GothamChess-vs-AwesomeAtti games) -- the whole sample set is one curated PGN now,
+ * with no separate demo corpus alongside it.
  *
  * Detected by content, not by name or id: §2.1 makes the id a row number that carries
  * no meaning, and a hardcoded name list would silently stop covering the set the moment
@@ -58,7 +59,7 @@ const game = (white, black) =>
 
 const isEngineAnnotated = (g) => g.pgn.includes('[%eval ');
 
-const ANNOTATED = game('GothamChess', 'EmperorSixSeven');
+const ANNOTATED = game('GothamChess', 'AwesomeAtti');
 const ANNOTATED_GAMES = GAMES.filter(isEngineAnnotated);
 const UNANNOTATED_GAMES = GAMES.filter((g) => !isEngineAnnotated(g));
 const tick = () => new Promise((r) => setTimeout(r, 0));
@@ -414,9 +415,9 @@ describe('§5.4.2 Section allocation', () => {
 
 describe('sample games', () => {
   it('looks like a real row: pgn present, movetext null, nothing derived', () => {
-    expect(GAMES.length).toBe(66);
+    expect(GAMES.length).toBe(40);
     expect(UNANNOTATED_GAMES).toHaveLength(30);
-    expect(ANNOTATED_GAMES).toHaveLength(36);
+    expect(ANNOTATED_GAMES).toHaveLength(10);
     for (const g of GAMES) {
       // Every row in samples/ is in this state — import writes pgn and leaves
       // movetext NULL (§4) — so the sample games are shaped the same way.
@@ -573,17 +574,19 @@ describe('sample games', () => {
   });
 
   /*
-   * Coverage, asserted rather than assumed: the twenty-five were picked to exercise the
-   * Moves Section at both ends of the density study and the banner on a mate score.
+   * Coverage, asserted rather than assumed: the ten GothamChess-vs-AwesomeAtti games (the
+   * only annotated rows left once the old 26-game demo set was dropped) split evenly by
+   * colour and span short and long games, but they carry no draw among them — unlike the
+   * dropped demo set, "all three results" isn't a property of this corpus.
    */
-  it('covers both colours, all three results and a range of lengths', () => {
+  it('covers both colours and a range of lengths, across two results', () => {
     const lengths = ANNOTATED_GAMES.map((g) => pliesFor(g).length - 1);
-    expect(Math.min(...lengths)).toBeLessThan(45);
-    expect(Math.max(...lengths)).toBeGreaterThan(200);
-    expect(new Set(ANNOTATED_GAMES.map((g) => g.result)).size).toBe(3);
+    expect(Math.min(...lengths)).toBeLessThan(35);
+    expect(Math.max(...lengths)).toBeGreaterThan(100);
+    expect(new Set(ANNOTATED_GAMES.map((g) => g.result)).size).toBe(2);
     const white = ANNOTATED_GAMES.filter((g) => g.white === 'GothamChess').length;
-    expect(white).toBeGreaterThan(5);
-    expect(ANNOTATED_GAMES.length - white).toBeGreaterThan(5);
+    expect(white).toBe(5);
+    expect(ANNOTATED_GAMES.length - white).toBe(5);
     expect(ANNOTATED_GAMES.some((g) => pliesFor(g).some((p) => p.x !== null))).toBe(true);
   });
 

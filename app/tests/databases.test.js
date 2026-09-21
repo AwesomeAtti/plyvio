@@ -26,7 +26,7 @@ const now = (fn) => fn();
 const DBS = [
   { id: 'db-1', name: 'Master Games', status: 'indexed', version: '2.1',
     games: 2_400_000, players: 198_000, bytes: 1_000_000_000, enabled: true },
-  { id: 'db-2', name: 'My Games', status: 'indexed', version: '1.0',
+  { id: 'db-2', name: 'Sample Games', status: 'indexed', version: '1.0',
     games: 812, players: 24, bytes: 2_400_000, enabled: true }
 ];
 
@@ -200,7 +200,7 @@ describe('§3.4.8 the expander fields', () => {
 
   it('disabling removes it from the switcher’s offer', () => {
     setDatabaseEnabled('db-2', false);
-    expect(get(libraries).find((l) => l.name === 'My Games').selectable).toBe(false);
+    expect(get(libraries).find((l) => l.name === 'Sample Games').selectable).toBe(false);
   });
 });
 
@@ -219,7 +219,7 @@ describe('§3.4.8 the section', () => {
     const { container } = await renderDatabases();
     const names = [...container.querySelectorAll('#settings-content .box')][0]
       .querySelectorAll('.nm');
-    expect([...names].map((e) => e.textContent.trim())).toEqual(['Master Games', 'My Games']);
+    expect([...names].map((e) => e.textContent.trim())).toEqual(['Master Games', 'Sample Games']);
   });
 
   it('shows counts and size on every installed row', async () => {
@@ -340,7 +340,7 @@ describe('§3.4.8 row geometry', () => {
 
 describe('slugify() — Name to filename base', () => {
   it('lowercases, collapses non-alphanumerics to a single hyphen', () => {
-    expect(slugify('My Games')).toBe('my-games');
+    expect(slugify('Sample Games')).toBe('sample-games');
     expect(slugify('Master Games Reference Collection 2026')).toBe('master-games-reference-collection-2026');
   });
 
@@ -361,7 +361,7 @@ describe('slugify() — Name to filename base', () => {
 
 describe('deriveFilename() — DB‑04 auto-follow', () => {
   it('appends .db to the slug', () => {
-    expect(deriveFilename('My Games')).toBe('my-games.db');
+    expect(deriveFilename('Sample Games')).toBe('sample-games.db');
     expect(deriveFilename('New Database')).toBe('new-database.db');
   });
 
@@ -385,10 +385,10 @@ describe('utf8ByteLength() / basename()', () => {
   });
 
   it('reads the filename out of a path, either separator', () => {
-    expect(basename('/Users/x/Library/Application Support/Plyvio/Libraries/my-games.db'))
-      .toBe('my-games.db');
-    expect(basename('C:\\Users\\x\\AppData\\Roaming\\Plyvio\\Libraries\\my-games.db'))
-      .toBe('my-games.db');
+    expect(basename('/Users/x/Library/Application Support/Plyvio/Libraries/sample-games.db'))
+      .toBe('sample-games.db');
+    expect(basename('C:\\Users\\x\\AppData\\Roaming\\Plyvio\\Libraries\\sample-games.db'))
+      .toBe('sample-games.db');
     expect(basename('')).toBe('');
   });
 });
@@ -409,20 +409,20 @@ describe('validateDatabaseName() — DB‑05', () => {
   });
 
   it('refuses a duplicate name, case-insensitively', () => {
-    expect(validateDatabaseName('my games', ['My Games'])).toEqual({
-      field: 'name', key: 'settings.databaseNameDuplicate', params: { name: 'my games' }
+    expect(validateDatabaseName('sample games', ['Sample Games'])).toEqual({
+      field: 'name', key: 'settings.databaseNameDuplicate', params: { name: 'sample games' }
     });
   });
 
   it('accepts a unique name', () => {
-    expect(validateDatabaseName('New Database', ['My Games', 'Master Games'])).toBeNull();
+    expect(validateDatabaseName('New Database', ['Sample Games', 'Master Games'])).toBeNull();
   });
 });
 
 describe('validateDatabaseFilename() — DB‑05', () => {
   it('refuses a collision against an existing filename', () => {
-    expect(validateDatabaseFilename('my-games.db', ['my-games.db'])).toEqual({
-      field: 'filename', key: 'settings.databaseFilenameDuplicate', params: { filename: 'my-games.db' }
+    expect(validateDatabaseFilename('sample-games.db', ['sample-games.db'])).toEqual({
+      field: 'filename', key: 'settings.databaseFilenameDuplicate', params: { filename: 'sample-games.db' }
     });
   });
 
@@ -434,23 +434,23 @@ describe('validateDatabaseFilename() — DB‑05', () => {
   });
 
   it('accepts a unique, in-budget filename', () => {
-    expect(validateDatabaseFilename('new-database.db', ['my-games.db'])).toBeNull();
+    expect(validateDatabaseFilename('new-database.db', ['sample-games.db'])).toBeNull();
   });
 });
 
 describe('validateDraftDatabase() — one shared check, Name before Filename', () => {
   it('reports the Name problem even when Filename also collides', () => {
     const error = validateDraftDatabase({
-      name: 'My Games', filename: 'my-games.db',
-      existingNames: ['My Games'], existingFilenames: ['my-games.db']
+      name: 'Sample Games', filename: 'sample-games.db',
+      existingNames: ['Sample Games'], existingFilenames: ['sample-games.db']
     });
     expect(error.field).toBe('name');
   });
 
   it('falls through to Filename once Name is clean', () => {
     const error = validateDraftDatabase({
-      name: 'New Database', filename: 'my-games.db',
-      existingNames: ['My Games'], existingFilenames: ['my-games.db']
+      name: 'New Database', filename: 'sample-games.db',
+      existingNames: ['Sample Games'], existingFilenames: ['sample-games.db']
     });
     expect(error.field).toBe('filename');
   });
@@ -458,7 +458,7 @@ describe('validateDraftDatabase() — one shared check, Name before Filename', (
   it('is null once both are clean', () => {
     expect(validateDraftDatabase({
       name: 'New Database', filename: 'new-database.db',
-      existingNames: ['My Games'], existingFilenames: ['my-games.db']
+      existingNames: ['Sample Games'], existingFilenames: ['sample-games.db']
     })).toBeNull();
   });
 });
