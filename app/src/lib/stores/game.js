@@ -22,7 +22,7 @@ import {
   findOrCreateCollection, addGameToCollection, removeGameFromCollection,
   setFavorite
 } from '$lib/data/games.js';
-import { explorerConnection } from '$lib/data/session.js';
+import { explorerConnection, requestPersistentStorage } from '$lib/data/session.js';
 
 /**
  * Game Workspace state — §5.3, §2.3.
@@ -580,6 +580,7 @@ function persistFavourite(gameId, on) {
       const connection = await activeLibraryConnection();
       if (!connection) throw new Error('no database connection');
       await setFavorite(connection, gameId, !!on);
+      requestPersistentStorage();
     } catch (err) {
       console.error(`Plyvio: failed to save favourite for game ${gameId}`, err);
     }
@@ -666,6 +667,7 @@ function persistGameInfo(gameId, prev, v) {
           .map((id) => removeGameFromCollection(connection, id, gameId)),
         setFavorite(connection, gameId, !!v.favorite)
       ]);
+      requestPersistentStorage();
 
       await loadGames();
     } catch (err) {

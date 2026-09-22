@@ -2,6 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
 import { games, collections, tags, connectionForLibrary, loadGames } from '$lib/stores/library.js';
 import { activeLibraryId } from '$lib/stores/libraries.js';
+import { requestPersistentStorage } from '$lib/data/session.js';
 import { makeImportedGames } from '$lib/library/mock.js';
 import { planImport, notAddedCount, outcomeMessage } from '$lib/library/importJob.js';
 import { insertGames } from '$lib/data/games.js';
@@ -208,6 +209,7 @@ async function runRealWrite(p) {
     if (connection) {
       const inserted = await insertGames(connection, p.rows);
       written.set(inserted.length);
+      requestPersistentStorage();
       if (p.destination === get(activeLibraryId)) await loadGames();
     }
   } catch (err) {

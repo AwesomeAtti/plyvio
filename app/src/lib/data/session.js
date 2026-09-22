@@ -53,7 +53,7 @@
  * further down) — see that function's own comment for what changed.
  */
 
-import { readLibraries } from './config.js';
+import { readLibraries, readUiState, writeUiState } from './config.js';
 
 // Set in `app/.env` (gitignored, per-developer) as VITE_SAMPLES_DIR — see `.env.example`.
 const SAMPLES_DIR = import.meta.env.VITE_SAMPLES_DIR;
@@ -323,6 +323,42 @@ export const librariesDirectoryEntries = async () => {
     return [];
   }
 };
+
+const PERSIST_REQUESTED_KEY = 'pwaPersistRequested';
+let persistRequest = null;
+
+/**
+ * Ask the browser to keep this origin's storage rather than evict it under
+ * disk pressure (`navigator.storage.persist()`). PWA only; on the desktop app
+ * this does nothing.
+ *
+ * Called after a write the USER started has succeeded (saving the Edit
+ * dialog, a favourite, creating a database, a real import), never at
+ * startup. Chrome, Edge and Safari decide silently, but Firefox shows its own
+ * permission prompt, and a prompt should follow something the user just did.
+ *
+ * Once per browser: skipped when storage is already persisted, and the attempt
+ * is recorded in `config.db`'s `ui_state` so later sessions don't ask again,
+ * whatever the answer was. Plyvio shows nothing and doesn't act on the result.
+ * Never rejects; a failure is logged.
+ *
+ * @returns {Promise<void>}
+ */
+export const requestPersistentStorage = () => (persistRequest ??= (async () => {
+  if (getBackend() !== 'pwa') return;
+  const storage = globalThis.navigator?.storage;
+  if (typeof storage?.persist !== 'function' || typeof storage?.persisted !== 'function') return;
+  try {
+    const config = await configConnection();
+    if (!config) return;
+    const { [PERSIST_REQUESTED_KEY]: requested } = await readUiState(config);
+    if (requested) return;
+    if (!(await storage.persisted())) await storage.persist();
+    await writeUiState(config, PERSIST_REQUESTED_KEY, true);
+  } catch (err) {
+    console.error('Plyvio: could not request persistent storage', err);
+  }
+})());
 
 /**
  * What a PWA Library's `libraries.game_db_path` holds. Only a marker: the

@@ -13,7 +13,10 @@ import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
 import { planImport, resolveOutcome } from '../src/lib/library/importJob.js';
 
-vi.mock('$lib/data/session.js', () => ({ libraryConnection: vi.fn(), isTauri: () => false }));
+vi.mock('$lib/data/session.js', () => ({
+  libraryConnection: vi.fn(), isTauri: () => false,
+  requestPersistentStorage: vi.fn(() => Promise.resolve())
+}));
 vi.mock('$lib/data/games.js', () => ({
   insertGames: vi.fn(),
   // `runRealWrite()` no longer patches `games` itself -- a write that lands

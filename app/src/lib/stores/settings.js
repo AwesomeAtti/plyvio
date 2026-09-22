@@ -4,7 +4,7 @@ import { AVAILABLE_DATABASES, validateDraftDatabase, basename } from '$lib/setti
 import { AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
 import {
   configConnection, explorerConnection, getBackend, librariesDirectoryEntries,
-  openNewLibraryConnection, PWA_LIBRARY_PATH
+  openNewLibraryConnection, PWA_LIBRARY_PATH, requestPersistentStorage
 } from '$lib/data/session.js';
 import {
   readPreferences, writePreference, PREFERENCE_KEYS,
@@ -561,6 +561,7 @@ export async function createDatabase(id, { name, filename }) {
     try {
       const { connection } = await openNewLibraryConnection({ id: newId });
       await connection.close();
+      requestPersistentStorage();
     } catch (err) {
       console.error('Plyvio: failed to create the database', err);
     }
