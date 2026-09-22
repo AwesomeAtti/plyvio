@@ -25,6 +25,7 @@ import { sqlite3Module, openDb, connectionFor } from './sqlite-engine.js';
 import { GAME_DB_DDL, CONFIG_DB_DDL, SCHEMA_USER_VERSION } from './schema.js';
 import { readBlob, writeBlob } from './idb-blob-store.js';
 import { GAMES } from '../../mock-data/sample-games.js';
+import { computePositions } from '../../game/buildPositions.js';
 
 /** How long a write waits, quiet, before it's flushed to IndexedDB. */
 const SAVE_DEBOUNCE_MS = 2000;
@@ -48,6 +49,26 @@ const seedGames = (db, now) => {
   for (const g of GAMES) {
     const row = { ...g, created_at: now };
     db.exec({ sql: insertSql, bind: SEED_COLUMNS.map((c) => row[c] ?? null) });
+  }
+  seedPositions(db);
+};
+
+/**
+ * §6's `positions` table, computed once from the same 40 games `seedGames()`
+ * just inserted — `game/buildPositions.js`'s `computePositions()`, the PWA's
+ * own equivalent of `samples/build_positions.py`'s offline pass, run here
+ * because the PWA has no `.db` file for that script to target. Real
+ * statistics from the first open onward, not a mock the Explorer Section
+ * falls back to — see that module's own header for why the two must agree
+ * on `positionKey()`.
+ */
+const seedPositions = (db) => {
+  const rows = computePositions(GAMES);
+  if (!rows.length) return;
+  const insertSql =
+    'insert into positions (pos, move, games, white, draws, black) values (?, ?, ?, ?, ?, ?)';
+  for (const r of rows) {
+    db.exec({ sql: insertSql, bind: [r.pos, r.move, r.games, r.white, r.draws, r.black] });
   }
 };
 
@@ -149,8 +170,12 @@ export const openConfigDatabase = () => openPwaDatabase('config', CONFIG_DB_DDL,
  *    `{ seed: true }` exactly once, for the real "Sample Games" `libraries`
  *    row it registers on first launch, so that row's own IndexedDB record
  *    starts with `sample-games.js`'s 40 games already in it rather than
- *    empty. Reuses the same private `seedGames()` `openGameDatabase()`
- *    already defines below, rather than a second seeding routine.
+ *    empty — and, as of 22 Sep 2026, with §6's `positions` table computed
+ *    and populated alongside them (`seedGames()`'s own trailing
+ *    `seedPositions()` call, above), so the Explorer Section's numbers are
+ *    real for this library from the first launch on, not mocked. Reuses the
+ *    same private `seedGames()` `openGameDatabase()` already defines below,
+ *    rather than a second seeding routine.
  *
  * @param {string|number} id the Library's id.
  * @param {{ seed?: boolean }} [options] `seed: true` runs `seedGames()`

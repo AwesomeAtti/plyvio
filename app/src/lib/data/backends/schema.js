@@ -6,11 +6,16 @@
  * schema's other implementation (Python, for building the desktop sample `.db` files).
  * Keep the two in step by hand — there's no single source both languages generate from.
  *
- * `GAME_DB_DDL` omits nothing from `database-schema.md` §1–§4 and §7 that the
- * application's repository layer (`data/games.js`) reads or writes. It leaves out §6's
- * `positions` table (derived data, no read/write path in `data/games.js` yet — see
- * `readPositionStats`'s own comment) and does not need one for a fresh database to be
- * valid; §6 says plainly a game database without one still is.
+ * `GAME_DB_DDL` covers everything from `database-schema.md` §1–§4 and §7 the
+ * application's repository layer (`data/games.js`) reads or writes, plus §6's
+ * `positions` table (added 22 Sep 2026 — `data/games.js`'s `readPositionStats` has
+ * had a real read path since 21 Sep, and the PWA's own Sample Games seed
+ * (`backends/pwa.js`) needs somewhere to write the rows `game/buildPositions.js`
+ * computes). §6 still says plainly a game database without the table is valid —
+ * `createDatabase()`'s "create new, empty Library" path deliberately does not run
+ * this DDL's `positions` statement's equivalent on the desktop side
+ * (`samples/build_positions.py` is a separate, later pass there); a brand-new
+ * empty database legitimately has no games to derive stats from yet.
  *
  * `CONFIG_DB_DDL` covers `preferences`, `ui_state`, `subscriptions`, plus `libraries`
  * and `engines` — the last two exist here only so `subscriptions.library_id`'s foreign
@@ -59,6 +64,21 @@ CREATE TABLE games (
     created_at       TEXT,
     movetext         TEXT
 );
+
+-- Derived data (database-schema.md §6) -- reconstructible from games, never a
+-- source of truth. A fresh database is created WITHOUT rows in it; only the PWA's
+-- Sample Games seed (backends/pwa.js, via game/buildPositions.js) populates it
+-- today, mirroring what samples/build_positions.py does for the desktop .db
+-- files. Column order matches section 6.1 exactly, pos+move primary key included.
+CREATE TABLE positions (
+    pos    TEXT    NOT NULL,
+    move   TEXT    NOT NULL,
+    games  INTEGER NOT NULL,
+    white  INTEGER NOT NULL,
+    draws  INTEGER NOT NULL,
+    black  INTEGER NOT NULL,
+    PRIMARY KEY (pos, move)
+) WITHOUT ROWID;
 
 -- A row means the game is a favorite.
 CREATE TABLE favorites (

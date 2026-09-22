@@ -24,7 +24,10 @@
  *                           `libraryConnection()` is open to. Its own,
  *                           separate per-id cache, so the Explorer can have a
  *                           different library open at the same time as the
- *                           main view.
+ *                           main view. Backend-aware, same as
+ *                           `libraryConnection()` (22 Sep 2026) — no longer
+ *                           Tauri-only; see `openLibraryById()` below, the
+ *                           body the two share.
  *
  * `libraryConnection` and `explorerConnection` were named `gamesConnection`
  * and `libraryConnection` respectively until an earlier migration. The old
@@ -43,10 +46,10 @@
  * test environment with no IndexedDB polyfill), which degrades the same way
  * every other missing capability in this seam does rather than throwing.
  *
- * `explorerConnection()` is the one exception, still Tauri-only: it resolves a
- * library by id through `config.db`'s `libraries` table, and `libraries` has no
- * real rows in the PWA yet (see this file's own comment on that, further down) —
- * there's nothing for it to resolve there today.
+ * `explorerConnection()` used to be the one exception, Tauri-only, because
+ * `libraries` had no real PWA rows to resolve. As of 22 Sep 2026 it shares
+ * `libraryConnection()`'s own backend-aware lookup (`openLibraryById()`,
+ * further down) — see that function's own comment for what changed.
  */
 
 import { readLibraries } from './config.js';
@@ -208,6 +211,42 @@ export const configConnection = () => {
 const libraryConnectionPromises = new Map();
 
 /**
+ * Open a library's game database by id, backend-aware — the body
+ * `libraryConnection()` and `explorerConnection()` below share. Tauri:
+ * resolve the id through `config.db`'s `libraries` table, then open the
+ * file at its (possibly relative) `game_db_path` — an id `config.db` has
+ * no row for resolves `null`. PWA: open the library's own IndexedDB record
+ * directly by id, via `backends/pwa.js`'s `openLibraryDatabase()` — which
+ * does NOT check `config.db` first, so an id nothing has registered still
+ * opens (creating, on first touch, an empty per-library record keyed to
+ * it) rather than resolving `null`. This asymmetry is pre-existing, not
+ * introduced by extracting this helper: every caller today only ever
+ * passes an id it already read out of `objects.databases`/`config.db`'s
+ * own real rows, so the PWA branch's laxness has no live caller that
+ * depends on it, but it is worth knowing before adding one that does.
+ *
+ * Not cached here — each caller keeps its own per-id cache (see this file's
+ * header for why `libraryConnection` and `explorerConnection` are two
+ * caches rather than one), so this only ever runs the open itself.
+ *
+ * @returns {Promise<import('./connection.js').Connection|null>} `null` for
+ *   an id no library in `config.db` has (Tauri only), or when the
+ *   underlying config/PWA connection itself is unavailable.
+ */
+const openLibraryById = async (libraryId, label) => {
+  if (getBackend() === 'tauri') {
+    const config = await configConnection();
+    if (!config) return null;
+    const libs = await readLibraries(config);
+    const library = libs.find((l) => l.id === libraryId);
+    if (!library) return null;
+    const mod = await import('./backends/tauri.js');
+    return mod.openFileDatabase(resolveGameDbPath(library.path));
+  }
+  return openPwaConnection((mod) => mod.openLibraryDatabase(libraryId), label);
+};
+
+/**
  * A connection to a specific library's game database, by the id
  * `stores/libraries.js`'s `activeLibraryId` holds — the switcher's current
  * selection. One connection per id, opened once and reused, the same
@@ -229,20 +268,7 @@ const libraryConnectionPromises = new Map();
 export const libraryConnection = (libraryId) => {
   if (libraryId == null) return Promise.resolve(null);
   if (!libraryConnectionPromises.has(libraryId)) {
-    libraryConnectionPromises.set(libraryId, (async () => {
-      if (getBackend() === 'tauri') {
-        const config = await configConnection();
-        if (!config) return null;
-        const libs = await readLibraries(config);
-        const library = libs.find((l) => l.id === libraryId);
-        if (!library) return null;
-        const mod = await import('./backends/tauri.js');
-        return mod.openFileDatabase(resolveGameDbPath(library.path));
-      }
-      return openPwaConnection(
-        (mod) => mod.openLibraryDatabase(libraryId), `library-${libraryId}`
-      );
-    })());
+    libraryConnectionPromises.set(libraryId, openLibraryById(libraryId, `library-${libraryId}`));
   }
   return libraryConnectionPromises.get(libraryId);
 };
@@ -255,31 +281,23 @@ const explorerConnectionPromises = new Map();
  * game.js`). One connection per id, opened once and reused, resolved through
  * `config.db`'s `libraries` table rather than a hand-written map.
  *
- * Still Tauri-only. `configConnection()` no longer resolves `null` in the
- * PWA, but `libraries` has no real rows there (`schema.js`'s own comment on
- * why) — every id would fail to resolve anyway, so this stays gated the same
- * way it always was rather than doing a real lookup against an always-empty
- * table.
+ * Backend-aware (22 Sep 2026) — no longer Tauri-only. It used to stop at
+ * `if (!isTauri()) return null` on the reasoning that the PWA's `libraries`
+ * table had no real rows to resolve anyway; that stopped being true once
+ * `loadLibraries()`'s PWA merge and the Sample Games bootstrap (both closed
+ * 22 Sep) gave the PWA real registrations. Shares `openLibraryById()` with
+ * `libraryConnection()` above — same lookup, kept in this function's own
+ * cache so the Explorer can have a different library open than the main
+ * view at the same time (this file's own header explains why there are two
+ * caches rather than one).
  *
- * @returns {Promise<import('./connection.js').Connection|null>} `null`
- *   outside Tauri, for an id no library in `config.db` has, or when
- *   `config.db` itself has no connection.
+ * @returns {Promise<import('./connection.js').Connection|null>} `null` for
+ *   an id no library in `config.db` has, or when the underlying config/PWA
+ *   connection itself is unavailable.
  */
 export const explorerConnection = (libraryId) => {
-  if (getBackend() !== 'tauri') return Promise.resolve(null);
   if (!explorerConnectionPromises.has(libraryId)) {
-    explorerConnectionPromises.set(
-      libraryId,
-      (async () => {
-        const config = await configConnection();
-        if (!config) return null;
-        const libraries = await readLibraries(config);
-        const library = libraries.find((l) => l.id === libraryId);
-        if (!library) return null;
-        const mod = await import('./backends/tauri.js');
-        return mod.openFileDatabase(resolveGameDbPath(library.path));
-      })()
-    );
+    explorerConnectionPromises.set(libraryId, openLibraryById(libraryId, `explorer-${libraryId}`));
   }
   return explorerConnectionPromises.get(libraryId);
 };
