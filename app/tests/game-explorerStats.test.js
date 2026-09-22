@@ -14,6 +14,14 @@
  * open (`stores/game.js`'s own comment on `explorerLibraryId` says so), and
  * leaving the game mock keeps this file from also needing to fake a game's
  * movetext fetch to exercise the Explorer's.
+ *
+ * The picker's own list comes from `objects.databases`
+ * (`stores/settings.js`) — that store seeds `databases: []` by default as
+ * of 22 Sep 2026 (the PWA's old `db-1`/`db-2` placeholders are gone; see
+ * that file's own comment), so this file sets its own two-row fixture
+ * below rather than relying on the app's default seed. `'db-1'`/`'db-2'`
+ * here are just this file's own opaque test ids, chosen to keep the diff
+ * small — they no longer name anything the app itself seeds.
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
@@ -45,12 +53,28 @@ const { explorerConnection } = await import('$lib/data/session.js');
 const { readPositionStats } = await import('$lib/data/games.js');
 const { positionKey } = await import('../src/lib/game/explorer.js');
 const { positionStats } = await import('../src/lib/game/explorerMock.js');
+const { objects } = await import('../src/lib/stores/settings.js');
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
+
+// Two indexed, enabled libraries for the Explorer's own picker
+// (`explorerLibraries()`) to offer — `db-1` first, so it's the default a
+// freshly opened tab selects; `db-2` second, for the explicit-selection
+// tests below.
+const EXPLORER_LIBRARIES = [
+  // `games` matters here, not just cosmetically: `explorerMock.js`'s
+  // `positionStats()` fallback scales its invented row count off it, so a
+  // library with no `games` figure (0) generates zero rows at any ply —
+  // which is exactly what "falls back to the mock, not empty rows" below
+  // needs to NOT happen.
+  { id: 'db-1', name: 'Test Library One', status: 'indexed', enabled: true, games: 1000 },
+  { id: 'db-2', name: 'Test Library Two', status: 'indexed', enabled: true, games: 1000 }
+];
 
 beforeEach(() => {
   resetGameState();
   activeId.set('library');
+  objects.update((o) => ({ ...o, databases: EXPLORER_LIBRARIES }));
   explorerConnection.mockReset();
   readPositionStats.mockReset();
   explorerConnection.mockImplementation(async (id) => (id ? { id } : null));

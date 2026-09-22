@@ -63,7 +63,8 @@
     const name = draft.trim();
     if (!name) return;
     /* A negative id cannot collide with the seeded fixtures, which count up
-       from 0 — the same collision the Settings store hit with `db-1`. */
+       from 0 — the same kind of id collision `stores/settings.js`'s
+       `nextId()` guards against with its own `n` marker. */
     add({ id: -(++created) - Date.now() % 1000, name, isNew: true });
   }
 

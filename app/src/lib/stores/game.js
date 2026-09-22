@@ -17,8 +17,7 @@ import {
 } from './library.js';
 import { known, ratingText, resultText, infoContentHeight } from '$lib/game/info.js';
 import { readMovetextFor, readRecordFields, readPositionStats } from '$lib/data/games.js';
-import { explorerConnection, isTauri } from '$lib/data/session.js';
-import { activeLibraryId } from './libraries.js';
+import { explorerConnection } from '$lib/data/session.js';
 
 /**
  * Game Workspace state — §5.3, §2.3.
@@ -50,22 +49,18 @@ export const gameStates = writable({});
  */
 export const gameEdits = writable({});
 
-/** The prototype has four real games; a library row is mapped onto one. */
+/**
+ * The prototype has four real games; a mock/sandbox library id is mapped
+ * onto one by hash. A real `games.id` (a `number`, `isRealGameId()` below)
+ * never reaches this function — `ensureGameState()` only calls it once it
+ * has already established the tab is NOT reading a real database, so this
+ * goes back to a plain string hash, its shape before the 21 Sep PWA
+ * stopgap (removed 22 Sep — see `isRealGameId()`'s own comment) briefly
+ * needed a numeric-id branch to stop the stopgap's own real-looking ids
+ * from hashing wrong.
+ */
 function gameForLibraryId(libraryId) {
   if (!libraryId) return GAMES[0];
-  /*
-    A NUMERIC id is a row key, not a string to hash. `charCodeAt` does not
-    exist on a number, so the loop below never ran for one and every such tab
-    resolved to `GAMES[0]` — harmless while the only numeric ids were real
-    database rows (which never reach this function), wrong the moment the PWA
-    stopgap started handing out `sample-games.js`'s own ids. Resolve by id
-    where the id names a row, and fall through to the hash otherwise so a
-    tab opened on a generated stress row still gets a game rather than
-    nothing.
-  */
-  if (typeof libraryId === 'number') {
-    return GAMES.find((g) => g.id === libraryId) ?? GAMES[0];
-  }
   let h = 0;
   for (let i = 0; i < libraryId.length; i++) h = (h * 31 + libraryId.charCodeAt(i)) | 0;
   return GAMES[Math.abs(h) % GAMES.length];
@@ -77,39 +72,15 @@ function gameForLibraryId(libraryId) {
  * A real `games.id` is a SQLite integer (`readGames()`'s rows, and the
  * library rows built from them) — a `number`. The test suite's fixture
  * tabs, and any tab opened with no library row at all, use a string
- * sentinel or `null`, which is also what `gameForLibraryId`'s hash was
- * built for.
- *
- * `typeof` alone is NO LONGER the whole test. It was, until the PWA
- * stopgap in `stores/library.js`'s `loadGames()` began filling `games`
- * from `library/mock.js`'s `realRows()` — whose ids are
- * `sample-games.js`'s own 1–40, integers like any other. A tab opened on
- * one of those took the real-database path, found no connection, and sat
- * on `EMPTY_REAL_GAME`: a board at the starting position with no moves,
- * which is what an opened Sample Games game looked like. `mockLibraryGame`
- * below is the second half of the test.
+ * sentinel or `null`, which is also what `gameForLibraryId`'s hash is built
+ * for. Plain `typeof` is the whole test again as of 22 Sep 2026: the PWA's
+ * seeded Sample Games library is now a real, `config.db`-backed row
+ * (`stores/settings.js`'s `ensureSampleGamesLibrary()`), so its ids are
+ * genuine `games.id` values behind a genuine connection — there is no
+ * longer a real-looking mock id this needs to special-case. See
+ * `CLOSED.md` for the 21 Sep stopgap this replaces.
  */
 const isRealGameId = (libraryGameId) => typeof libraryGameId === 'number';
-
-/**
- * The `sample-games.js` row a library id names, when the active library is
- * the PWA's seeded Sample Games row and there is no real database behind it.
- *
- * MIRRORS `loadGames()`'s own stopgap condition (`!isTauri()` and the seeded
- * `db-2`) deliberately and in full, rather than inferring "mock" from a
- * failed connection: on desktop a connection that fails is a fault to show,
- * not a cue to display some other game's moves. Desktop never reaches this —
- * `isTauri()` is true there — so its path is unchanged.
- *
- * TEMPORARY, and paired with that stopgap: both come out together when the
- * PWA gets real per-library storage. See ACTIONS.md, "Remove the
- * `loadGames()` PWA stopgap and its `isTauri()` exception".
- */
-function mockLibraryGame(libraryGameId) {
-  if (!isRealGameId(libraryGameId)) return null;
-  if (isTauri() || get(activeLibraryId) !== 'db-2') return null;
-  return GAMES.find((g) => g.id === libraryGameId) ?? null;
-}
 
 /**
  * Does this tab read the real database, or `sample-games.js`?
@@ -311,10 +282,9 @@ function refreshExplorerStats(tabId) {
 export function ensureGameState(tabId, libraryGameId = null) {
   const existing = get(gameStates)[tabId];
   if (existing) return existing;
-  const mockRow = mockLibraryGame(libraryGameId);
-  const realGame = !mockRow && isRealGameId(libraryGameId);
+  const realGame = isRealGameId(libraryGameId);
   if (realGame) loadRealGame(libraryGameId);
-  const game = mockRow ?? gameForLibraryId(libraryGameId);
+  const game = gameForLibraryId(libraryGameId);
   const state = {
     gameId: game.id,
     /*
@@ -346,10 +316,11 @@ export function ensureGameState(tabId, libraryGameId = null) {
 
       Defaults to the first indexed-and-enabled entry `objects.databases` has
       right now, the same list `explorerLibraries` derives the picker from —
-      not a literal id, which stopped meaning anything once `objects.databases`
-      could hold real `libraries.id` integers instead of only `'db-1'`/`'db-2'`.
-      `null` when nothing is selectable yet (outside Tauri before
-      `loadLibraries()` lands, or a fresh install with no Library at all);
+      not a literal id: `objects.databases` holds real `libraries.id`
+      integers, not fixed sentinels. `null` when nothing is selectable yet
+      (before `loadLibraries()` lands, or a fresh install/PWA visit with no
+      Library at all — see `stores/settings.js`'s `ensureSampleGamesLibrary()`
+      for the PWA's one exception);
       `refreshExplorerStats` already no-ops on a falsy `explorerLibraryId`.
     */
     explorerLibraryId: explorerLibraries(get(objects).databases ?? [])[0]?.id ?? null,

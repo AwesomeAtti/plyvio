@@ -10,7 +10,7 @@ import {
   readPreferences, writePreference, PREFERENCE_KEYS,
   readLibraries, writeLibraryName, writeLibraryEnabled, createLibrary, deleteLibrary,
   readEngines, writeEngineName, writeEngineOption, writeEngineEnabled,
-  readSubscriptions
+  readSubscriptions, readUiState, writeUiState
 } from '$lib/data/config.js';
 import { countNewGamesForSubscription } from '$lib/data/games.js';
 import { locale } from '$lib/stores/i18n.js';
@@ -37,16 +37,34 @@ export const lastApplied = writable(0);
 let seq = 0;
 /**
  * Generated ids carry an `n` marker so they cannot collide with the seeded
- * sample ids below (`db-1`, `engine-2`, …).
+ * sample ids below (`engine-2`, `sub-3`, …).
  *
  * They could, and did: `seq` starts at 0, so the first generated database id
- * was `db-1` — already taken. Svelte throws on duplicate keys in a keyed
- * {#each}, so installing anything broke the section the next time it mounted,
- * which looked like "the section will not display" rather than like an id bug.
+ * was `db-1` — already taken by the seeded placeholder that occupied that id
+ * at the time. Svelte throws on duplicate keys in a keyed {#each}, so
+ * installing anything broke the section the next time it mounted, which
+ * looked like "the section will not display" rather than like an id bug.
+ * `db-1`/`db-2` are gone now (22 Sep 2026 — see `objects`' own comment), but
+ * the `n` marker stays: the same collision is still possible against
+ * `engine-`/`sub-`'s own seeded ids, and a generated database id can still
+ * collide with a real, numeric `libraries.id` once one exists — an `n`
+ * marker never collides with a bare integer either way.
  */
 const nextId = (p) => `${p}-n${++seq}`;
 
-/** Sample objects so the prototype opens in a working state rather than empty. */
+/**
+ * Sample objects so the prototype opens in a working state rather than
+ * empty — `databases` is the one exception, deliberately empty. Desktop's
+ * `config.db` (`samples/build_samples.py`) already ships real `libraries`
+ * rows for Master Games and Sample Games, so `loadLibraries()`'s Tauri
+ * branch has real rows to load within a moment of mount either way. The PWA
+ * used to seed two placeholder rows here (`db-1`/`db-2`, no `location`) so
+ * it wasn't empty in that same moment — removed 22 Sep 2026, on instruction,
+ * in favor of `loadLibraries()`'s own PWA bootstrap (below) registering a
+ * real "Sample Games" row on first launch instead of faking one here.
+ * Master Games has no PWA equivalent at all right now — see that function's
+ * own comment for why.
+ */
 export const objects = writable({
   engines: [
     { id: 'engine-1', name: 'Stockfish', version: '17.1', status: 'ready', protocol: 'UCI',
@@ -64,12 +82,7 @@ export const objects = writable({
     { id: 'sub-4', name: 'MagnusCarlsen', source: 'chesscom', state: 'error',
       interval: 'Weekly', lastSynced: null, newGames: 0, enabled: false }
   ],
-  databases: [
-    { id: 'db-1', name: 'Master Games', status: 'indexed', version: '2.1',
-      games: 2_400_000, players: 198_000, bytes: 1_000_000_000, enabled: true },
-    { id: 'db-2', name: 'Sample Games', status: 'indexed', version: '1.0',
-      games: 812, players: 24, bytes: 2_400_000, enabled: true }
-  ]
+  databases: []
 });
 
 /** Conventional settings controls for General and Appearance. §3.4.6, §3.4.7 */
@@ -119,6 +132,61 @@ export async function loadPreferences() {
 }
 
 /**
+ * `ui_state`'s key for whether the PWA's one-time default-library bootstrap
+ * (`ensureSampleGamesLibrary()`, below) has run — app-instance bookkeeping,
+ * not a user preference, so it lives beside `activeLibraryId`
+ * (`stores/libraries.js`) in `ui_state` rather than in `preferences`.
+ */
+const PWA_SAMPLE_LIBRARY_SEEDED_KEY = 'pwaSampleLibrarySeeded';
+
+/**
+ * PWA-only, one-time: register a real "Sample Games" Library in `config.db`
+ * and seed its IndexedDB record from `sample-games.js`'s 40 games, so a
+ * first-time PWA visit opens with a genuine, working library rather than
+ * empty.
+ *
+ * INTERIM, not the real feature it stands in for. The real way a user gets
+ * a library like this is Settings → Databases → Available → Install
+ * (§3.4.8) — still simulated (`installDatabase()`, below, writes a
+ * store-only row, no real database). This bootstrap exists only because the
+ * PWA can't yet offer that real install flow, and covers exactly the one
+ * library the app is unusable without. **It deliberately does NOT cover
+ * Master Games** — decided 22 Sep 2026, on instruction: Master Games stays
+ * entirely absent from the PWA (no seeded placeholder, no real
+ * registration) until the real install flow can offer it on request, the
+ * same way it will eventually offer any other catalogue database. Remove
+ * this function, its call below, and `PWA_SAMPLE_LIBRARY_SEEDED_KEY` once
+ * that flow is real.
+ *
+ * Idempotent two ways, deliberately, not just one: the `ui_state` flag makes
+ * the common case (every load after the first) a single fast read with no
+ * `libraries` scan; the "does a library named Sample Games already exist"
+ * check guards the one failure mode the flag alone can't — `createLibrary()`
+ * succeeding but the flag write after it failing, which would otherwise
+ * re-run this on the next load and create a second row.
+ */
+async function ensureSampleGamesLibrary(connection) {
+  if (getBackend() !== 'pwa') return;
+  try {
+    const { [PWA_SAMPLE_LIBRARY_SEEDED_KEY]: seeded } = await readUiState(connection);
+    if (seeded) return;
+    const existing = await readLibraries(connection);
+    if (!existing.some((lib) => lib.name === 'Sample Games')) {
+      const now = new Date().toISOString();
+      const newId = await createLibrary(connection, {
+        name: 'Sample Games', path: 'indexeddb', createdAt: now, enabled: true, version: '1.0'
+      });
+      const { openLibraryDatabase } = await import('$lib/data/backends/pwa.js');
+      const libConnection = await openLibraryDatabase(newId, { seed: true });
+      await libConnection.close();
+    }
+    await writeUiState(connection, PWA_SAMPLE_LIBRARY_SEEDED_KEY, true);
+  } catch (err) {
+    console.error('Plyvio: failed to set up the default Sample Games library', err);
+  }
+}
+
+/**
  * Replace `objects.databases`' real (installed) rows with what `config.db`'s
  * `libraries` table actually holds, on mount. Runs on both backends now
  * (ADR 0004's PWA-storage follow-up, 22 Sep 2026) — what differs is what
@@ -126,23 +194,22 @@ export async function loadPreferences() {
  *
  * TAURI: every Library lives in `config.db` — a full replace, as before.
  *
- * PWA: `db-1` (Master Games) and `db-2` (Sample Games) are seeded/mock rows
- * with NO `config.db` counterpart (`stores/game.js`'s `mockLibraryGame()`,
- * `stores/library.js`'s `isSeededSampleGames`) — only a Library actually
- * created via `createDatabase()` is ever registered there. A full replace
- * would make the two seeded rows vanish the moment this runs, so this
- * MERGES instead: every row that isn't a real, `config.db`-backed Library
- * (a numeric id) — the two seeded rows, an in-progress draft, a simulated
- * catalogue install from `installDatabase()` — is left exactly as it is,
- * and every real row read from `config.db` (always a numeric id —
- * `createLibrary()`'s own return value) replaces whatever real rows a
- * previous call to this function loaded, keeping a re-run idempotent the
- * same way Tauri's full replace already is. Filtering by id SHAPE rather
- * than by the two seeded ids specifically matters in practice, not just in
- * theory: this function's PWA branch now does real async work
- * (`configConnection()`/`readLibraries()`), so it can resolve while a draft
- * row is open, and a draft's id is a string too — it must survive this
- * exactly as db-1/db-2 do.
+ * PWA: `ensureSampleGamesLibrary()` (above) runs first, registering a real
+ * "Sample Games" row on a first-ever call. Past that, a real PWA row is
+ * exactly like a Tauri one except for how it got there — only, still, a
+ * Library actually created via `createDatabase()` (or the bootstrap above)
+ * is ever registered in `config.db`. A full replace would discard an
+ * in-progress draft or a simulated catalogue install
+ * (`installDatabase()`) — both string ids, never written to `config.db` —
+ * so this MERGES instead: every row that isn't a real, `config.db`-backed
+ * Library (a numeric id) is left exactly as it is, and every real row read
+ * from `config.db` (always a numeric id — `createLibrary()`'s own return
+ * value) replaces whatever real rows a previous call to this function
+ * loaded, keeping a re-run idempotent the same way Tauri's full replace
+ * already is. There is no PWA-only seeded placeholder to filter out
+ * specifically any more (`objects`' own comment on why `databases` starts
+ * `[]` on the PWA) — filtering by id SHAPE already covers everything that
+ * needs to survive a merge.
  *
  * A real PWA row's `location` is set to `null`, never `lib.path` — that
  * column holds `openNewLibraryConnection()`'s `'indexeddb'` sentinel (ADR
@@ -169,6 +236,7 @@ export async function loadPreferences() {
 export async function loadLibraries() {
   const connection = await configConnection();
   if (!connection) return;
+  await ensureSampleGamesLibrary(connection);
   const real = await readLibraries(connection);
   const tauri = getBackend() === 'tauri';
   const mapped = real.map((lib) => ({

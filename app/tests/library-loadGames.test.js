@@ -83,7 +83,15 @@ describe('loadGames', () => {
     expect(libraryConnection).not.toHaveBeenCalled();
   });
 
-  it('clears games for a still-mock/seeded row with no PWA stand-in data (Master Games)', async () => {
+  it('clears games for a still-mock/seeded row with no location (Master Games, on the PWA)', async () => {
+    // Master Games has no PWA registration at all (`stores/settings.js`'s
+    // `ensureSampleGamesLibrary()` bootstraps Sample Games only, on
+    // instruction 22 Sep 2026 — Master Games stays absent from the PWA
+    // until the real Settings -> Databases -> Install flow can offer it).
+    // A row with no `location` key is exactly the "nothing real to open"
+    // case `connectionForLibrary()` already gates on, so this is really a
+    // regression test for that gate rather than anything specific to
+    // Master Games' name.
     objects.update((o) => ({
       ...o,
       databases: [{ id: 'db-1', name: 'Master Games', enabled: true, status: 'indexed' }]
@@ -93,29 +101,29 @@ describe('loadGames', () => {
     libraryConnection.mockReset();
     games.set([{ id: 'placeholder' }]);
     await loadGames();
-    // Master Games has no PWA-side mock corpus standing in for desktop's
-    // real, subscription-synced games -- unlike Sample Games below, there
-    // is nothing to fall back to, so this stays empty.
     expect(get(games)).toEqual([]);
     expect(dataGames.readGames).not.toHaveBeenCalled();
     expect(libraryConnection).not.toHaveBeenCalled();
   });
 
-  it('falls back to the mock sample-games corpus for the seeded Sample Games row (db-2), a PWA stopgap', async () => {
+  it('reads a real database for a real, bootstrapped Sample Games row (numeric id, with a location)', async () => {
+    // As of 22 Sep 2026, `ensureSampleGamesLibrary()` (`stores/settings.js`)
+    // registers Sample Games as a genuine `config.db` library on first PWA
+    // launch — a numeric id, `location: null` ("Stored in this browser"),
+    // same shape as any Tauri library or a user-created PWA one.
+    // `loadGames()` itself carries no special case for it any more; this is
+    // the same path as "replaces games with rows read through the seam"
+    // below, just confirming a row that LOOKS like the bootstrapped Sample
+    // Games row specifically takes it too.
     objects.update((o) => ({
       ...o,
-      databases: [{ id: 'db-2', name: 'Sample Games', enabled: true, status: 'indexed' }]
+      databases: [{ id: 7, name: 'Sample Games', enabled: true, status: 'indexed', location: null }]
     }));
-    activeLibraryId.set('db-2');
-    await Promise.resolve(); // see the comment above
-    libraryConnection.mockReset();
-    games.set([{ id: 'placeholder' }]);
+    activeLibraryId.set(7);
+    const connection = {};
+    libraryConnection.mockResolvedValue(connection);
     await loadGames();
-    expect(dataGames.readGames).not.toHaveBeenCalled();
-    expect(libraryConnection).not.toHaveBeenCalled();
-    const loaded = get(games);
-    expect(loaded).toHaveLength(40);
-    expect(loaded.every((g) => typeof g.white === 'string' && typeof g.sortDate === 'number')).toBe(true);
+    expect(dataGames.readGames).toHaveBeenCalledWith(connection, { limit: 5000 });
   });
 
   it('replaces games with rows read through the seam', async () => {

@@ -1,11 +1,11 @@
 import { writable, derived, get } from 'svelte/store';
 import { browser } from '$app/environment';
-import { SUBSCRIPTIONS, realRows } from '$lib/library/mock.js';
+import { SUBSCRIPTIONS } from '$lib/library/mock.js';
 import {
   readGames, readFavoriteIds, readTrashedIds, readTags, readCollections,
   readTagIdsByGame, readCollectionIdsByGame
 } from '$lib/data/games.js';
-import { libraryConnection, isTauri } from '$lib/data/session.js';
+import { libraryConnection } from '$lib/data/session.js';
 import { objects } from './settings.js';
 import { activeLibraryId } from './libraries.js';
 
@@ -118,23 +118,15 @@ export async function loadGames({ limit = 5000 } = {}) {
   const connection = await activeLibraryConnection();
   if (!connection) {
     if (sequence !== loadGamesSequence) return;
-    // Stopgap ahead of the real PWA storage migration (ACTIONS.md — "Plan
-    // the migration off hardcoded sample data, onto interim storage" is
-    // scoped but not yet built). Neither seeded mock row has a database to
-    // open, so there is nothing genuine to read here. Desktop is untouched:
-    // by the time it would reach this branch on a still-mock row (the brief
-    // window before `loadLibraries()`'s real rows land), `isTauri()` is
-    // already true and this shows nothing, exactly as before.
-    //
-    // `db-2`, Sample Games, is the one row whose data actually exists —
-    // `sample-games.js`'s GAMES, the same forty games desktop's real Sample
-    // Games library holds — so it is shown directly via `realRows()`,
-    // `library/mock.js`'s own row-shaping (tests already use it the same
-    // way). `db-1`, Master Games, has no PWA-side stand-in for the real,
-    // subscription-synced games desktop's Master Games library holds, so it
-    // stays empty rather than showing Sample Games' rows under its name.
-    const isSeededSampleGames = !isTauri() && get(activeLibraryId) === 'db-2';
-    games.set(isSeededSampleGames ? realRows() : []);
+    // No real database behind the active library — Master Games in the PWA
+    // (deliberately never given one; see `stores/settings.js`'s
+    // `ensureSampleGamesLibrary()`), nothing selected yet, or a genuine
+    // connection failure. Sample Games no longer reaches this branch on the
+    // PWA: `ensureSampleGamesLibrary()` registers it as a real library on
+    // first launch, so `activeLibraryConnection()` resolves a real
+    // connection for it the same way it always has for every Tauri
+    // library, and the read path below runs.
+    games.set([]);
     tags.set([]);
     collections.set([]);
     return;

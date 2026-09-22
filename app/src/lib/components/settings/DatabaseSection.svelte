@@ -298,11 +298,12 @@
             `location` distinguishes three states by more than truthiness:
             a real path (desktop, set by loadLibraries()/createDatabase()),
             `null` ("Stored in this browser" — a PWA row, set by either
-            createDatabase() on creation or loadLibraries() on a later
-            reload, no path to show either way), and simply absent (the two
-            seeded/mock rows, db-1 and db-2, which never claimed a Location
-            at all) — that last case must keep rendering nothing, exactly
-            as before.
+            createDatabase() on creation, ensureSampleGamesLibrary()'s
+            one-time bootstrap, or loadLibraries() on a later reload, no
+            path to show either way), and simply absent (a draft still
+            being created, or a simulated catalogue install from
+            installDatabase() — neither has ever claimed a Location) — that
+            last case must keep rendering nothing, exactly as before.
           -->
           {#if db.location}
             <div class="er"><span class="k">{$t('settings.databaseLocation')}</span>

@@ -132,23 +132,30 @@ export const openGameDatabase = () => openPwaDatabase('games', GAME_DB_DDL, seed
 export const openConfigDatabase = () => openPwaDatabase('config', CONFIG_DB_DDL, null);
 
 /**
- * An ADDITIONAL Library's game database, by a generated id — the PWA half of
- * Settings → Databases → Add (`stores/settings.js`'s `createDatabase()`,
- * `working/wireframes/settings-databases-add.html`). `openGameDatabase()`
- * above stays exactly as it was, still the browser's one "currently open"
- * game database (`session.js`'s `libraryConnection()`) keyed `'games'`; this
- * is a second, parallel IndexedDB record per extra Library, keyed
- * `library-<id>` so it can never collide with that fixed key or with
- * `'config'`.
+ * A Library's game database, by id, its own IndexedDB record keyed
+ * `library-<id>` so it can never collide with `'config'` or with
+ * `openGameDatabase()`'s own fixed `'games'` key.
  *
- * Empty, not seeded — `openGameDatabase()`'s sample-game seeding is that one
- * database's own demonstration-data rule (a first-time PWA visit isn't
- * blank), not a general rule for every database this backend opens. A newly
- * created Library starts genuinely empty, matching the desktop path
- * (`backends/tauri.js` + `GAME_DB_DDL`, no seed).
+ * Two callers, two different needs:
  *
- * @param {string} id the Library's id — a generated id for a new database
- *   (`nextId('db')`, `stores/settings.js`), same shape as any other
- *   store-only object id this codebase already uses for a PWA row.
+ *  - Settings → Databases → Add's "create new" path (`stores/settings.js`'s
+ *    `createDatabase()`, `working/wireframes/settings-databases-add.html`)
+ *    calls this with no options — empty, not seeded, matching the desktop
+ *    path (`backends/tauri.js` + `GAME_DB_DDL`, no seed). A user-created
+ *    Library starts genuinely empty.
+ *  - `stores/settings.js`'s one-time PWA bootstrap (`loadLibraries()`,
+ *    the interim stand-in for the still-simulated Settings → Databases →
+ *    Available "install" flow — see `ACTIONS.md`) calls this with
+ *    `{ seed: true }` exactly once, for the real "Sample Games" `libraries`
+ *    row it registers on first launch, so that row's own IndexedDB record
+ *    starts with `sample-games.js`'s 40 games already in it rather than
+ *    empty. Reuses the same private `seedGames()` `openGameDatabase()`
+ *    already defines below, rather than a second seeding routine.
+ *
+ * @param {string|number} id the Library's id.
+ * @param {{ seed?: boolean }} [options] `seed: true` runs `seedGames()`
+ *   against a freshly created database; the default (`false`) leaves it
+ *   empty.
  */
-export const openLibraryDatabase = (id) => openPwaDatabase(`library-${id}`, GAME_DB_DDL, null);
+export const openLibraryDatabase = (id, { seed = false } = {}) =>
+  openPwaDatabase(`library-${id}`, GAME_DB_DDL, seed ? seedGames : null);

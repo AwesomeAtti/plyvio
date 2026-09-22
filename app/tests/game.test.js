@@ -38,7 +38,6 @@ import {
 } from '../src/lib/stores/game.js';
 import { games as libraryGames } from '../src/lib/stores/library.js';
 import { activeLibraryId } from '../src/lib/stores/libraries.js';
-import { realRows } from '../src/lib/library/mock.js';
 
 const readSrc = (p) => readFileSync(new URL(p, import.meta.url), 'utf8');
 
@@ -1650,36 +1649,26 @@ describe('Game Info reads the real library row when one is open', () => {
 });
 
 /*
-  THE PWA'S SEEDED SAMPLE GAMES LIBRARY — the stopgap's other half.
+  A NUMERIC `libraryGameId` always names a real `games.id`, on either
+  backend.
 
-  `loadGames()` fills `games` from `library/mock.js`'s `realRows()` for the
-  seeded `db-2` row on a non-Tauri build, and those rows carry
-  `sample-games.js`'s own ids: integers, exactly like a real `games.id`. A tab
-  opened on one used to take the real-database path, find no connection, and
-  show an empty board. These two guard both halves of the discriminator.
+  Until 22 Sep 2026 this had one exception: the PWA's seeded Sample Games
+  library (`db-2`) had no real database behind it, so `loadGames()` filled
+  `games` from `library/mock.js`'s `realRows()` instead — rows carrying
+  `sample-games.js`'s own ids, integers exactly like a real `games.id` — and
+  a tab opened on one needed `mockLibraryGame()` to special-case it, or it
+  took the real-database path, found no connection, and showed an empty
+  board. `stores/settings.js`'s `ensureSampleGamesLibrary()` now registers
+  Sample Games as a genuine, `config.db`-backed library on first PWA launch
+  (see `CLOSED.md`), so that exception is gone and `mockLibraryGame()` with
+  it — `isRealGameId()`'s plain `typeof` test is the whole story again.
 */
-describe('PWA stopgap: opening a game from the seeded Sample Games library', () => {
+describe('a numeric libraryGameId always takes the real-database path', () => {
   const libraryDefault = get(activeLibraryId);
   afterEach(() => { libraryGames.set([]); activeLibraryId.set(libraryDefault); });
 
-  it('reads the sample game the row names — its own moves, not an empty board', () => {
-    activeLibraryId.set('db-2');
-    libraryGames.set(realRows());
-    resetGameState();
-
-    const target = GAMES[4];
-    ensureGameState('pwa-1', target.id);
-    activeId.set('pwa-1');
-
-    const view = get(activeGame);
-    expect(view.state.realGame).toBe(false);
-    expect(view.state.gameId).toBe(target.id);          // not GAMES[0], the old hash's answer
-    expect(view.plies).toEqual(pliesFor(target));
-    expect(view.plies.length).toBeGreaterThan(1);
-  });
-
-  it('still takes the real-database path for a numeric id under a real library', () => {
-    activeLibraryId.set(99);                            // a real libraries.id, not the seeded row
+  it('takes the real-database path for a numeric id, regardless of which library is active', () => {
+    activeLibraryId.set(99);                            // any real libraries.id
     libraryGames.set([]);
     resetGameState();
 
