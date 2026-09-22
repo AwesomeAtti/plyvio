@@ -72,6 +72,24 @@ export const CONFIG_DB_PATH = `${SAMPLES_DIR}/config.db`;
  */
 export const isTauri = () => typeof window !== 'undefined' && '__TAURI_INTERNALS__' in window;
 
+let backendChoice = null;
+
+/**
+ * The sole place `isTauri()` is evaluated to choose which adapter backs a
+ * connection (ADR 0004, 22 Sep 2026) — `'tauri'` or `'pwa'`. Memoized: the
+ * running environment doesn't change mid-session, so this is computed once.
+ * `configConnection()`, `libraryConnection()`, `explorerConnection()` below,
+ * and `stores/settings.js`'s `createDatabase()`/`loadLibraries()`/
+ * `loadEngines()` all read this instead of calling `isTauri()` a second,
+ * independent time. `isTauri()` itself stays exported and in direct use
+ * elsewhere (`appCommands.js`, display-only branches) for checks that aren't
+ * about connection acquisition — this doesn't replace it, it consolidates
+ * the one decision that was being made four separate times.
+ *
+ * @returns {'tauri'|'pwa'}
+ */
+export const getBackend = () => (backendChoice ??= isTauri() ? 'tauri' : 'pwa');
+
 /**
  * The application's own default directory for Library (`.db`) files —
  * Settings → Databases → Add's "create new" path only (`stores/settings.js`'s
@@ -177,7 +195,7 @@ let configConnectionPromise = null;
  * @returns {Promise<import('./connection.js').Connection>}
  */
 export const configConnection = () => {
-  if (isTauri()) {
+  if (getBackend() === 'tauri') {
     return (configConnectionPromise ??= import('./backends/tauri.js').then((mod) =>
       mod.openFileDatabase(CONFIG_DB_PATH)
     ));
@@ -212,7 +230,7 @@ export const libraryConnection = (libraryId) => {
   if (libraryId == null) return Promise.resolve(null);
   if (!libraryConnectionPromises.has(libraryId)) {
     libraryConnectionPromises.set(libraryId, (async () => {
-      if (isTauri()) {
+      if (getBackend() === 'tauri') {
         const config = await configConnection();
         if (!config) return null;
         const libs = await readLibraries(config);
@@ -248,7 +266,7 @@ const explorerConnectionPromises = new Map();
  *   `config.db` itself has no connection.
  */
 export const explorerConnection = (libraryId) => {
-  if (!isTauri()) return Promise.resolve(null);
+  if (getBackend() !== 'tauri') return Promise.resolve(null);
   if (!explorerConnectionPromises.has(libraryId)) {
     explorerConnectionPromises.set(
       libraryId,
@@ -264,4 +282,62 @@ export const explorerConnection = (libraryId) => {
     );
   }
   return explorerConnectionPromises.get(libraryId);
+};
+
+/**
+ * The names of the entries directly inside the application's default
+ * Libraries directory — DB‑05's "actual directory listing on disk"
+ * filename-collision check (`stores/settings.js`'s `createDatabase()`).
+ * Tauri only; `[]` on PWA (there is no such directory) and on any listing
+ * failure (most commonly the directory not existing yet), matching this
+ * call's previous inline try/catch-and-degrade behavior before ADR 0004.
+ *
+ * @returns {Promise<string[]>}
+ */
+export const librariesDirectoryEntries = async () => {
+  if (getBackend() !== 'tauri') return [];
+  try {
+    const { listDirectoryNames } = await import('./backends/tauri.js');
+    return await listDirectoryNames(await defaultLibrariesDir());
+  } catch (err) {
+    console.error('Plyvio: failed to list the Libraries directory', err);
+    return [];
+  }
+};
+
+/**
+ * Open the physical database for a brand-new Library that isn't registered
+ * in `config.db` yet — `createDatabase()`'s (`stores/settings.js`) own
+ * connection-acquisition step, consolidated here per ADR 0004 so that file
+ * is no longer the one place besides this one that imports `backends/
+ * tauri.js`/`backends/pwa.js` directly.
+ *
+ * The two backends need opposite information because they identify a "new"
+ * database differently. Tauri: a file's path doesn't depend on any id, so
+ * `filename` is enough — the directory is created first if missing, DDL is
+ * left to the caller (matching `openFileDatabase()`'s own contract), and
+ * `path` in the return value is the real filesystem path to store in
+ * `libraries.game_db_path`. PWA: `backends/pwa.js`'s `openLibraryDatabase()`
+ * runs its own DDL as part of opening, but it opens by `id` — the id IS the
+ * IndexedDB key, so it must already be known, which is why `createDatabase()`
+ * registers the new row in `config.db` first to get a real id before calling
+ * this. `path` in that case is `'indexeddb'`, a sentinel — `game_db_path` is
+ * `NOT NULL` with no uniqueness constraint (`database-schema.md` §5.1), and
+ * nothing reads a PWA library's `game_db_path` back for connection lookup;
+ * `libraryConnection()`'s PWA branch already opens by id directly.
+ *
+ * @param {{ id?: string|number, filename?: string }} args `filename` is
+ *   used only on Tauri; `id` only on PWA.
+ * @returns {Promise<{ connection: import('./connection.js').Connection, path: string }>}
+ */
+export const openNewLibraryConnection = async ({ id, filename }) => {
+  if (getBackend() === 'tauri') {
+    const { openFileDatabase, ensureDirectory } = await import('./backends/tauri.js');
+    const dir = await defaultLibrariesDir();
+    await ensureDirectory(dir);
+    const path = await defaultLibraryPath(filename);
+    return { connection: await openFileDatabase(path), path };
+  }
+  const { openLibraryDatabase } = await import('./backends/pwa.js');
+  return { connection: await openLibraryDatabase(id), path: 'indexeddb' };
 };

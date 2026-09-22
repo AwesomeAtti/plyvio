@@ -3,7 +3,8 @@ import { SECTIONS, DEFAULT_SECTION, isSection, OBJECT_TYPES } from '$lib/setting
 import { AVAILABLE_DATABASES, validateDraftDatabase, basename } from '$lib/settings/databases.js';
 import { AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
 import {
-  configConnection, explorerConnection, isTauri, defaultLibrariesDir, defaultLibraryPath
+  configConnection, explorerConnection, getBackend, librariesDirectoryEntries,
+  openNewLibraryConnection
 } from '$lib/data/session.js';
 import {
   readPreferences, writePreference, PREFERENCE_KEYS,
@@ -138,7 +139,7 @@ export async function loadPreferences() {
  * `engines`.
  */
 export async function loadLibraries() {
-  if (!isTauri()) return;
+  if (getBackend() !== 'tauri') return;
   const connection = await configConnection();
   if (!connection) return;
   const real = await readLibraries(connection);
@@ -176,7 +177,7 @@ export async function loadLibraries() {
  * storage for a capability the PWA doesn't functionally have.
  */
 export async function loadEngines() {
-  if (!isTauri()) return;
+  if (getBackend() !== 'tauri') return;
   const connection = await configConnection();
   if (!connection) return;
   const real = await readEngines(connection);
@@ -399,20 +400,13 @@ export async function createDatabase(id, { name, filename }) {
   const cleanFilename = String(filename ?? '').trim();
   const { existingNames, existingFilenames } = existingDatabaseIdentity(id);
 
-  if (isTauri()) {
-    // DB‑05: "checked against ... the actual directory listing on disk" too,
-    // not just registered Libraries — a stray .db file nobody registered
-    // would otherwise go unnoticed. Best-effort: a listing failure (the
-    // directory not existing yet, most commonly) falls back to the
-    // registered-only check rather than blocking Create outright.
-    try {
-      const { listDirectoryNames } = await import('$lib/data/backends/tauri.js');
-      const dir = await defaultLibrariesDir();
-      const onDisk = await listDirectoryNames(dir);
-      for (const entry of onDisk) if (!existingFilenames.includes(entry)) existingFilenames.push(entry);
-    } catch (err) {
-      console.error('Plyvio: failed to list the Libraries directory', err);
-    }
+  // DB‑05: "checked against ... the actual directory listing on disk" too,
+  // not just registered Libraries — a stray .db file nobody registered
+  // would otherwise go unnoticed. `librariesDirectoryEntries()` is Tauri-only
+  // and already degrades to `[]` on PWA or on a listing failure (the
+  // directory not existing yet, most commonly), so this never blocks Create.
+  for (const entry of await librariesDirectoryEntries()) {
+    if (!existingFilenames.includes(entry)) existingFilenames.push(entry);
   }
 
   const error = validateDraftDatabase({
@@ -423,19 +417,14 @@ export async function createDatabase(id, { name, filename }) {
   const now = new Date().toISOString();
   let real;
 
-  if (isTauri()) {
-    const { openFileDatabase, ensureDirectory } = await import('$lib/data/backends/tauri.js');
+  if (getBackend() === 'tauri') {
     const { GAME_DB_DDL, SCHEMA_USER_VERSION, splitSqlStatements } = await import('$lib/data/backends/schema.js');
-    const dir = await defaultLibrariesDir();
-    await ensureDirectory(dir);
-    const path = await defaultLibraryPath(cleanFilename);
-
-    const fileConnection = await openFileDatabase(path);
+    const { connection, path } = await openNewLibraryConnection({ filename: cleanFilename });
     try {
-      for (const statement of splitSqlStatements(GAME_DB_DDL)) await fileConnection.run(statement);
-      await fileConnection.run(`pragma user_version = ${SCHEMA_USER_VERSION}`);
+      for (const statement of splitSqlStatements(GAME_DB_DDL)) await connection.run(statement);
+      await connection.run(`pragma user_version = ${SCHEMA_USER_VERSION}`);
     } finally {
-      await fileConnection.close();
+      await connection.close();
     }
 
     const config = await configConnection();
@@ -453,11 +442,26 @@ export async function createDatabase(id, { name, filename }) {
     // PWA — no filesystem: the typed Filename identifies nothing once the
     // draft becomes real (DB‑03r's Location reads "Stored in this browser"
     // there instead), so it's validated above and then dropped.
-    const newId = nextId('db');
+    //
+    // Registration has to come BEFORE physical creation here, the reverse of
+    // the Tauri branch above: `openNewLibraryConnection()`'s PWA path opens
+    // by id (the id IS the IndexedDB key), so a real id has to exist first.
+    // `createLibrary()` supplies it the same way the Tauri branch already
+    // prefers a config-assigned id over `nextId('db')` when a config
+    // connection exists (ADR 0004) — `path` is the 'indexeddb' sentinel
+    // `openNewLibraryConnection()` also returns; nothing reads a PWA
+    // library's `game_db_path` back for connection lookup, so a placeholder
+    // that merely satisfies the NOT NULL column is enough.
+    const config = await configConnection();
+    const newId = config
+      ? await createLibrary(config, {
+          name: cleanName, path: 'indexeddb', createdAt: now, enabled: true,
+          version: NEW_DATABASE_VERSION
+        })
+      : nextId('db');
     try {
-      const { openLibraryDatabase } = await import('$lib/data/backends/pwa.js');
-      const conn = await openLibraryDatabase(newId);
-      await conn.close();
+      const { connection } = await openNewLibraryConnection({ id: newId });
+      await connection.close();
     } catch (err) {
       console.error('Plyvio: failed to create the database', err);
     }

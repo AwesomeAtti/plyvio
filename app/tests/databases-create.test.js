@@ -227,6 +227,31 @@ describe('DB‑04 — Create', () => {
     expect(GAME_TABLES.every((t) => identity.tables.includes(t))).toBe(true);
     expect(await conn.value('select count(*) from games')).toBe(0);
   });
+
+  it("registers the new PWA database in config.db's libraries table (ADR 0004)", async () => {
+    const { container } = await renderDatabases();
+    await fireEvent.click(container.querySelector('#settings-content .chead .add'));
+    await tick();
+    let { nameInput, createBtn } = draftFields(container);
+    await fireEvent.input(nameInput, { target: { value: 'Registered Library' } });
+    await tick();
+    ({ createBtn } = draftFields(container));
+    await fireEvent.click(createBtn);
+    const created = await waitFor(() => get(objects).databases.find((d) => d.name === 'Registered Library'));
+
+    // The config-assigned id, not the nextId('db') fallback — config.db has
+    // a real connection in this test environment (fake-indexeddb), so
+    // createDatabase() prefers it, same as the Tauri branch always has.
+    expect(typeof created.id).toBe('number');
+
+    const { configConnection } = await import('../src/lib/data/session.js');
+    const { readLibraries } = await import('../src/lib/data/config.js');
+    const libraries = await readLibraries(await configConnection());
+    const registered = libraries.find((l) => l.id === created.id);
+    expect(registered).toBeTruthy();
+    expect(registered.name).toBe('Registered Library');
+    expect(registered.path).toBeTruthy(); // NOT NULL sentinel — not a real filesystem path on PWA
+  });
 });
 
 describe('DB‑04 — Cancel', () => {
