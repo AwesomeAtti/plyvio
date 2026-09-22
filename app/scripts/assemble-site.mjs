@@ -20,7 +20,7 @@
  *
  *   node scripts/assemble-site.mjs
  */
-import { cp, mkdir, readdir, rm, stat } from 'node:fs/promises';
+import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -31,6 +31,44 @@ const APP = path.join(BUILD, 'app');
 
 /** Everything the adapter owns. Left alone; the rest of the root is rebuilt. */
 const KEEP = new Set(['app']);
+
+const WORKERS = path.join(APP, '_app', 'immutable', 'workers');
+const SERVICE_WORKER = path.join(APP, 'service-worker.js');
+const WORKER_ASSETS_GLOBAL = 'self.__PLYVIO_WORKER_ASSETS__';
+
+/*
+  The storage worker's files go into the service worker's install-time cache.
+
+  SvelteKit's `$service-worker` `build` list omits `_app/immutable/workers/`,
+  where Vite puts the storage worker, its SQLite engine chunk and
+  `sqlite3.wasm`. They can't be left to the runtime cache: on a first visit the
+  storage worker starts before the service worker controls the page, so its
+  requests bypass it, and the app comes back offline without its database
+  (measured 22 Sep; `e2e/storage.spec.js` check 5 holds it).
+
+  So this lists them and PREPENDS a global to the built service worker, which
+  `src/service-worker.js` reads (`WORKER_ASSETS`). Prepended rather than
+  patched in: minification can rewrite anything inside the file, but it can't
+  touch a line added after it. Refuses to finish if there is nothing to list,
+  since a build without these files can't store anything in the browser.
+*/
+async function precacheWorkerAssets() {
+  const entries = await readdir(WORKERS, { recursive: true }).catch(() => []);
+  const assets = [];
+  for (const entry of entries) {
+    if ((await stat(path.join(WORKERS, entry))).isFile()) {
+      assets.push(['_app', 'immutable', 'workers', ...entry.split(path.sep)].join('/'));
+    }
+  }
+  if (!assets.length) {
+    throw new Error(`No storage worker files under ${path.relative(root, WORKERS)}.`);
+  }
+  const code = await readFile(SERVICE_WORKER, 'utf8');
+  if (!code.startsWith(WORKER_ASSETS_GLOBAL)) {
+    await writeFile(SERVICE_WORKER, `${WORKER_ASSETS_GLOBAL} = ${JSON.stringify(assets.sort())};\n${code}`);
+  }
+  return assets.length;
+}
 
 async function main() {
   const app = await stat(APP).catch(() => null);
@@ -83,6 +121,9 @@ async function main() {
       await rm(path.join(BUILD, entry), { force: true });
     }
   }
+
+  const precached = await precacheWorkerAssets();
+  console.log(`  Precaching ${precached} storage worker files in the service worker`);
 
   const written = (await readdir(BUILD)).sort();
   console.log(`  Assembled site root from site/ → build/`);

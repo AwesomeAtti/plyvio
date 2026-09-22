@@ -13,9 +13,24 @@ const CACHE = `plyvio-${version}`;
  * swScope.test.js for the cases it has to survive.
  */
 const BASE = scopeBase(location.pathname);
+/*
+ * The storage worker's files: its script, the SQLite engine chunk and
+ * `sqlite3.wasm`, all under `_app/immutable/workers/`. SvelteKit's `build`
+ * list leaves that folder out, and the runtime cache below can't make up for
+ * it on a first visit: the page starts the storage worker before this service
+ * worker takes control, and a worker keeps the controller it started with, so
+ * its requests never pass through here. Without these, the app shell comes
+ * back offline after one visit but its database doesn't (measured 22 Sep).
+ *
+ * `scripts/assemble-site.mjs` fills this in after `vite build`, by prepending
+ * `self.__PLYVIO_WORKER_ASSETS__ = [...]` to the built file: paths relative to
+ * the app root. Absent (e.g. `vite dev`), it's an empty list.
+ */
+const WORKER_ASSETS = (self.__PLYVIO_WORKER_ASSETS__ ?? []).map((p) => `${BASE}/${p}`);
+
 // `prerendered` carries the entry page itself, so a cold offline start works
 // without relying on the page having been cached opportunistically.
-const ASSETS = [...build, ...files, ...prerendered];
+const ASSETS = [...build, ...files, ...prerendered, ...WORKER_ASSETS];
 
 self.addEventListener('install', (e) => {
   e.waitUntil(caches.open(CACHE).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

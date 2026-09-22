@@ -6,9 +6,14 @@
  * real build can answer.
  */
 import { readdir, readFile } from 'node:fs/promises';
+import { spawn } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { test, expect, watch } from './fixtures.js';
+import { test, expect, watch, clearOrigin } from './fixtures.js';
+
+const APP_ROOT = fileURLToPath(new URL('..', import.meta.url));
+/** Test 5's own server, so it can be stopped; the config's stays on 4173. */
+const OFFLINE_PORT = 4174;
 
 /** The sidebar's count beside `label`, or '' when it shows none. */
 const sidebarCount = (page, label) =>
@@ -105,15 +110,33 @@ test('4. bundle: the worker and sqlite3.wasm load cleanly; the dead workers are 
   expect(requests.filter((u) => /opfs-async-proxy|worker1/.test(u))).toEqual([]);
 });
 
-test('5. offline: after one visit, the app and its data come back with no network', async ({ page, context }) => {
-  await page.goto('./');
-  await expect.poll(() => sidebarCount(page, 'All Games')).toBe('40');
-  await page.evaluate(() => navigator.serviceWorker.ready);
+/**
+ * A real outage: this test serves the build from its own server on another
+ * port, then stops it. Browsers' simulated offline modes aren't faithful
+ * here: Chromium's `setOffline()` doesn't stop the service worker's own
+ * fetches (it let this check pass with nothing cached), and aborting requests
+ * with `context.route()` breaks WebKit's reload outright (both found 22 Sep).
+ * One online visit only, on purpose: that's the case the precache fix covers.
+ */
+test('5. offline: after one visit, the app and its data come back with no network', async ({ page }) => {
+  const origin = `http://localhost:${OFFLINE_PORT}`;
+  const server = spawn(process.execPath, ['scripts/serve-site.mjs', String(OFFLINE_PORT)], {
+    cwd: APP_ROOT, stdio: 'ignore'
+  });
+  try {
+    await expect.poll(() => fetch(`${origin}/app/`).then((r) => r.ok, () => false)).toBe(true);
+    await clearOrigin(page, `${origin}/`);
+    await page.goto(`${origin}/app/`);
+    await expect.poll(() => sidebarCount(page, 'All Games')).toBe('40');
+    await page.evaluate(() => navigator.serviceWorker.ready);
 
-  await context.setOffline(true);
-  await page.reload();
-  await expect.poll(() => sidebarCount(page, 'All Games')).toBe('40');
-  await context.setOffline(false);
+    server.kill();
+    await expect.poll(() => fetch(`${origin}/app/`).then(() => 'up', () => 'down')).toBe('down');
+    await page.reload();
+    await expect.poll(() => sidebarCount(page, 'All Games')).toBe('40');
+  } finally {
+    server.kill();
+  }
 });
 
 test('the production build contains no Playwright code', async ({ browserName }) => {
