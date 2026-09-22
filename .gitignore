@@ -9,3 +9,5 @@ app/build/
 app/standalone-dist/
 app/src-tauri/target/
 app/src-tauri/binaries/
+# Temporary files left by a shared-folder layer when a file is replaced while open.
+.fuse_hidden*
