@@ -56,6 +56,12 @@ src/lib/stores/i18n.js         locale store + t()
 src/lib/stores/theme.js        light/dark, persisted
 src/lib/stores/appCommands.js  fullscreen toggle + quit, both fail loudly
 src/lib/i18n/locales.js        bundled UI strings (en, de, fr)
+src/lib/data/session.js        the one place a connection is acquired (ADR 0004)
+src/lib/data/backends/         everything that knows SQLite: tauri.js (desktop),
+                               pwa.js + worker-client.js (PWA, main thread),
+                               sqlite-worker.js + sqlite-host.js (PWA storage
+                               worker, OPFS, ADR 0005), sqlite-engine.js,
+                               memory.js (tests)
 src/lib/components/
   AppShell.svelte              shell root + keyboard map
   TabBar.svelte                tab bar, overflow, scrolling, controls
@@ -68,6 +74,7 @@ src/lib/components/
   library/                     the Library Workspace (§3.2)
   settings/                    the Settings Workspace (§3.4)
   WorkspaceArea.svelte         stubbed workspaces + state probe
-tests/                         vitest suites (16 files)
+tests/                         vitest suites
+e2e/                           Playwright: PWA storage in real browsers
 standalone/                    single-file demo build (not the app)
 ```

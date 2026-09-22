@@ -58,8 +58,11 @@ a user installs. Only the second is the PWA.
 the installed application is about **2.2 MB on disk across 42 files, ~960 KB
 over the wire**, all of it precached by the service worker on first visit. A
 single file, `sqlite3.*.wasm`, is 852 KB of that (407 KB compressed) — roughly
-**42% of the download** — and is the SQLite engine `backends/pwa.js` runs
-`config.db` on. The landing page's screenshots account for the remainder of the
+**42% of the download** — and is the SQLite engine behind the PWA's databases.
+Since 22 Sep 2026 it loads only in the storage worker (ADR 0005), from
+`_app/immutable/workers/`, which SvelteKit doesn't precache on its own:
+`scripts/assemble-site.mjs` adds those files to the service worker's install
+list (see [Offline behaviour](offline.md)). The landing page's screenshots account for the remainder of the
 full tree, and are fetched only by someone visiting the site rather than
 installing the app.
 
