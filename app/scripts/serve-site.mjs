@@ -36,7 +36,10 @@ const TYPES = {
   '.png':  'image/png',
   '.svg':  'image/svg+xml',
   '.ico':  'image/x-icon',
-  '.txt':  'text/plain; charset=utf-8'
+  '.txt':  'text/plain; charset=utf-8',
+  // GitHub Pages sends this; without it the browser can't stream-compile
+  // sqlite3.wasm and falls back, logging an error.
+  '.wasm': 'application/wasm'
 };
 
 const typeOf = (f) => TYPES[path.extname(f).toLowerCase()] ?? 'application/octet-stream';
