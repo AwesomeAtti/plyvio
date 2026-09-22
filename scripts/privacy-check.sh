@@ -101,14 +101,28 @@ check_push() {
   bad=0
   while read -r local_ref local_sha remote_ref remote_sha; do
     [ "$local_sha" = "$ZERO" ] && continue            # deleting a ref: nothing leaves
-    if [ "$remote_sha" = "$ZERO" ]; then
-      range="$local_sha --not --remotes=$remote"      # new ref: everything the remote lacks
-    else
+    if [ "$remote_sha" != "$ZERO" ] && git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
       range="$remote_sha..$local_sha"
+    else
+      # A new ref, or the remote points at a commit this repository doesn't
+      # have (normal after a history rewrite): scan everything the remote's
+      # known branches lack. Scanning too much is safe; too little is not.
+      range="$local_sha --not --remotes=$remote"
     fi
+    # Fail closed: if git can't list what is being pushed, refuse the push
+    # rather than scanning an empty list and letting it through.
+    objs=$(mktemp) || exit 2
     # shellcheck disable=SC2086
-    if ! git rev-list --objects $range | scan_objects; then bad=1; fi
-    if git log --format='%B' $range | grep -q -i -E "$TRAILERS"; then
+    if ! git rev-list --objects $range > "$objs"; then
+      fail "could not list what is being pushed to $remote_ref ($range)"; bad=1
+    elif ! scan_objects < "$objs"; then
+      bad=1
+    fi
+    rm -f "$objs"
+    # shellcheck disable=SC2086
+    if ! msgs=$(git log --format='%B' $range); then
+      fail "could not read the commit messages being pushed to $remote_ref"; bad=1
+    elif printf '%s\n' "$msgs" | grep -q -i -E "$TRAILERS"; then
       fail "a commit being pushed to $remote_ref has an attribution trailer"; bad=1
     fi
   done
