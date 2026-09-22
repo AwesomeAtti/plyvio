@@ -2,7 +2,7 @@
  * `stores/game.js`'s `saveGameInfo`/`toggleFavourite` — real write round
  * trip. See `working notes/tag-collection-writes-plan.md`.
  *
- * A real connection through `fake-indexeddb`, not a mocked seam — the same
+ * A real connection through the in-process PWA backend, not a mocked seam — the same
  * approach `settings-pwaBootstrap.test.js` and
  * `session-explorerConnection.test.js` take, and for the same reason: the
  * whole point of this pass is what actually reaches the database, which a
@@ -10,12 +10,13 @@
  * module scope, so every test calls `freshModules()` to start clean.
  */
 
-import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
+import { resetPool } from './helpers/pwa-in-process.js';
 
-// eslint-disable-next-line no-undef -- fake-indexeddb/auto defines this globally
-const resetIdb = () => { indexedDB = new IDBFactory(); };
+vi.mock('../src/lib/data/backends/sqlite-worker-port.js', async () =>
+  (await import('./helpers/pwa-in-process.js')).workerPortMock());
+
 
 async function freshModules() {
   vi.resetModules();
@@ -41,7 +42,7 @@ async function setUpRealLibrary(mods) {
 }
 
 beforeEach(() => {
-  resetIdb();
+  resetPool();
 });
 
 describe('saveGameInfo — real write round trip', () => {

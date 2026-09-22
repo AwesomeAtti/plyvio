@@ -1,34 +1,29 @@
 /**
- * The browser/PWA backend — the interim storage route, until the library size makes
- * a page-level route (OPFS or an IndexedDB VFS) necessary. Deliberately not that:
- * no OPFS, no third-party VFS, no page-level access. The whole database is
- * deserialized into memory on open (`sqlite-engine.js`, shared with `memory.js`) and
- * re-exported as one serialized blob to one IndexedDB record on save
- * (`idb-blob-store.js`). The blob is the unit of work — there is no partial read or
- * partial write.
+ * The browser/PWA backend: SQLite files in the origin-private file system
+ * (OPFS), on the `opfs-sahpool` VFS, owned by a dedicated worker.
  *
- * Two databases, two IndexedDB records: `openGameDatabase()` opens the browser's one
- * game database (parallel to a desktop Library's `.db` file), seeded on first open
- * from the same curated sample games the app has always shipped for demonstration
- * (`mock-data/sample-games.js`) so a first-time PWA visit isn't a blank Library.
- * `openConfigDatabase()` opens the browser's `config.db` counterpart — fresh tables,
- * no seed rows; there's no mock preferences/subscriptions data to carry over.
+ * OPFS sync access handles only exist in a Worker, so this module doesn't touch
+ * SQLite itself. Each `Connection` it returns is a proxy: every method is one
+ * message to the storage worker (`worker-client.js` → `sqlite-worker.js` →
+ * `sqlite-host.js`). A `run()` that resolves has been written to the file,
+ * page by page. There is no snapshot to export and nothing to flush on unload.
  *
- * Saving is debounced rather than run on every write: a write marks the connection
- * dirty and schedules a flush a couple of seconds out, coalescing a burst of writes
- * (e.g. applying several tags) into one export+IndexedDB put. `visibilitychange`,
- * `pagehide` and `beforeunload` force an immediate flush, so a closed or backgrounded
- * tab doesn't lose a debounce window's worth of edits.
+ * Files: `/config.db` (the browser's `config.db` counterpart: fresh tables, no
+ * seed rows) and `/library-<id>.db`, one per Library.
+ *
+ * A fresh file is set up inside the worker's own `open` operation: DDL,
+ * `user_version`, and for the Sample Games bootstrap the seed rows, all in one
+ * transaction (see `sqlite-host.js` for why it can't be a separate step). The
+ * seed rows are built here on the main thread and sent over as plain
+ * statements, so the worker runs SQL and nothing else: no PGN reader, no
+ * chessops, no sample games in its bundle.
  */
 
-import { sqlite3Module, openDb, connectionFor } from './sqlite-engine.js';
+import { assertConnection } from '../connection.js';
+import { call } from './worker-client.js';
 import { GAME_DB_DDL, CONFIG_DB_DDL, SCHEMA_USER_VERSION } from './schema.js';
-import { readBlob, writeBlob } from './idb-blob-store.js';
 import { GAMES } from '../../mock-data/sample-games.js';
 import { computePositions } from '../../game/buildPositions.js';
-
-/** How long a write waits, quiet, before it's flushed to IndexedDB. */
-const SAVE_DEBOUNCE_MS = 2000;
 
 /**
  * Every seeded row's columns, in `games` column order — matches the fields every
@@ -42,120 +37,66 @@ const SEED_COLUMNS = [
   'white_elo', 'black_elo', 'eco', 'ply_count', 'movetext', 'created_at'
 ];
 
-const seedGames = (db, now) => {
-  const insertSql =
+/**
+ * The Sample Games seed: `sample-games.js`'s 40 games, then §6's `positions`
+ * table computed from them by `game/buildPositions.js`'s `computePositions()`,
+ * the PWA's own equivalent of `samples/build_positions.py` (the PWA has no
+ * `.db` file for that script to target). Real Explorer statistics from the
+ * first open, not a mock.
+ */
+const seedStatements = (now) => {
+  const gamesSql =
     `insert into games (${SEED_COLUMNS.join(', ')}) values ` +
     `(${SEED_COLUMNS.map(() => '?').join(', ')})`;
-  for (const g of GAMES) {
-    const row = { ...g, created_at: now };
-    db.exec({ sql: insertSql, bind: SEED_COLUMNS.map((c) => row[c] ?? null) });
-  }
-  seedPositions(db);
-};
-
-/**
- * §6's `positions` table, computed once from the same 40 games `seedGames()`
- * just inserted — `game/buildPositions.js`'s `computePositions()`, the PWA's
- * own equivalent of `samples/build_positions.py`'s offline pass, run here
- * because the PWA has no `.db` file for that script to target. Real
- * statistics from the first open onward, not a mock the Explorer Section
- * falls back to — see that module's own header for why the two must agree
- * on `positionKey()`.
- */
-const seedPositions = (db) => {
-  const rows = computePositions(GAMES);
-  if (!rows.length) return;
-  const insertSql =
+  const positionsSql =
     'insert into positions (pos, move, games, white, draws, black) values (?, ?, ?, ?, ?, ?)';
-  for (const r of rows) {
-    db.exec({ sql: insertSql, bind: [r.pos, r.move, r.games, r.white, r.draws, r.black] });
-  }
+  return [
+    ...GAMES.map((g) => {
+      const row = { ...g, created_at: now };
+      return { sql: gamesSql, params: SEED_COLUMNS.map((c) => row[c] ?? null) };
+    }),
+    ...computePositions(GAMES).map((r) => ({
+      sql: positionsSql,
+      params: [r.pos, r.move, r.games, r.white, r.draws, r.black]
+    }))
+  ];
+};
+
+/** A `Connection` (plus `export()`) whose every method is a message to the worker. */
+const proxyConnection = (handle, name) => {
+  const send = (op) => (sql, params) => call(op, { handle, sql, params });
+  return assertConnection({
+    all: send('all'),
+    get: send('get'),
+    value: send('value'),
+    run: send('run'),
+    close: () => call('close', { handle }),
+    /** The current bytes of the database. */
+    export: () => call('export', { handle })
+  }, `${name} pwa connection`);
 };
 
 /**
- * Wrap a `Connection` so every `run()` marks it dirty and schedules a debounced
- * save; `flush()` cancels the timer and saves immediately if dirty. The rest of
- * the `Connection` shape passes through unchanged.
+ * Open `name`, creating it with `ddl` (and `seed`'s rows) if it doesn't exist.
+ * @param {string} name an absolute pool file name
+ * @param {string} ddl
+ * @param {((now: string) => {sql: string, params?: unknown[]}[])|null} seed
  */
-const withAutosave = (connection, key) => {
-  let dirty = false;
-  let timer = null;
-
-  const saveNow = async () => {
-    if (timer) { clearTimeout(timer); timer = null; }
-    if (!dirty) return;
-    dirty = false;
-    const bytes = await connection.export();
-    await writeBlob(key, bytes);
-  };
-
-  const scheduleSave = () => {
-    dirty = true;
-    if (timer) clearTimeout(timer);
-    timer = setTimeout(() => { saveNow().catch((err) => console.error(`Plyvio: failed to save ${key}`, err)); }, SAVE_DEBOUNCE_MS);
-  };
-
-  if (typeof document !== 'undefined') {
-    const flush = () => { saveNow().catch((err) => console.error(`Plyvio: failed to flush ${key}`, err)); };
-    document.addEventListener('visibilitychange', () => {
-      if (document.visibilityState === 'hidden') flush();
-    });
-    window.addEventListener('pagehide', flush);
-    window.addEventListener('beforeunload', flush);
-  }
-
-  return {
-    ...connection,
-    run: async (sql, params) => {
-      await connection.run(sql, params);
-      scheduleSave();
-    },
-    close: async () => {
-      await saveNow();
-      await connection.close();
-    }
-  };
+const openPwaDatabase = async (name, ddl, seed) => {
+  const init = [
+    { sql: ddl },
+    { sql: `pragma user_version = ${SCHEMA_USER_VERSION}` },
+    ...(seed ? seed(new Date().toISOString()) : [])
+  ];
+  const { handle } = await call('open', { name, init });
+  return proxyConnection(handle, name);
 };
-
-/**
- * Open a PWA-backed database: deserialize the stored blob if there is one,
- * otherwise create a fresh database, run `ddl`, optionally seed it, and persist
- * that starting state immediately so a reload before any edit reseeds nothing.
- *
- * @param {string} key `'games'` or `'config'` — the IndexedDB record this database lives in
- * @param {string} ddl the DDL to run on a fresh database
- * @param {((db: object, now: string) => void)|null} seed run against a fresh database, before it's persisted
- */
-const openPwaDatabase = async (key, ddl, seed) => {
-  const [bytes, sqlite3] = await Promise.all([readBlob(key), sqlite3Module()]);
-  const isFresh = bytes === null;
-  const db = openDb(sqlite3, bytes);
-
-  if (isFresh) {
-    db.exec({ sql: ddl });
-    db.exec({ sql: `pragma user_version = ${SCHEMA_USER_VERSION}` });
-    if (seed) seed(db, new Date().toISOString());
-  }
-
-  const connection = connectionFor(db, sqlite3, `${key} pwa connection`);
-
-  if (isFresh) {
-    await writeBlob(key, await connection.export());
-  }
-
-  return withAutosave(connection, key);
-};
-
-/** The browser's one game database — see this file's own header for the seeding rule. */
-export const openGameDatabase = () => openPwaDatabase('games', GAME_DB_DDL, seedGames);
 
 /** The browser's `config.db` counterpart — no seed rows. */
-export const openConfigDatabase = () => openPwaDatabase('config', CONFIG_DB_DDL, null);
+export const openConfigDatabase = () => openPwaDatabase('/config.db', CONFIG_DB_DDL, null);
 
 /**
- * A Library's game database, by id, its own IndexedDB record keyed
- * `library-<id>` so it can never collide with `'config'` or with
- * `openGameDatabase()`'s own fixed `'games'` key.
+ * A Library's game database, by id: the file `/library-<id>.db`.
  *
  * Two callers, two different needs:
  *
@@ -164,23 +105,17 @@ export const openConfigDatabase = () => openPwaDatabase('config', CONFIG_DB_DDL,
  *    calls this with no options — empty, not seeded, matching the desktop
  *    path (`backends/tauri.js` + `GAME_DB_DDL`, no seed). A user-created
  *    Library starts genuinely empty.
- *  - `stores/settings.js`'s one-time PWA bootstrap (`loadLibraries()`,
+ *  - `stores/settings.js`'s one-time PWA bootstrap (`ensureSampleGamesLibrary()`,
  *    the interim stand-in for the still-simulated Settings → Databases →
  *    Available "install" flow — see `ACTIONS.md`) calls this with
  *    `{ seed: true }` exactly once, for the real "Sample Games" `libraries`
- *    row it registers on first launch, so that row's own IndexedDB record
- *    starts with `sample-games.js`'s 40 games already in it rather than
- *    empty — and, as of 22 Sep 2026, with §6's `positions` table computed
- *    and populated alongside them (`seedGames()`'s own trailing
- *    `seedPositions()` call, above), so the Explorer Section's numbers are
- *    real for this library from the first launch on, not mocked. Reuses the
- *    same private `seedGames()` `openGameDatabase()` already defines below,
- *    rather than a second seeding routine.
+ *    row it registers on first launch, so that file starts with the 40 sample
+ *    games and their `positions` rows (`seedStatements()`, above).
+ *
+ * `seed` only matters when the file is new; an existing file is opened as it is.
  *
  * @param {string|number} id the Library's id.
- * @param {{ seed?: boolean }} [options] `seed: true` runs `seedGames()`
- *   against a freshly created database; the default (`false`) leaves it
- *   empty.
+ * @param {{ seed?: boolean }} [options]
  */
 export const openLibraryDatabase = (id, { seed = false } = {}) =>
-  openPwaDatabase(`library-${id}`, GAME_DB_DDL, seed ? seedGames : null);
+  openPwaDatabase(`/library-${id}.db`, GAME_DB_DDL, seed ? seedStatements : null);

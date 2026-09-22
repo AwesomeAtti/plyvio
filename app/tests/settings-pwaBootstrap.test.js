@@ -1,22 +1,23 @@
 /**
  * `stores/settings.js`'s `ensureSampleGamesLibrary()` — the PWA's one-time
  * default-library bootstrap, called from `loadLibraries()`. Registers a
- * real "Sample Games" row in `config.db` and seeds its own IndexedDB record
+ * real "Sample Games" row in `config.db` and seeds its own database file
  * from `sample-games.js`'s 40 games, on first launch only. See ACTIONS.md's
  * "sequenced first" item 1 and `working notes/
  * pwa-default-library-connections-plan.md` for the plan this implements.
  *
- * `fake-indexeddb` is imported here, in this file only, the same way
- * `backends-pwa.test.js` and `databases-create.test.js` already do — a
+ * The PWA storage worker runs in-process here (`tests/helpers/
+ * pwa-in-process.js`), the same way `backends-pwa.test.js` and
+ * `databases-create.test.js` do — a
  * real round trip through the actual PWA backend, not a mocked seam, since
  * the whole point of this function is what it writes to `config.db` and to
- * the new library's own IndexedDB record.
+ * the new library's own file.
  *
  * `data/session.js` caches its connections and its backend choice at MODULE
  * scope (`configConnectionPromise`, `libraryConnectionPromises`,
  * `backendChoice`), on purpose (one connection per id, reused) — which
  * means a stale cached connection from an earlier test would silently keep
- * pointing at an earlier test's now-replaced `indexedDB` otherwise. Every
+ * pointing at an earlier test's now-cleared pool otherwise. Every
  * test below calls `freshModules()`, which resets the module registry and
  * re-imports `stores/settings.js`/`data/session.js` fresh, so each test's
  * `loadLibraries()` genuinely starts from nothing — not a convention this
@@ -27,13 +28,14 @@
  * idempotence rather than merely two independently-empty runs).
  */
 
-import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { get } from 'svelte/store';
 import { GAMES } from '../src/lib/mock-data/sample-games.js';
+import { resetPool } from './helpers/pwa-in-process.js';
 
-// eslint-disable-next-line no-undef -- fake-indexeddb/auto defines this globally
-const resetIdb = () => { indexedDB = new IDBFactory(); };
+vi.mock('../src/lib/data/backends/sqlite-worker-port.js', async () =>
+  (await import('./helpers/pwa-in-process.js')).workerPortMock());
+
 
 async function freshModules() {
   vi.resetModules();
@@ -45,7 +47,7 @@ async function freshModules() {
 }
 
 beforeEach(() => {
-  resetIdb();
+  resetPool();
 });
 
 describe('ensureSampleGamesLibrary (via loadLibraries, PWA)', () => {

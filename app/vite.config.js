@@ -14,28 +14,26 @@ import { sveltekit } from '@sveltejs/kit/vite';
 const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'));
 
 /*
- * `@sqlite.org/sqlite-wasm` ships one module (`dist/index.mjs`) containing both
- * the plain in-memory/deserialize API `backends/pwa.js` actually uses and two
- * unrelated worker-based APIs neither `pwa.js` nor `memory.js` ever calls: the
- * OPFS VFS installer and the Worker1 promiser. Each references its own worker
- * file as `new URL("<file>", import.meta.url)`, which is exactly the pattern
- * Vite's static analysis bundles as a separate worker chunk — it can't know
- * `installOpfsVfs()`'s own runtime guard (`if (!sqlite3.opfs) return;`, true on
- * a main thread, which is all this app ever runs on) means that Worker is never
- * actually constructed. Confirmed by running the package's own source: the
- * `sqlite3ApiBootstrap` initializer only sets up `sqlite3.opfs` inside a
- * dedicated Worker context.
+ * `@sqlite.org/sqlite-wasm` ships one module (`dist/index.mjs`) that also
+ * contains two worker-based APIs this app never uses, each referencing its own
+ * worker file as `new URL("<file>", import.meta.url)` — the pattern Vite
+ * bundles as a separate worker chunk:
  *
- * Left alone, this ships ~245KB gzipped of dead code — and, worse, its mere
- * presence in the build reads as OPFS already being half-wired-in, which could
- * bias the still-open, separate long-term OPFS-vs-IndexedDB-VFS decision
- * without anyone having actually chosen it. This plugin breaks Vite's literal-
- * string detection for those two `new URL(...)` calls (wrapping the same
- * string in an array-join, so it evaluates identically if that dead code path
- * were ever somehow reached) so neither worker chunk is bundled. Nothing else
- * about the module's behavior changes — every code path this app actually
- * exercises (`sqlite3InitModule()`, `oo1.DB`, `sqlite3_deserialize`,
- * `sqlite3_js_db_export`) is untouched.
+ *  - `sqlite3-opfs-async-proxy.js`, the async half of the plain `opfs` VFS.
+ *    That VFS needs `SharedArrayBuffer`, so COOP/COEP response headers, which
+ *    GitHub Pages can't send; its installer refuses to start without them.
+ *    The PWA's storage uses the `opfs-sahpool` VFS instead, which runs
+ *    entirely inside Plyvio's own worker (`data/backends/sqlite-worker.js`)
+ *    and never loads this file.
+ *  - `sqlite3-worker1.mjs`, the package's generic Worker1/promiser API.
+ *    Plyvio has its own worker and protocol (`data/backends/sqlite-host.js`).
+ *
+ * Checked against the package source (3.53.4-build1): `installOpfsSAHPoolVfs()`
+ * references neither file. Left alone they add ~245KB gzipped of dead code.
+ * This plugin breaks Vite's literal-string detection for those two
+ * `new URL(...)` calls (the same string, wrapped in an array-join, so it
+ * evaluates identically if that code path were ever reached) so neither
+ * chunk is bundled. Nothing else about the module changes.
  */
 const dropUnusedSqliteWasmWorkers = () => ({
   name: 'drop-unused-sqlite-wasm-workers',
@@ -56,6 +54,16 @@ const dropUnusedSqliteWasmWorkers = () => ({
 
 export default {
   plugins: [dropUnusedSqliteWasmWorkers(), sveltekit()],
+  // The storage worker imports the ES-module sqlite-wasm package; an 'iife'
+  // worker (Vite's default) can't split it. Worker chunks are built with
+  // their own plugin list, and the package is imported in the worker now, so
+  // the plugin above has to be listed here too or the dead chunks come back.
+  worker: { format: 'es', plugins: () => [dropUnusedSqliteWasmWorkers()] },
+  // Per sqlite-wasm's README for Vite: pre-bundling rewrites the module and
+  // breaks its `new URL('sqlite3.wasm', import.meta.url)`. Deliberately NOT
+  // the README's COOP/COEP `server.headers`: dev must behave like GitHub
+  // Pages, which can't send them.
+  optimizeDeps: { exclude: ['@sqlite.org/sqlite-wasm'] },
   define: { __APP_VERSION__: JSON.stringify(version) },
   server: { host: '0.0.0.0', port: 5173, strictPort: true },
   preview: { host: '0.0.0.0', port: 4173, strictPort: true }

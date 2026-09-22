@@ -1,15 +1,19 @@
 /**
  * The one place that touches `@sqlite.org/sqlite-wasm` directly.
  *
- * `memory.js` (opens bytes already in memory, used by tests) and `pwa.js` (opens a
- * database backed by an IndexedDB snapshot, used by the browser/PWA build) both need
- * the same three things: load the WASM module once, open a database from bytes (or
- * fresh), and wrap the result in the five-method `Connection` shape `connection.js`
- * defines. This file is that shared core so neither backend duplicates it.
+ * Two ways to open a database, one way to wrap it:
  *
- * Nothing here knows where the bytes came from or where they're going — that's each
- * caller's own job (a file on disk for `memory.js`'s tests, an IndexedDB record for
- * `pwa.js`). This file only knows SQLite-WASM.
+ *  - `openDb()` opens a database from bytes (or an empty one) held in memory.
+ *    `memory.js` uses it for the tests' fixtures, and so does the in-process
+ *    test store in `tests/helpers/pwa-in-process.js`.
+ *  - `openPoolDb()` opens a file by name on the `opfs-sahpool` VFS. The PWA's
+ *    storage worker (`sqlite-worker.js`) uses it. Writes go to the file page by
+ *    page, through the VFS, with nothing to serialise afterwards.
+ *  - `connectionFor()` wraps either kind in the five-method `Connection` shape
+ *    `connection.js` defines, plus `export()` for the current bytes.
+ *
+ * Nothing here knows where a database lives or how it's reached; that's each
+ * caller's job. This file only knows SQLite-WASM.
  */
 
 import { assertConnection, DataError } from '../connection.js';
@@ -57,9 +61,24 @@ export const openDb = (sqlite3, bytes = null) => {
 };
 
 /**
+ * Open (creating if needed) the file `name` on an installed `opfs-sahpool` VFS.
+ * `name` must be absolute (`/config.db`): this VFS doesn't resolve relative
+ * paths (see "Peculiarities" in the package's `installOpfsSAHPoolVfs()` docs).
+ *
+ * @param {object} pool the utility object `installOpfsSAHPoolVfs()` resolves to
+ * @param {string} name
+ * @returns {object} the oo1 `DB` instance
+ */
+export const openPoolDb = (pool, name) => {
+  if (!name.startsWith('/')) throw new DataError(`pool database names must be absolute: ${name}`);
+  return new pool.OpfsSAHPoolDb(name);
+};
+
+/**
  * Wrap an open oo1 `DB` in the `Connection` shape, plus `export()` for a caller that
- * needs the current bytes back out (every caller of this module does, one way or
- * another — a test proving a round trip, or `pwa.js` snapshotting to IndexedDB).
+ * needs the current bytes back out: a test proving a round trip, or (later) the
+ * PWA's manual export. Saving is not one of them; a pool database is already on
+ * disk.
  *
  * @param {object} db the oo1 `DB` instance from `openDb`
  * @param {import('@sqlite.org/sqlite-wasm').Sqlite3Static} sqlite3
@@ -86,7 +105,7 @@ export const connectionFor = (db, sqlite3, who) => {
     close: async () => {
       db.close();
     },
-    /** The current bytes of the database, for writing it back to wherever it came from. */
+    /** The current bytes of the database. */
     export: async () => sqlite3.capi.sqlite3_js_db_export(db.pointer)
   };
 

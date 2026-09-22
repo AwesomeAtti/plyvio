@@ -4,20 +4,21 @@
  * `game-explorerStats.test.js` covers the store layer above this with
  * `explorerConnection` mocked away; this file exercises the real function
  * against a real PWA connection, the same way `settings-pwaBootstrap.test.js`
- * exercises `libraryConnection()` — `fake-indexeddb`, no seam mocked.
+ * exercises `libraryConnection()` — the in-process PWA backend, no seam mocked.
  *
  * `data/session.js` caches connections and the backend choice at module
  * scope, so every test below calls `freshModules()` (same helper and same
  * reasoning as `settings-pwaBootstrap.test.js`) to start from nothing.
  */
 
-import 'fake-indexeddb/auto';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import { vi } from 'vitest';
+import { resetPool } from './helpers/pwa-in-process.js';
 
-// eslint-disable-next-line no-undef -- fake-indexeddb/auto defines this globally
-const resetIdb = () => { indexedDB = new IDBFactory(); };
+vi.mock('../src/lib/data/backends/sqlite-worker-port.js', async () =>
+  (await import('./helpers/pwa-in-process.js')).workerPortMock());
+
 
 async function freshModules() {
   vi.resetModules();
@@ -30,7 +31,7 @@ async function freshModules() {
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq -';
 
 beforeEach(() => {
-  resetIdb();
+  resetPool();
 });
 
 describe('explorerConnection — PWA (no longer Tauri-only)', () => {
@@ -43,9 +44,9 @@ describe('explorerConnection — PWA (no longer Tauri-only)', () => {
     expect(connection).not.toBe(null);
   });
 
-  it('opening an unregistered id creates its own empty record rather than resolving null', async () => {
+  it('opening an unregistered id creates its own empty file rather than resolving null', async () => {
     // PWA-specific: `openLibraryById()`'s PWA branch opens a library's
-    // IndexedDB record directly by id and does not check `config.db`
+    // file directly by id and does not check `config.db`
     // first (see that function's own comment on the asymmetry with Tauri,
     // where an unregistered id DOES resolve null). Every real caller only
     // ever passes an id it already read out of a real `config.db` row, so

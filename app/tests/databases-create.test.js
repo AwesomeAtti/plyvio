@@ -2,15 +2,14 @@
  * DB‑04/DB‑05/DB‑03r — Settings → Databases → Add database: create new.
  * `working/wireframes/settings-databases-add.html`, Rev G, G1 20 Sep 2026.
  *
- * `fake-indexeddb` is imported here, in this file only — the same convention
- * `tests/backends-pwa.test.js` documents for itself — so every other
- * Databases test keeps seeing a real, unavailable `indexedDB`. jsdom has no
+ * The PWA storage worker is run in-process here (`tests/helpers/
+ * pwa-in-process.js`), in this file only, so every other Databases test keeps
+ * seeing storage unavailable, as jsdom (no Worker) gives it. jsdom has no
  * `'__TAURI_INTERNALS__' in window`, so every Create here runs the PWA path
  * (`createDatabase()`'s `isTauri()` branch) — a genuine round trip through
  * `backends/pwa.js`'s `openLibraryDatabase()`, not a stub.
  */
 
-import 'fake-indexeddb/auto';
 import { beforeEach, afterEach, describe, expect, it } from 'vitest';
 import { get } from 'svelte/store';
 import { render, cleanup, fireEvent } from '@testing-library/svelte';
@@ -20,16 +19,18 @@ import { locale } from '../src/lib/stores/i18n.js';
 import {
   objects, selectSection, resetSettings, resetDatabases, addObject, findObject
 } from '../src/lib/stores/settings.js';
+import { resetPool } from './helpers/pwa-in-process.js';
 
-// eslint-disable-next-line no-undef -- fake-indexeddb/auto defines this globally
-const resetIdb = () => { indexedDB = new IDBFactory(); };
+vi.mock('../src/lib/data/backends/sqlite-worker-port.js', async () =>
+  (await import('./helpers/pwa-in-process.js')).workerPortMock());
+
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 
 /**
  * Wait for `predicate()` to become truthy — `confirmCreate()`'s click handler
  * isn't awaited by `fireEvent.click`, and `createDatabase()`'s PWA path
- * chains several dynamic `import()`s and a real IndexedDB round trip, so a
+ * chains several dynamic `import()`s and a real round trip to the storage worker, so a
  * fixed number of `tick()`s is not reliably enough. Polls rather than
  * guessing a delay.
  */
@@ -50,7 +51,7 @@ const DBS = [
 ];
 
 beforeEach(() => {
-  resetIdb();
+  resetPool();
   stripTabs.set([]);
   activeId.set('library');
   workspaceState.set({ library: { scratch: '' } });
@@ -240,7 +241,8 @@ describe('DB‑04 — Create', () => {
     const created = await waitFor(() => get(objects).databases.find((d) => d.name === 'Registered Library'));
 
     // The config-assigned id, not the nextId('db') fallback — config.db has
-    // a real connection in this test environment (fake-indexeddb), so
+    // a real connection in this test environment (the in-process PWA
+    // backend), so
     // createDatabase() prefers it, same as the Tauri branch always has.
     expect(typeof created.id).toBe('number');
 
