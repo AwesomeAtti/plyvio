@@ -13,10 +13,15 @@ import { analyse, hasLegalMoves } from '$lib/game/engineMock.js';
 import { objects } from './settings.js';
 import {
   games as libraryGames, tags as libraryTags, collections as libraryCollections,
-  activeLibraryConnection
+  activeLibraryConnection, loadGames
 } from './library.js';
 import { known, ratingText, resultText, infoContentHeight } from '$lib/game/info.js';
-import { readMovetextFor, readRecordFields, readPositionStats } from '$lib/data/games.js';
+import {
+  readMovetextFor, readRecordFields, readPositionStats,
+  findOrCreateTag, addTagToGame, removeTagFromGame,
+  findOrCreateCollection, addGameToCollection, removeGameFromCollection,
+  setFavorite
+} from '$lib/data/games.js';
 import { explorerConnection } from '$lib/data/session.js';
 
 /**
@@ -557,12 +562,116 @@ export const infoHeight = (info) => infoContentHeight((info?.chips?.length ?? 0)
  * statement about their copy. A game opened without a row has nothing to write
  * to, and the control is not drawn.
  */
+/**
+ * Persist a favourite flip to the real database, in the background — the
+ * write counterpart of `readFavoriteIds` (`loadGames()`'s own read).
+ * Fire-and-forget, same shape as `loadRealGame`/`loadExplorerStats`: the
+ * optimistic store update in `toggleFavourite` below has already applied by
+ * the time this runs, so a failure here is logged and that optimistic state
+ * is left standing rather than rolled back — there is no error affordance
+ * to surface it to yet. No reload needed afterward (unlike
+ * `persistGameInfo` below): a favourite is a plain boolean already fully
+ * correct in `libraryGames` the moment the optimistic update lands, with no
+ * "newly created row" gap the way a brand-new tag or collection has.
+ */
+function persistFavourite(gameId, on) {
+  (async () => {
+    try {
+      const connection = await activeLibraryConnection();
+      if (!connection) throw new Error('no database connection');
+      await setFavorite(connection, gameId, !!on);
+    } catch (err) {
+      console.error(`Plyvio: failed to save favourite for game ${gameId}`, err);
+    }
+  })();
+}
+
 export function toggleFavourite(tabId) {
   const st = get(gameStates)[tabId];
   if (!st || st.libraryGameId == null) return;
+  let next;
   libraryGames.update((rows) =>
-    rows.map((r) => (r.id === st.libraryGameId ? { ...r, favorite: !r.favorite } : r))
+    rows.map((r) => {
+      if (r.id !== st.libraryGameId) return r;
+      next = !r.favorite;
+      return { ...r, favorite: next };
+    })
   );
+  if (next !== undefined) persistFavourite(st.libraryGameId, next);
+}
+
+/**
+ * Commit GI-M's marks — tags, collections, and (same function family,
+ * folded in alongside them per the agreed plan) favourite — to the real
+ * database, in the background. Fire-and-forget, same shape as
+ * `loadRealGame`/`loadExplorerStats`/`persistFavourite` above: the dialog
+ * has already closed and `saveGameInfo`'s own optimistic store update has
+ * already applied by the time this runs, so a failure here is logged and
+ * that optimistic state is left standing rather than rolled back — there
+ * is no error affordance to surface it to yet.
+ *
+ * Uses `activeLibraryConnection()` — the same connection `loadRealGame()`
+ * already assumes a tab's `libraryGameId` belongs to (this file, above),
+ * not a new assumption this introduces.
+ *
+ * Diffs against `prev` — the row's tags/collections BEFORE `saveGameInfo`'s
+ * optimistic update overwrote them, captured by the caller — rather than
+ * writing every name unconditionally: `findOrCreateTag`/
+ * `findOrCreateCollection` are idempotent either way, but a diff is what
+ * lets something the user REMOVED actually get removed
+ * (`removeTagFromGame`/`removeGameFromCollection`), which re-adding
+ * everything present would never do. Every token in `v.tags`/
+ * `v.collections` — an existing one or one newly typed in the dialog
+ * (`TokenField.svelte`'s `isNew` tokens carry a synthetic negative id, not
+ * a real one) — is resolved by NAME through `findOrCreateTag`/
+ * `findOrCreateCollection`, so a new tag is created for real and an
+ * existing one is found rather than trusted from a possibly-synthetic
+ * client-side id.
+ *
+ * Reloads via `loadGames()` on success — `loadGames()`'s own doc comment
+ * already names "a future favorite/trash/tag/collection write" as a reason
+ * to rerun it, and this is that write: `libraryTags`/`libraryCollections`
+ * (what the Sidebar and the Edit dialog's own token field read) only pick
+ * up a NEWLY CREATED tag or collection once something re-reads them, which
+ * `saveGameInfo`'s own optimistic patch — session state only — cannot do.
+ */
+function persistGameInfo(gameId, prev, v) {
+  (async () => {
+    try {
+      const connection = await activeLibraryConnection();
+      if (!connection) throw new Error('no database connection');
+
+      const [nextTagIds, nextCollectionIds] = await Promise.all([
+        Promise.all((v.tags ?? []).map((t) => findOrCreateTag(connection, t.name))),
+        Promise.all((v.collections ?? []).map((c) => findOrCreateCollection(connection, c.name)))
+      ]);
+
+      const prevTagIds = new Set(prev?.tags ?? []);
+      const prevCollectionIds = new Set(prev?.collections ?? []);
+      const nextTagSet = new Set(nextTagIds);
+      const nextCollectionSet = new Set(nextCollectionIds);
+
+      await Promise.all([
+        ...nextTagIds
+          .filter((id) => !prevTagIds.has(id))
+          .map((id) => addTagToGame(connection, id, gameId)),
+        ...[...prevTagIds]
+          .filter((id) => !nextTagSet.has(id))
+          .map((id) => removeTagFromGame(connection, id, gameId)),
+        ...nextCollectionIds
+          .filter((id) => !prevCollectionIds.has(id))
+          .map((id) => addGameToCollection(connection, id, gameId)),
+        ...[...prevCollectionIds]
+          .filter((id) => !nextCollectionSet.has(id))
+          .map((id) => removeGameFromCollection(connection, id, gameId)),
+        setFavorite(connection, gameId, !!v.favorite)
+      ]);
+
+      await loadGames();
+    } catch (err) {
+      console.error(`Plyvio: failed to save tags/collections/favourite for game ${gameId}`, err);
+    }
+  })();
 }
 
 /**
@@ -578,6 +687,11 @@ export function toggleFavourite(tabId) {
  * Collections are written as a full array, matching how a library row
  * already carries `collections` (many-to-many, the same shape as `tags`) and
  * how the Info card's own chips already read it back.
+ *
+ * The store update below is optimistic and session-only, same as always;
+ * `persistGameInfo` (above) commits the same values to the real database in
+ * the background, diffed against the row's state just before this update
+ * applied.
  */
 export function saveGameInfo(tabId, v) {
   const st = get(gameStates)[tabId];
@@ -600,6 +714,9 @@ export function saveGameInfo(tabId, v) {
   }));
 
   if (st.libraryGameId == null) return;
+
+  const prevRow = get(libraryGames).find((r) => r.id === st.libraryGameId);
+
   libraryGames.update((rows) =>
     rows.map((r) =>
       r.id === st.libraryGameId
@@ -612,6 +729,8 @@ export function saveGameInfo(tabId, v) {
         : r
     )
   );
+
+  persistGameInfo(st.libraryGameId, prevRow, v);
 }
 
 /** The Section is sized to content; the shell needs that height to allocate. */
