@@ -56,7 +56,15 @@
 import { readLibraries, readUiState, writeUiState } from './config.js';
 
 // Set in `app/.env` (gitignored, per-developer) as VITE_SAMPLES_DIR — see `.env.example`.
-const SAMPLES_DIR = import.meta.env.VITE_SAMPLES_DIR;
+//
+// DEVELOPMENT ONLY. Vite copies every `import.meta.env.VITE_*` value into the
+// built JavaScript as a literal, so a value that's gitignored in source still
+// ships in a production build. This one is a path on the developer's machine,
+// and it did ship (the v0.1.1 deploy, 22 Sep 2026). `import.meta.env.DEV` is
+// `false` in a production build, so this becomes `undefined` there and the
+// minifier drops the path entirely. `scripts/assemble-site.mjs` also refuses
+// to finish a build that contains the builder's home directory.
+const SAMPLES_DIR = import.meta.env.DEV ? import.meta.env.VITE_SAMPLES_DIR : undefined;
 
 /**
  * The absolute path to `config.db` on this machine — the sample shipped in

@@ -1,6 +1,6 @@
 /**
  * `data/session.js`'s `explorerConnection()`, backend-aware as of 22 Sep
- * 2026 — see `working notes/explorer-three-layer-gap-plan.md`.
+ * 2026 — see the working notes' `explorer-three-layer-gap-plan.md`.
  * `game-explorerStats.test.js` covers the store layer above this with
  * `explorerConnection` mocked away; this file exercises the real function
  * against a real PWA connection, the same way `settings-pwaBootstrap.test.js`

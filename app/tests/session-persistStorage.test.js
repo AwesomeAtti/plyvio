@@ -1,7 +1,7 @@
 /**
  * `data/session.js`'s `requestPersistentStorage()`: asks the browser once,
- * after the user's first write, to keep this origin's storage (plan §7,
- * `working notes/opfs-migration-plan.md`).
+ * after the user's first write, to keep this origin's storage (ADR 0005,
+ * `docs/decisions/0005-pwa-storage-on-opfs-sahpool.md`).
  *
  * jsdom has no `navigator.storage`, so each test installs a stub. The PWA
  * backend runs in-process (`tests/helpers/pwa-in-process.js`), so the

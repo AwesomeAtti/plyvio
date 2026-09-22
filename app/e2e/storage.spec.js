@@ -1,7 +1,7 @@
 /**
  * The PWA's storage in a real browser: OPFS, the storage worker, and the
- * production build that carries them. Layer 2 of the OPFS migration's test
- * plan (`working notes/opfs-migration-plan.md` §8). Vitest covers
+ * production build that carries them (ADR 0005,
+ * `docs/decisions/0005-pwa-storage-on-opfs-sahpool.md`). Vitest covers
  * everything else in-process; these are the checks only a real browser and a
  * real build can answer.
  */

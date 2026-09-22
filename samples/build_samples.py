@@ -7,7 +7,7 @@ Creates, beside one another:
     master-games.db    Library "Master Games" - hikaru.pgn, gothamchess-annotated.pgn
     sample-games.db    Library "Sample Games" - sample-games.pgn
 
-Rules this build follows (see working notes/sample-db-design.md):
+Rules this build follows (see the working notes, sample-db-design.md):
 
   1. No field is added to the games table.
   2. No existing field is recreated; a value with a home is read from there.

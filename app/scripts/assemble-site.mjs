@@ -21,6 +21,7 @@
  *   node scripts/assemble-site.mjs
  */
 import { cp, mkdir, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
@@ -52,6 +53,35 @@ const WORKER_ASSETS_GLOBAL = 'self.__PLYVIO_WORKER_ASSETS__';
   touch a line added after it. Refuses to finish if there is nothing to list,
   since a build without these files can't store anything in the browser.
 */
+/*
+  Nothing from the builder's machine gets published.
+
+  Vite copies every `import.meta.env.VITE_*` value into the built JavaScript,
+  so a path kept out of the source (in a gitignored `.env`) can still land in
+  the build. It did: the v0.1.1 deploy carried a developer's home directory
+  (found 22 Sep 2026). This checks every text file in the assembled site for
+  the home directory of whoever is building it, and fails the build if any
+  file contains it. The same build is what the desktop app packages, so this
+  covers both.
+*/
+async function refuseHomePaths() {
+  const home = homedir();
+  if (!home || home === '/') return;
+  const hits = [];
+  for (const entry of await readdir(BUILD, { recursive: true })) {
+    if (!/\.(js|mjs|html|css|json|webmanifest|txt|xml|svg|map)$/i.test(entry)) continue;
+    const file = path.join(BUILD, entry);
+    if (!(await stat(file)).isFile()) continue;
+    if ((await readFile(file, 'utf8')).includes(home)) hits.push(entry);
+  }
+  if (hits.length) {
+    throw new Error(
+      `The build contains this machine's home directory in:\n    ${hits.join('\n    ')}\n` +
+      `  Nothing from the builder's machine may be published. Look for an import.meta.env value.`
+    );
+  }
+}
+
 async function precacheWorkerAssets() {
   const entries = await readdir(WORKERS, { recursive: true }).catch(() => []);
   const assets = [];
@@ -121,6 +151,8 @@ async function main() {
       await rm(path.join(BUILD, entry), { force: true });
     }
   }
+
+  await refuseHomePaths();
 
   const precached = await precacheWorkerAssets();
   console.log(`  Precaching ${precached} storage worker files in the service worker`);

@@ -3,8 +3,8 @@
  * default-library bootstrap, called from `loadLibraries()`. Registers a
  * real "Sample Games" row in `config.db` and seeds its own database file
  * from `sample-games.js`'s 40 games, on first launch only. See ACTIONS.md's
- * "sequenced first" item 1 and `working notes/
- * pwa-default-library-connections-plan.md` for the plan this implements.
+ * "sequenced first" item 1 and the working notes'
+ * `pwa-default-library-connections-plan.md` for the plan this implements.
  *
  * The PWA storage worker runs in-process here (`tests/helpers/
  * pwa-in-process.js`), the same way `backends-pwa.test.js` and

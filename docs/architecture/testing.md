@@ -70,7 +70,9 @@ origin's OPFS, service workers and caches. Three things learned the hard way:
   normal contexts.
 - **Playwright's Firefox doesn't start on at least one macOS machine**
   ("Could not find profile folder", even from a bare `firefox.launch()`,
-  22 Sep 2026). There, the Firefox project fails before any Plyvio code runs.
+  22 Sep 2026). There, the Firefox project fails before any Plyvio code runs,
+  so it's **opt-in**: `PLYVIO_E2E_FIREFOX=1 npm run test:e2e`. A plain
+  `npm run test:e2e` runs Chromium and WebKit.
 
 ## What these tests cannot tell you
 

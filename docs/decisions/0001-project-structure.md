@@ -9,7 +9,7 @@ Accepted — 2026-09-16.
 The prototype grew for several weeks as a flat tree in
 the original prototype folder: the SvelteKit app, `spec/`, `wireframes/`
 (dozens of accepted, exploratory and superseded drawings mixed together),
-`samples/`, working notes under `working notes/`, and a single 32KB
+`samples/`, working notes, and a single 32KB
 `app/README.md` covering everything from `npm run dev` to per-workspace
 implementation detail, sat side by side at the top level. That was workable
 for one person iterating alone; it stops being workable as the project moves
@@ -35,7 +35,7 @@ app/                  ← the SvelteKit app (app/src/lib/ untouched for now — 
 working/              ← private. Gitignored, and its own private repo.
 ```
 
-`working/` receives `STATUS.md`, `working notes/`, the superseded wireframes
+`working/` receives `STATUS.md`, the working notes, the superseded wireframes
 (everything below G1 in STATUS.md's register, plus `wireframes/assets/` —
 none of it is loaded by an accepted wireframe), and `index-draft.html`. The
 old prototype folder is left untouched as a fallback, to be retired by

@@ -1,6 +1,6 @@
 /**
  * `stores/game.js`'s `saveGameInfo`/`toggleFavourite` — real write round
- * trip. See `working notes/tag-collection-writes-plan.md`.
+ * trip. See the working notes' `tag-collection-writes-plan.md`.
  *
  * A real connection through the in-process PWA backend, not a mocked seam — the same
  * approach `settings-pwaBootstrap.test.js` and
