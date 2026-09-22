@@ -4,7 +4,7 @@
  *
  * This is the backend the tests use, and the simplest of the three: the desktop
  * app opens `backends/tauri.js`, the browser/PWA build opens `backends/pwa.js`
- * (an IndexedDB snapshot around the same engine this file uses), and this one
+ * (OPFS files, through a storage worker, on the same engine), and this one
  * opens bytes already in memory with nothing behind them. It proves the schema
  * and the queries against the real files in `samples/`, which is what a schema
  * needs proving against.

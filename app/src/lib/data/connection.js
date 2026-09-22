@@ -7,24 +7,27 @@
  *
  * **Both real builds read SQLite now.** The desktop app opens `backends/tauri.js`
  * (a file on disk, over Tauri IPC); the browser/PWA build opens `backends/pwa.js`
- * (an in-memory SQLite database snapshotted to IndexedDB — no OPFS, no
- * third-party VFS, see that file's own header). Async paid off exactly as
- * planned below: neither backend needed this seam rewritten to arrive.
+ * (SQLite files in the browser's origin-private file system, on the
+ * `opfs-sahpool` VFS, in a storage worker — see that file's own header).
+ * Async paid off exactly as planned below: neither backend needed this seam
+ * rewritten to arrive.
  *
  * Async, although nothing here is slow today, because everything that will
- * implement it is: a Tauri command is IPC, and any browser-side storage would be
- * a worker. A synchronous, array-shaped seam would have to be rewritten by the
+ * implement it is: a Tauri command is IPC, and the browser's storage is a
+ * worker. A synchronous, array-shaped seam would have to be rewritten by the
  * first real backend, which is the rewrite this exists to avoid.
  *
  * ---------------------------------------------------------------------------
  * EVERYTHING THAT KNOWS SQLITE IS A LIBRARY LIVES IN `backends/`.
  *
  * Not "mostly", and not "by convention": `data/backends/` is the only directory
- * that imports a SQLite package or knows how a database is opened. Four files
- * today: `sqlite-engine.js` (the shared WASM-loading/`Connection`-wrapping core),
+ * that imports a SQLite package or knows how a database is opened:
+ * `sqlite-engine.js` (the shared WASM-loading/`Connection`-wrapping core),
  * `memory.js` (opens bytes already in memory, used by the tests), `tauri.js`
- * (the desktop backend) and `pwa.js` (the browser backend, built on
- * `sqlite-engine.js` the same way `memory.js` is).
+ * (the desktop backend), and the browser backend: `pwa.js` (main thread,
+ * proxies every call), `worker-client.js` and `sqlite-worker-port.js` (reach
+ * the worker), `sqlite-worker.js` and `sqlite-host.js` (the worker itself,
+ * built on `sqlite-engine.js`).
  *
  * The repositories beside this file (`config.js`, `games.js`, `identify.js`) hold
  * SQL, and that is deliberate: SQL is the schema's own language and it travels to

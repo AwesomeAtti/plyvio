@@ -35,7 +35,7 @@ const sqlite3 = () => (globalThis.__plyvioTestSqlite3 ??= sqlite3Module());
  * Forget every file, as clearing the browser's site data would. The databases
  * aren't closed: a test file that doesn't reset modules keeps its cached
  * connections from one test to the next (`data/session.js` caches them), the
- * same as it did over `fake-indexeddb`, and closing them under it would break
+ * the same as before this backend moved to a worker, and closing them would break
  * that rather than model anything real.
  */
 export const resetPool = () => {

@@ -4,7 +4,7 @@ import { AVAILABLE_DATABASES, validateDraftDatabase, basename } from '$lib/setti
 import { AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
 import {
   configConnection, explorerConnection, getBackend, librariesDirectoryEntries,
-  openNewLibraryConnection
+  openNewLibraryConnection, PWA_LIBRARY_PATH
 } from '$lib/data/session.js';
 import {
   readPreferences, writePreference, PREFERENCE_KEYS,
@@ -141,7 +141,7 @@ const PWA_SAMPLE_LIBRARY_SEEDED_KEY = 'pwaSampleLibrarySeeded';
 
 /**
  * PWA-only, one-time: register a real "Sample Games" Library in `config.db`
- * and seed its IndexedDB record from `sample-games.js`'s 40 games, so a
+ * and seed its database file from `sample-games.js`'s 40 games, so a
  * first-time PWA visit opens with a genuine, working library rather than
  * empty.
  *
@@ -174,10 +174,9 @@ async function ensureSampleGamesLibrary(connection) {
     if (!existing.some((lib) => lib.name === 'Sample Games')) {
       const now = new Date().toISOString();
       const newId = await createLibrary(connection, {
-        name: 'Sample Games', path: 'indexeddb', createdAt: now, enabled: true, version: '1.0'
+        name: 'Sample Games', path: PWA_LIBRARY_PATH, createdAt: now, enabled: true, version: '1.0'
       });
-      const { openLibraryDatabase } = await import('$lib/data/backends/pwa.js');
-      const libConnection = await openLibraryDatabase(newId, { seed: true });
+      const { connection: libConnection } = await openNewLibraryConnection({ id: newId, seed: true });
       await libConnection.close();
     }
     await writeUiState(connection, PWA_SAMPLE_LIBRARY_SEEDED_KEY, true);
@@ -212,7 +211,7 @@ async function ensureSampleGamesLibrary(connection) {
  * needs to survive a merge.
  *
  * A real PWA row's `location` is set to `null`, never `lib.path` — that
- * column holds `openNewLibraryConnection()`'s `'indexeddb'` sentinel (ADR
+ * column holds `openNewLibraryConnection()`'s `PWA_LIBRARY_PATH` sentinel (ADR
  * 0004), an internal marker, not a path anyone should see. `null` is the
  * same "Stored in this browser" value `createDatabase()`'s PWA branch
  * already sets on a freshly created row (`DatabaseSection.svelte`'s
@@ -479,7 +478,7 @@ function existingDatabaseIdentity(excludingId) {
 
 /**
  * DB‑04/DB‑05 — create the draft's real database file (Tauri) or its own
- * IndexedDB record (PWA), then replace the draft object with the real one.
+ * file in the browser's storage (PWA), then replace the draft object with the real one.
  * Nothing is written until this is called; a validation failure writes
  * nothing either.
  *
@@ -545,17 +544,17 @@ export async function createDatabase(id, { name, filename }) {
     //
     // Registration has to come BEFORE physical creation here, the reverse of
     // the Tauri branch above: `openNewLibraryConnection()`'s PWA path opens
-    // by id (the id IS the IndexedDB key), so a real id has to exist first.
+    // by id (the id names the file), so a real id has to exist first.
     // `createLibrary()` supplies it the same way the Tauri branch already
     // prefers a config-assigned id over `nextId('db')` when a config
-    // connection exists (ADR 0004) — `path` is the 'indexeddb' sentinel
+    // connection exists (ADR 0004) — `path` is the `PWA_LIBRARY_PATH` sentinel
     // `openNewLibraryConnection()` also returns; nothing reads a PWA
     // library's `game_db_path` back for connection lookup, so a placeholder
     // that merely satisfies the NOT NULL column is enough.
     const config = await configConnection();
     const newId = config
       ? await createLibrary(config, {
-          name: cleanName, path: 'indexeddb', createdAt: now, enabled: true,
+          name: cleanName, path: PWA_LIBRARY_PATH, createdAt: now, enabled: true,
           version: NEW_DATABASE_VERSION
         })
       : nextId('db');

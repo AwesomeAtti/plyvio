@@ -6,7 +6,7 @@
  * SQLite itself. Each `Connection` it returns is a proxy: every method is one
  * message to the storage worker (`worker-client.js` → `sqlite-worker.js` →
  * `sqlite-host.js`). A `run()` that resolves has been written to the file,
- * page by page. There is no snapshot to export and nothing to flush on unload.
+ * page by page. Nothing is exported or flushed afterwards, on unload or otherwise.
  *
  * Files: `/config.db` (the browser's `config.db` counterpart: fresh tables, no
  * seed rows) and `/library-<id>.db`, one per Library.

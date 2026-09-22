@@ -302,7 +302,7 @@ describe('loadLibraries() — PWA merge (a real Library survives a reload)', () 
     const reloaded = after.find((d) => d.id === created.id);
     expect(reloaded).toBeTruthy();
     expect(reloaded.name).toBe('Survives Reload');
-    // Not the 'indexeddb' sentinel — null, so it reads "Stored in this
+    // Not the PWA_LIBRARY_PATH sentinel — null, so it reads "Stored in this
     // browser" and connectionForLibrary()'s `'location' in db` gate opens it.
     expect(reloaded.location).toBeNull();
 

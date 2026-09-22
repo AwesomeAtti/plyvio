@@ -38,13 +38,14 @@
  *
  * TWO REAL BACKENDS NOW, NOT ONE. `configConnection()` and `libraryConnection()`
  * open `backends/tauri.js` inside Tauri (a file on disk, over IPC) and
- * `backends/pwa.js` everywhere else (an in-memory SQLite database snapshotted to
- * IndexedDB — see that file's own header). A plain browser/PWA visit gets a
- * real, persistent database now, just a different one than the desktop app
- * opens — `null` is no longer "not Tauri," it's IndexedDB genuinely being
- * unavailable (Safari private browsing, some locked-down embedded browsers, a
- * test environment with no IndexedDB polyfill), which degrades the same way
- * every other missing capability in this seam does rather than throwing.
+ * `backends/pwa.js` everywhere else (SQLite files in the browser's origin-
+ * private file system, OPFS, reached through a storage worker — see that
+ * file's own header). A plain browser/PWA visit gets a real, persistent
+ * database, just a different one than the desktop app opens — `null` is no
+ * longer "not Tauri," it's storage genuinely being unavailable (no OPFS, as in
+ * Safari private browsing; another tab of the app already holding it; a test
+ * environment with no Worker), which degrades the same way every other
+ * missing capability in this seam does rather than throwing.
  *
  * `explorerConnection()` used to be the one exception, Tauri-only, because
  * `libraries` had no real PWA rows to resolve. As of 22 Sep 2026 it shares
@@ -171,12 +172,12 @@ const resolveGameDbPath = (path) => (path.startsWith('/') ? path : `${SAMPLES_DI
  * Open a PWA-backed connection, degrading to `null` if it can't — same
  * contract every caller under `data/` already handles for "outside Tauri"
  * before this migration, now covering a genuinely missing capability rather
- * than a deliberately unimplemented one. IndexedDB can be absent or refuse
- * to open (Safari private browsing disables it outright; some locked-down
- * or embedded browser contexts have no implementation at all), and a test
- * environment with no IndexedDB polyfill is exactly this same case, not a
- * special one — `pwa.js` isn't mocked away for ordinary UI tests, it's
- * reached and degrades the same way a real unsupported browser would.
+ * than a deliberately unimplemented one. Storage can be unavailable (no
+ * OPFS, as in Safari private browsing; another tab or window of the app
+ * holding the storage lock), and a test environment with no Worker is
+ * exactly this same case, not a special one — `pwa.js` isn't mocked away for
+ * ordinary UI tests, it's reached and degrades the same way a real
+ * unsupported browser would.
  */
 const openPwaConnection = async (open, label) => {
   try {
@@ -215,11 +216,11 @@ const libraryConnectionPromises = new Map();
  * `libraryConnection()` and `explorerConnection()` below share. Tauri:
  * resolve the id through `config.db`'s `libraries` table, then open the
  * file at its (possibly relative) `game_db_path` — an id `config.db` has
- * no row for resolves `null`. PWA: open the library's own IndexedDB record
- * directly by id, via `backends/pwa.js`'s `openLibraryDatabase()` — which
- * does NOT check `config.db` first, so an id nothing has registered still
- * opens (creating, on first touch, an empty per-library record keyed to
- * it) rather than resolving `null`. This asymmetry is pre-existing, not
+ * no row for resolves `null`. PWA: open the library's own file directly by
+ * id, via `backends/pwa.js`'s `openLibraryDatabase()` — which does NOT
+ * check `config.db` first, so an id nothing has registered still opens
+ * (creating, on first touch, an empty `/library-<id>.db`) rather than
+ * resolving `null`. This asymmetry is pre-existing, not
  * introduced by extracting this helper: every caller today only ever
  * passes an id it already read out of `objects.databases`/`config.db`'s
  * own real rows, so the PWA branch's laxness has no live caller that
@@ -324,6 +325,13 @@ export const librariesDirectoryEntries = async () => {
 };
 
 /**
+ * What a PWA Library's `libraries.game_db_path` holds. Only a marker: the
+ * column is `NOT NULL`, and a PWA library is found by id, never by this value.
+ * Nothing reads it back.
+ */
+export const PWA_LIBRARY_PATH = 'opfs';
+
+/**
  * Open the physical database for a brand-new Library that isn't registered
  * in `config.db` yet — `createDatabase()`'s (`stores/settings.js`) own
  * connection-acquisition step, consolidated here per ADR 0004 so that file
@@ -336,19 +344,23 @@ export const librariesDirectoryEntries = async () => {
  * left to the caller (matching `openFileDatabase()`'s own contract), and
  * `path` in the return value is the real filesystem path to store in
  * `libraries.game_db_path`. PWA: `backends/pwa.js`'s `openLibraryDatabase()`
- * runs its own DDL as part of opening, but it opens by `id` — the id IS the
- * IndexedDB key, so it must already be known, which is why `createDatabase()`
- * registers the new row in `config.db` first to get a real id before calling
- * this. `path` in that case is `'indexeddb'`, a sentinel — `game_db_path` is
+ * runs its own DDL as part of opening, but it opens by `id` — the id names
+ * the file (`/library-<id>.db`), so it must already be known, which is why
+ * `createDatabase()` registers the new row in `config.db` first to get a real
+ * id before calling this. `path` in that case is `PWA_LIBRARY_PATH`, a
+ * sentinel — `game_db_path` is
  * `NOT NULL` with no uniqueness constraint (`database-schema.md` §5.1), and
  * nothing reads a PWA library's `game_db_path` back for connection lookup;
  * `libraryConnection()`'s PWA branch already opens by id directly.
  *
- * @param {{ id?: string|number, filename?: string }} args `filename` is
- *   used only on Tauri; `id` only on PWA.
+ * `seed` (PWA only) fills the new file with the Sample Games seed —
+ * `stores/settings.js`'s one-time bootstrap, `ensureSampleGamesLibrary()`.
+ *
+ * @param {{ id?: string|number, filename?: string, seed?: boolean }} args
+ *   `filename` is used only on Tauri; `id` and `seed` only on PWA.
  * @returns {Promise<{ connection: import('./connection.js').Connection, path: string }>}
  */
-export const openNewLibraryConnection = async ({ id, filename }) => {
+export const openNewLibraryConnection = async ({ id, filename, seed = false }) => {
   if (getBackend() === 'tauri') {
     const { openFileDatabase, ensureDirectory } = await import('./backends/tauri.js');
     const dir = await defaultLibrariesDir();
@@ -357,5 +369,5 @@ export const openNewLibraryConnection = async ({ id, filename }) => {
     return { connection: await openFileDatabase(path), path };
   }
   const { openLibraryDatabase } = await import('./backends/pwa.js');
-  return { connection: await openLibraryDatabase(id), path: 'indexeddb' };
+  return { connection: await openLibraryDatabase(id, { seed }), path: PWA_LIBRARY_PATH };
 };

@@ -1,6 +1,5 @@
 /**
- * DDL for a fresh database — what `pwa.js` runs the first time it opens with no
- * IndexedDB snapshot to deserialize yet.
+ * DDL for a fresh database — what `pwa.js` runs when it creates a new file.
  *
  * Ported from `samples/build_samples.py`'s `GAME_DB_DDL`/`CONFIG_DB_DDL`, which is the
  * schema's other implementation (Python, for building the desktop sample `.db` files).
