@@ -275,6 +275,51 @@ describe('DB‑04 — Cancel', () => {
   });
 });
 
+describe('loadLibraries() — PWA merge (a real Library survives a reload)', () => {
+  it('keeps db-1/db-2 and adds the real row back in, with connectionForLibrary() able to open it', async () => {
+    const { createDatabase, loadLibraries } = await import('../src/lib/stores/settings.js');
+    const { connectionForLibrary } = await import('../src/lib/stores/library.js');
+    const id = addObject('databases');
+    await createDatabase(id, { name: 'Survives Reload', filename: 'survives-reload.db' });
+    const created = get(objects).databases.find((d) => d.name === 'Survives Reload');
+    expect(created).toBeTruthy();
+
+    // Simulate a reload: drop it from the in-memory store the way a fresh
+    // page load would start (only the two seeded rows), then let
+    // loadLibraries() rebuild the real half from config.db, same as
+    // AppShell's own mount effect does.
+    objects.update((all) => ({
+      ...all,
+      databases: all.databases.filter((db) => db.id === 'db-1' || db.id === 'db-2')
+    }));
+    await loadLibraries();
+
+    const after = get(objects).databases;
+    expect(after.some((d) => d.id === 'db-1' && d.name === 'Master Games')).toBe(true);
+    expect(after.some((d) => d.id === 'db-2' && d.name === 'Sample Games')).toBe(true);
+    const reloaded = after.find((d) => d.id === created.id);
+    expect(reloaded).toBeTruthy();
+    expect(reloaded.name).toBe('Survives Reload');
+    // Not the 'indexeddb' sentinel — null, so it reads "Stored in this
+    // browser" and connectionForLibrary()'s `'location' in db` gate opens it.
+    expect(reloaded.location).toBeNull();
+
+    const conn = await connectionForLibrary(created.id);
+    expect(conn).toBeTruthy();
+    expect(await conn.value('select count(*) from games')).toBe(0);
+    await conn.close();
+  });
+
+  it('does not wipe an in-progress draft row', async () => {
+    const { loadLibraries } = await import('../src/lib/stores/settings.js');
+    const draftId = addObject('databases');
+    await loadLibraries();
+    const draft = findObject('databases', draftId);
+    expect(draft).toBeTruthy();
+    expect(draft.draft).toBe(true);
+  });
+});
+
 describe('createDatabase() — the store function directly', () => {
   it('returns the validation error and writes nothing on failure', async () => {
     const { createDatabase } = await import('../src/lib/stores/settings.js');

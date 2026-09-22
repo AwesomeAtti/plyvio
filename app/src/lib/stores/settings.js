@@ -119,44 +119,76 @@ export async function loadPreferences() {
 }
 
 /**
- * Replace the installed half of `objects.databases` with the real rows from
- * `config.db`'s `libraries` table, once, on mount. Only replaces what was
- * there before startup — a row `installDatabase()` adds afterward (a
- * simulated catalogue install, still out of scope for a real download)
- * lands the same way it always has, on top of whatever this loaded.
+ * Replace `objects.databases`' real (installed) rows with what `config.db`'s
+ * `libraries` table actually holds, on mount. Runs on both backends now
+ * (ADR 0004's PWA-storage follow-up, 22 Sep 2026) — what differs is what
+ * "the real rows" means on each:
+ *
+ * TAURI: every Library lives in `config.db` — a full replace, as before.
+ *
+ * PWA: `db-1` (Master Games) and `db-2` (Sample Games) are seeded/mock rows
+ * with NO `config.db` counterpart (`stores/game.js`'s `mockLibraryGame()`,
+ * `stores/library.js`'s `isSeededSampleGames`) — only a Library actually
+ * created via `createDatabase()` is ever registered there. A full replace
+ * would make the two seeded rows vanish the moment this runs, so this
+ * MERGES instead: every row that isn't a real, `config.db`-backed Library
+ * (a numeric id) — the two seeded rows, an in-progress draft, a simulated
+ * catalogue install from `installDatabase()` — is left exactly as it is,
+ * and every real row read from `config.db` (always a numeric id —
+ * `createLibrary()`'s own return value) replaces whatever real rows a
+ * previous call to this function loaded, keeping a re-run idempotent the
+ * same way Tauri's full replace already is. Filtering by id SHAPE rather
+ * than by the two seeded ids specifically matters in practice, not just in
+ * theory: this function's PWA branch now does real async work
+ * (`configConnection()`/`readLibraries()`), so it can resolve while a draft
+ * row is open, and a draft's id is a string too — it must survive this
+ * exactly as db-1/db-2 do.
+ *
+ * A real PWA row's `location` is set to `null`, never `lib.path` — that
+ * column holds `openNewLibraryConnection()`'s `'indexeddb'` sentinel (ADR
+ * 0004), an internal marker, not a path anyone should see. `null` is the
+ * same "Stored in this browser" value `createDatabase()`'s PWA branch
+ * already sets on a freshly created row (`DatabaseSection.svelte`'s
+ * three-state comment on `db.location`), and it's what `connectionForLibrary()`
+ * actually checks for (`'location' in db`) to treat a row as real and open
+ * it — so a PWA Library that survives a reload via this function opens a
+ * genuine connection the same way a freshly created one already did.
  *
  * `games`/`players`/`bytes` have no column on `libraries` and are
  * deliberately left off rather than faked; `DatabaseSection.svelte` only
- * draws `installedDetail()` for a row that actually has them.
+ * draws `installedDetail()` for a row that actually has them. A row
+ * `installDatabase()` adds afterward (a simulated catalogue install, still
+ * out of scope for a real download) lands the same way it always has, on
+ * top of whatever this loaded.
  *
- * DESKTOP ONLY, DELIBERATELY, even though `configConnection()` now resolves
- * a real connection in the PWA too. A `libraries` row is a filesystem path
- * to a `.db` file — a concept the PWA's single in-browser database has no
- * counterpart for. Giving it real (empty) storage without a PWA-shaped
- * design for what a "library" even means there would look like a built
- * capability from the data alone; staying mocked here says plainly it isn't
- * one yet. See `backends/schema.js`'s own comment on the same call for
- * `engines`.
+ * `loadEngines()` below stays Tauri-only, deliberately, unlike this — an
+ * `engines` row is a UCI binary on disk, a capability the PWA genuinely
+ * doesn't have yet, not a registration gap this same shape would close. See
+ * `backends/schema.js`'s own comment on that.
  */
 export async function loadLibraries() {
-  if (getBackend() !== 'tauri') return;
   const connection = await configConnection();
   if (!connection) return;
   const real = await readLibraries(connection);
+  const tauri = getBackend() === 'tauri';
+  const mapped = real.map((lib) => ({
+    id: lib.id,
+    name: lib.name,
+    status: 'indexed',
+    version: lib.version,
+    enabled: lib.enabled,
+    createdAt: lib.createdAt,
+    lastOpenedAt: lib.lastOpenedAt,
+    // DB‑03r — Location carries the full path once a database is real, on
+    // Tauri. `readLibraries()`'s own `path` is `game_db_path` (§5.1),
+    // untranslated. PWA: see this function's own comment above.
+    location: tauri ? lib.path : null
+  }));
   objects.update((all) => ({
     ...all,
-    databases: real.map((lib) => ({
-      id: lib.id,
-      name: lib.name,
-      status: 'indexed',
-      version: lib.version,
-      enabled: lib.enabled,
-      createdAt: lib.createdAt,
-      lastOpenedAt: lib.lastOpenedAt,
-      // DB‑03r — Location carries the full path once a database is real.
-      // `readLibraries()`'s own `path` is `game_db_path` (§5.1), untranslated.
-      location: lib.path
-    }))
+    databases: tauri
+      ? mapped
+      : [...all.databases.filter((db) => typeof db.id !== 'number'), ...mapped]
   }));
 }
 

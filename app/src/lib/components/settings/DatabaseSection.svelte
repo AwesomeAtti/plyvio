@@ -297,11 +297,12 @@
           <!--
             `location` distinguishes three states by more than truthiness:
             a real path (desktop, set by loadLibraries()/createDatabase()),
-            `null` (a PWA-created row — createDatabase() sets it explicitly,
-            "Stored in this browser", no path to show), and simply absent
-            (every pre-existing seeded/mock row this section drew before this
-            feature, which never claimed a Location at all) — that last case
-            must keep rendering nothing, exactly as before.
+            `null` ("Stored in this browser" — a PWA row, set by either
+            createDatabase() on creation or loadLibraries() on a later
+            reload, no path to show either way), and simply absent (the two
+            seeded/mock rows, db-1 and db-2, which never claimed a Location
+            at all) — that last case must keep rendering nothing, exactly
+            as before.
           -->
           {#if db.location}
             <div class="er"><span class="k">{$t('settings.databaseLocation')}</span>

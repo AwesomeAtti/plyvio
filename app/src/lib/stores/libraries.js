@@ -28,9 +28,9 @@ import { readUiState, writeUiState } from '$lib/data/config.js';
  * `preferences`' fixed schema, and that table's own doc comment already
  * names exactly this kind of thing: "sidebar, folded groups, open tabs").
  * `loadActiveLibrarySelection()` reads it back on mount, after
- * `stores/settings.js`'s `loadLibraries()` has replaced the seeded/mock
- * rows with the real ones — see that function's own comment for why the
- * order matters.
+ * `stores/settings.js`'s `loadLibraries()` has loaded the real rows in
+ * (a full replace on Tauri, a merge alongside the seeded rows on PWA since
+ * 22 Sep 2026) — see that function's own comment for why the order matters.
  */
 
 /** A database is offerable when it has finished indexing and is enabled. */
@@ -90,9 +90,10 @@ async function persistActiveLibraryId(id) {
  * Restore the last-selected library, once, on mount (`AppShell.svelte`,
  * chained after `loadLibraries()` resolves — calling this any earlier would
  * race the fallback subscribe below: it fires on every `libraries` change,
- * including `loadLibraries()`'s replace of the seeded/mock rows with the
- * real ones, and would immediately override a persisted id that isn't in
- * the OLD (mock) list yet with `firstSelectable()`). A no-op if nothing was
+ * including `loadLibraries()`'s own update (a full replace on Tauri, a
+ * merge alongside the seeded rows on PWA), and would immediately override a
+ * persisted id that isn't in the list yet with `firstSelectable()`). A
+ * no-op if nothing was
  * ever persisted, or if the persisted id no longer names a selectable
  * library (deleted or disabled since) — `activeLibraryId`'s own default
  * already covers that case.
