@@ -60,23 +60,31 @@ const WORKER_ASSETS_GLOBAL = 'self.__PLYVIO_WORKER_ASSETS__';
   so a path kept out of the source (in a gitignored `.env`) can still land in
   the build. It did: the v0.1.1 deploy carried a developer's home directory
   (found 22 Sep 2026). This checks every text file in the assembled site for
-  the home directory of whoever is building it, and fails the build if any
-  file contains it. The same build is what the desktop app packages, so this
+  the home directory of whoever is building it, and for the words in the
+  local-only list `.git/info/privacy-words` when there is one, and fails the
+  build if any file contains them. The same build is what the desktop app packages, so this
   covers both.
 */
 async function refuseHomePaths() {
   const home = homedir();
-  if (!home || home === '/') return;
+  // Plus the local-only word list the git hooks use (scripts/privacy-check.sh),
+  // when this checkout has one: the deploy never passes through those hooks.
+  const words = (await readFile(path.join(root, '..', '.git', 'info', 'privacy-words'), 'utf8')
+    .catch(() => ''))
+    .split('\n').map((w) => w.trim().toLowerCase()).filter(Boolean);
   const hits = [];
   for (const entry of await readdir(BUILD, { recursive: true })) {
     if (!/\.(js|mjs|html|css|json|webmanifest|txt|xml|svg|map)$/i.test(entry)) continue;
     const file = path.join(BUILD, entry);
     if (!(await stat(file)).isFile()) continue;
-    if ((await readFile(file, 'utf8')).includes(home)) hits.push(entry);
+    const text = await readFile(file, 'utf8');
+    const lower = text.toLowerCase();
+    const found = (home && home !== '/' && text.includes(home)) || words.some((w) => lower.includes(w));
+    if (found || words.some((w) => entry.toLowerCase().includes(w))) hits.push(entry);
   }
   if (hits.length) {
     throw new Error(
-      `The build contains this machine's home directory in:\n    ${hits.join('\n    ')}\n` +
+      `The build contains this machine's home directory or a protected word in:\n    ${hits.join('\n    ')}\n` +
       `  Nothing from the builder's machine may be published. Look for an import.meta.env value.`
     );
   }
