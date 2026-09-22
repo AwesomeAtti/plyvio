@@ -1,4 +1,10 @@
 /**
+ * STOPGAP — to be replaced, or folded into an indexing feature, once the UI
+ * has a place to trigger indexing (not yet decided). Added ahead of that
+ * decision on 22 Sep 2026; it keeps working until then. Only caller: the
+ * Sample Games seed in `data/backends/pwa.js`. Nothing keeps the table
+ * current as games are added. Tracked in ACTIONS.md, "STOPGAP: the PWA builds `positions` itself".
+ *
  * Populate the `positions` table (database-schema.md §6) from a set of
  * seeded game rows — the PWA's own equivalent of `samples/build_positions.py`,
  * run once at Sample Games' seed time rather than as a separate offline

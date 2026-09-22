@@ -68,7 +68,8 @@ CREATE TABLE games (
 -- source of truth. A fresh database is created WITHOUT rows in it; only the PWA's
 -- Sample Games seed (backends/pwa.js, via game/buildPositions.js) populates it
 -- today, mirroring what samples/build_positions.py does for the desktop .db
--- files. Column order matches section 6.1 exactly, pos+move primary key included.
+-- files. That PWA population is a STOPGAP until indexing has a UI trigger
+-- (see game/buildPositions.js); the table itself stays. Column order matches section 6.1 exactly, pos+move primary key included.
 CREATE TABLE positions (
     pos    TEXT    NOT NULL,
     move   TEXT    NOT NULL,

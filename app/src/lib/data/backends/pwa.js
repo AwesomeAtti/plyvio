@@ -43,6 +43,10 @@ const SEED_COLUMNS = [
  * the PWA's own equivalent of `samples/build_positions.py` (the PWA has no
  * `.db` file for that script to target). Real Explorer statistics from the
  * first open, not a mock.
+ *
+ * The `positions` half is a STOPGAP (see `game/buildPositions.js`'s header,
+ * and ACTIONS.md, "STOPGAP: the PWA builds `positions` itself"): it goes when indexing gets its own
+ * UI trigger. The 40 games stay.
  */
 const seedStatements = (now) => {
   const gamesSql =
