@@ -217,6 +217,23 @@ describe('mock library data', () => {
     expect(cellValue({ white_elo: '2800' }, COLUMNS.find((c) => c.key === 'white_elo'))).toBe('2800');
   });
 
+  it('also reads a real row\'s camelCase fields, not only mock data\'s snake_case (regression, 23 Sep)', () => {
+    // `data/games.js`'s real reads return `whiteElo`/`blackElo`/`plyCount`;
+    // `library/mock.js`'s simulated rows return `white_elo`/`black_elo`/
+    // `ply_count`. A real Chess.com import showed this live: every row had
+    // the data, but Elo and Moves rendered blank because COLUMNS is keyed
+    // on the schema's (mock's) snake_case spelling.
+    const moves = COLUMNS.find((c) => c.key === 'moves');
+    const whiteElo = COLUMNS.find((c) => c.key === 'white_elo');
+    const blackElo = COLUMNS.find((c) => c.key === 'black_elo');
+    expect(cellValue({ plyCount: 49 }, moves)).toBe('25');
+    expect(cellValue({ whiteElo: 1429 }, whiteElo)).toBe(1429);
+    expect(cellValue({ blackElo: 1026 }, blackElo)).toBe(1026);
+    // A snake_case row's own explicit null still wins -- it's a real "no
+    // rating" value, not a shape mismatch to paper over.
+    expect(cellValue({ white_elo: null }, whiteElo)).toBeFalsy();
+  });
+
   it('has more subscriptions than the sidebar shows, so More… is live', () => {
     expect(SUBSCRIPTIONS.length).toBeGreaterThan(SUBS_SHOWN);
   });

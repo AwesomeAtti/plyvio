@@ -69,9 +69,35 @@ export const COLUMNS = [
     a11yKey: 'col.moves', field: 'ply_count', format: movesFromPlies }
 ];
 
-/** What a column draws for a row. */
+/**
+ * snake_case -> camelCase, so a column's schema-spelled key (`white_elo`)
+ * also finds a row that carries it the other way.
+ */
+const toCamel = (key) => key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+
+/**
+ * What a column draws for a row.
+ *
+ * Two shapes reach this table today, and neither is going away on its own:
+ * `data/games.js`'s real reads are deliberately camelCase ("the same fields,
+ * the same camelCase" as `insertGames()`'s own doc comment puts it), while
+ * `library/mock.js`'s simulated rows -- still what File and Online/Lichess
+ * draw, and what the Library workspace was originally built against --
+ * are snake_case, the schema's own column spelling. A column here is
+ * declared with the schema's spelling (`key: 'white_elo'`, matching
+ * `database-schema.md`), so a real row's `whiteElo` needs its own lookup or
+ * it reads as `undefined` and the cell renders blank -- found 23 Sep, live:
+ * a real Chess.com import's White/Black Elo and Moves columns were empty
+ * even though every row genuinely had the data (confirmed against the row
+ * objects directly). Not new to Chess.com or even to Online import -- the
+ * real Paste write path (20 Sep) has had the same gap since it landed;
+ * nothing exercised it closely enough to notice a blank column before now.
+ * `stores/game.js`'s own `record.whiteElo ?? record.white_elo` is the same
+ * fix, already applied in one other spot for the same reason.
+ */
 export const cellValue = (row, column) => {
-  const raw = row?.[column.field ?? column.key];
+  const key = column.field ?? column.key;
+  const raw = row?.[key] ?? row?.[toCamel(key)];
   return column.format ? column.format(raw) : raw;
 };
 
