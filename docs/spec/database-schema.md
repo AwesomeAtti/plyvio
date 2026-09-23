@@ -1,4 +1,4 @@
-# Plyvio — Database Schema Reference (v011)
+# Plyvio — Database Schema Reference (v012)
 
 SQLite 3 · target schema
 
@@ -54,6 +54,8 @@ One row per game.
 | 23  | `time_class`       | TEXT    | —                         | Speed category                                                 |
 | 24  | `created_at`       | TEXT    | —                         | When this game row was added to the database                   |
 | 25  | `movetext`         | TEXT    | —                         | Application-owned movetext containing user edits and annotations |
+| 26  | `source_type`      | TEXT    | —                         | Kind of online source this game was imported from                |
+| 27  | `source_identifier` | TEXT   | —                         | Identifier of the source within that source type                 |
 
 **Only `id` and `pgn` are required.** Every other field may be NULL.
 
@@ -96,7 +98,8 @@ Fields 3–16 are defined by the PGN standard and are not redefined here. Each i
 
 ### 2.3 Application fields
 
-Fields 17–24 are not PGN standard fields.
+Fields 17–24, 26–27 are not PGN standard fields. (Field 25, `movetext`, is also
+application-owned but documented separately, §3, for its own precedence rules.)
 
 #### `tournament` · TEXT
 
@@ -156,6 +159,16 @@ The value belongs to the row, not to the game or the file:
 - It does not attempt to reconstruct the provenance or age of an existing record.
 
 NULL is valid when the database was populated outside the application's import process. Opening a pre-populated game database does not constitute importing its games, so its rows may have no `created_at`.
+
+#### `source_type` · TEXT
+
+Which kind of online source produced this row, using the exact vocabulary `subscriptions.source_type` already defines (§5.2) — for example `chess_com_player`. NULL for a game added by Paste or File; always populated by an Online import, whether or not a Subscription exists for that account. Every game in a game database imported the same way from the same account carries the same value.
+
+#### `source_identifier` · TEXT
+
+The particular source within `source_type`, meaning what `subscriptions.source_identifier` means for the same `source_type` (§5.2) — for example a Chess.com username. NULL exactly when `source_type` is NULL.
+
+These two columns record provenance per game, independent of whether a Subscription produced the row: a Subscription-driven import and a plain manual Online import of the same account are indistinguishable by source, since both tag by account identity rather than by which mechanism fetched the game. They imply no de-duplication, which is a separate, later feature and not specified here.
 
 ### 2.4 Fields not stored
 
@@ -318,6 +331,10 @@ Chess.com PGN also carries two extension tags:
 | ----------------- | --- | ------------------ | -------------- |
 | `CurrentPosition` | →   | `current_position` | Final position |
 | `Tournament`      | →   | `tournament`       | Conditional    |
+
+#### Provenance
+
+The direct route also sets `source_type` (always `chess_com_player`) and `source_identifier` (the Chess.com username of the account being imported) on every row, per §2.3. Neither comes from a JSON property or a PGN tag; both are properties of the import itself, not of the game. A Chess.com PGN file downloaded and imported through §4.3 (Plain PGN files) is a File import, not the direct route, and leaves both NULL like any other File import.
 
 ### 4.2 Lichess
 

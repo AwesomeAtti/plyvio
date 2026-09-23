@@ -105,7 +105,12 @@ export const INSERT_COLUMNS = [
   // all of them on write (the schema and `data/backends/schema.js` already
   // had the columns; only this allowlist was stale).
   'tournament', 'current_position', 'variant', 'rated',
-  'white_accuracy', 'black_accuracy', 'time_class'
+  'white_accuracy', 'black_accuracy', 'time_class',
+  // §2.3, added 23 Sep for per-game source tracking: an Online import's
+  // provenance. NULL for Paste/File, same allowlist gap as the row above
+  // would otherwise repeat -- added here alongside the schema/DDL change,
+  // not after a second silent-drop bug.
+  'source_type', 'source_identifier'
 ];
 
 /**

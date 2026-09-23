@@ -3,18 +3,21 @@ Build the Plyvio sample databases.
 
 Creates, beside one another:
 
-    config.db          Plyvio configuration (schema reference v009 section 5)
+    config.db          Plyvio configuration (schema reference v010 section 5)
     master-games.db    Library "Master Games" - hikaru.pgn, gothamchess-annotated.pgn
     sample-games.db    Library "Sample Games" - sample-games.pgn
 
 Rules this build follows (see the working notes, sample-db-design.md):
 
-  1. No field is added to the games table.
+  1. No field is added to the games table, except source_type/source_identifier
+     (23 Sep, per-game source tracking, database-schema.md §2.3) -- schema-level
+     provenance columns for Online imports. Every game here stays NULL, since none
+     of these samples arrived through an Online import.
   2. No existing field is recreated; a value with a home is read from there.
   3. config.db resides beside the game databases, so game_db_path is a bare
      filename.
 
-Games are imported strictly per v009 section 4: the PGN text is stored byte for
+Games are imported strictly per v010 section 4: the PGN text is stored byte for
 byte, the tags of section 1 are lifted into their fields, created_at is set, and
 movetext is left NULL. Fields that only the Chess.com JSON route supplies
 (rated, time_class, variant, accuracies) stay NULL.
@@ -34,13 +37,13 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 
-SCHEMA_USER_VERSION = 9          # database-schema.md v009
+SCHEMA_USER_VERSION = 10         # database-schema.md v010
 
 BUILD_TIME = "2026-09-12T12:00:00Z"
 
 TAG_LINE = re.compile(r'^\[([A-Za-z0-9_]+)\s+"(.*)"\]\s*$')
 
-# PGN tag -> games column. v009 section 1, plus section 4.1's two Chess.com tags.
+# PGN tag -> games column. v010 section 1, plus section 4.1's two Chess.com tags.
 TAG_TO_COLUMN = {
     "Event": "event",
     "Site": "site",
@@ -68,33 +71,36 @@ INTEGER_COLUMNS = {"white_elo", "black_elo", "ply_count"}
 # --------------------------------------------------------------------------
 
 GAME_DB_DDL = """
--- v009 section 1, unchanged.
+-- v010 section 1, plus source_type/source_identifier (23 Sep, per-game source
+-- tracking) -- NULL here, since build_samples.py never does an Online import.
 CREATE TABLE games (
-    id               INTEGER PRIMARY KEY,
-    pgn              TEXT NOT NULL,
-    event            TEXT,
-    site             TEXT,
-    date             TEXT,
-    round            TEXT,
-    white            TEXT,
-    black            TEXT,
-    result           TEXT,
-    white_elo        INTEGER,
-    black_elo        INTEGER,
-    eco              TEXT,
-    time_control     TEXT,
-    fen              TEXT,
-    termination      TEXT,
-    ply_count        INTEGER,
-    tournament       TEXT,
-    current_position TEXT,
-    variant          TEXT,
-    rated            INTEGER,
-    white_accuracy   REAL,
-    black_accuracy   REAL,
-    time_class       TEXT,
-    created_at       TEXT,
-    movetext         TEXT
+    id                 INTEGER PRIMARY KEY,
+    pgn                TEXT NOT NULL,
+    event              TEXT,
+    site               TEXT,
+    date               TEXT,
+    round              TEXT,
+    white              TEXT,
+    black              TEXT,
+    result             TEXT,
+    white_elo          INTEGER,
+    black_elo          INTEGER,
+    eco                TEXT,
+    time_control       TEXT,
+    fen                TEXT,
+    termination        TEXT,
+    ply_count          INTEGER,
+    tournament         TEXT,
+    current_position   TEXT,
+    variant            TEXT,
+    rated              INTEGER,
+    white_accuracy     REAL,
+    black_accuracy     REAL,
+    time_class         TEXT,
+    created_at         TEXT,
+    movetext           TEXT,
+    source_type        TEXT,
+    source_identifier  TEXT
 );
 
 -- A row means the game is a favorite.
@@ -146,7 +152,7 @@ CREATE INDEX subscription_games_by_game ON subscription_games (game_id);
 """
 
 CONFIG_DB_DDL = """
--- v009 section 5.1, plus enabled and version.
+-- v010 section 5.1, plus enabled and version.
 CREATE TABLE libraries (
     id             INTEGER PRIMARY KEY,
     name           TEXT NOT NULL,
@@ -157,7 +163,7 @@ CREATE TABLE libraries (
     version        TEXT
 );
 
--- v009 section 5.2, plus sync_interval, last_synced_at and last_viewed_at.
+-- v010 section 5.2, plus sync_interval, last_synced_at and last_viewed_at.
 CREATE TABLE subscriptions (
     id                  INTEGER PRIMARY KEY,
     name                TEXT NOT NULL,
@@ -175,7 +181,7 @@ CREATE TABLE subscriptions (
     last_viewed_at      TEXT
 );
 
--- v009 section 5.3, plus enabled, threads and hash_mb.
+-- v010 section 5.3, plus enabled, threads and hash_mb.
 CREATE TABLE engines (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL,
@@ -348,7 +354,7 @@ def read_tags(game_text):
 
 
 def as_integer(value):
-    """v009 section 2.2: cast to INTEGER; '-' and '?' become NULL."""
+    """v010 section 2.2: cast to INTEGER; '-' and '?' become NULL."""
     if value is None:
         return None
 

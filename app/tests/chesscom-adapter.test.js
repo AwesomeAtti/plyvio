@@ -26,7 +26,7 @@ describe('chessComRowFromApiGame', () => {
   ].join('\n');
 
   it('maps the PGN tags the same way every other import path does', () => {
-    const row = chessComRowFromApiGame({ rules: 'chess', pgn: PGN }, '2026-09-23T00:00:00.000Z');
+    const row = chessComRowFromApiGame({ rules: 'chess', pgn: PGN }, '2026-09-23T00:00:00.000Z', 'AwesomeAtti');
     expect(row.white).toBe('Carlsen, Magnus');
     expect(row.black).toBe('Nepomniachtchi, Ian');
     expect(row.result).toBe('1-0');
@@ -41,7 +41,7 @@ describe('chessComRowFromApiGame', () => {
       accuracies: { white: 91.2, black: 84.6 },
       fen: '8/8/8/8/8/8/8/K6k w - - 0 40',
       initial_setup: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1'
-    }, 'now');
+    }, 'now', 'AwesomeAtti');
     expect(row.rated).toBe(1);
     expect(row.time_class).toBe('blitz');
     expect(row.tournament).toBe('https://example/t');
@@ -58,21 +58,35 @@ describe('chessComRowFromApiGame', () => {
   it('stores a non-standard starting position as fen', () => {
     const row = chessComRowFromApiGame({
       rules: 'chess960', pgn: PGN, initial_setup: 'nbbrkrqn/pppppppp/8/8/8/8/PPPPPPPP/NBBRKRQN w KQkq - 0 1'
-    }, 'now');
+    }, 'now', 'AwesomeAtti');
     expect(row.fen).toBe('nbbrkrqn/pppppppp/8/8/8/8/PPPPPPPP/NBBRKRQN w KQkq - 0 1');
     expect(row.variant).toBe('freestyle');
   });
 
   it('skips a variant Plyvio cannot render, rather than guessing a shape for it', () => {
     for (const rules of ['bughouse', 'crazyhouse', 'kingofthehill', 'threecheck']) {
-      expect(chessComRowFromApiGame({ rules, pgn: PGN }, 'now')).toBeNull();
+      expect(chessComRowFromApiGame({ rules, pgn: PGN }, 'now', 'AwesomeAtti')).toBeNull();
     }
   });
 
   it('leaves accuracy fields unset when Chess.com omits them', () => {
-    const row = chessComRowFromApiGame({ rules: 'chess', pgn: PGN }, 'now');
+    const row = chessComRowFromApiGame({ rules: 'chess', pgn: PGN }, 'now', 'AwesomeAtti');
     expect(row.white_accuracy).toBeUndefined();
     expect(row.black_accuracy).toBeUndefined();
+  });
+
+  // §2.3 -- per-game source tracking, added 23 Sep.
+  describe('source_type / source_identifier (§2.3)', () => {
+    it('stamps every row with the source type and the account imported', () => {
+      const row = chessComRowFromApiGame({ rules: 'chess', pgn: PGN }, 'now', 'AwesomeAtti');
+      expect(row.source_type).toBe(SOURCE_TYPE);
+      expect(row.source_identifier).toBe('awesomeatti');
+    });
+
+    it('normalizes the username the same way fetchArchives does, so the two always match', () => {
+      const row = chessComRowFromApiGame({ rules: 'chess', pgn: PGN }, 'now', '  GothamChess  ');
+      expect(row.source_identifier).toBe('gothamchess');
+    });
   });
 });
 

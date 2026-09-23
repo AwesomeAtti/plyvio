@@ -18,6 +18,10 @@
  * `EXPLORATION.md`); no custom `User-Agent` (CORS is confirmed open without
  * one, and no browser context can set one anyway, so the Chess.com-requested
  * header is a later nice-to-have, not a blocker — `EXPLORATION.md`).
+ *
+ * `source_type`/`source_identifier` (§2.3, added 23 Sep for per-game source
+ * tracking) are also overlaid on every row here, not JSON-derived but from
+ * the account being imported -- see `chessComRowFromApiGame`'s own doc.
  */
 
 import { gameFieldsFromPgn, STANDARD_START_FEN } from '$lib/pgn/importPgn.js';
@@ -91,11 +95,21 @@ const SUPPORTED_RULES = new Set(['chess', 'chess960']);
  *
  * @param {object} apiGame one entry from a Chess.com monthly archive's `games` array.
  * @param {string} createdAt ISO 8601 timestamp — this row's `created_at`.
+ * @param {string} username the account being imported — database-schema.md
+ *   §2.3's `source_identifier`, normalized the same way `fetchArchives` builds
+ *   the request URL (`trim().toLowerCase()`) so the value written here always
+ *   matches what was actually fetched, regardless of how the user typed it.
  */
-export function chessComRowFromApiGame(apiGame, createdAt) {
+export function chessComRowFromApiGame(apiGame, createdAt, username) {
   if (!SUPPORTED_RULES.has(apiGame.rules)) return null;
 
   const fields = gameFieldsFromPgn(apiGame.pgn, createdAt);
+
+  // §2.3 — per-game source tracking, added 23 Sep. Always populated for an
+  // Online import, regardless of whether a Subscription exists for this
+  // account (`working/EXPLORATION.md`, "Per-game source tracking").
+  fields.source_type = SOURCE_TYPE;
+  fields.source_identifier = username.trim().toLowerCase();
 
   if (typeof apiGame.rated === 'boolean') fields.rated = apiGame.rated ? 1 : 0;
   if (apiGame.time_class) fields.time_class = apiGame.time_class;

@@ -9,8 +9,8 @@
  * Two markers SQLite provides for exactly this:
  *
  *   `user_version`    which schema revision the file was written to.
- *                     `samples/build_samples.py` already writes **9**, matching
- *                     database-schema v009 — a convention the builder
+ *                     `samples/build_samples.py` already writes **10**, matching
+ *                     database-schema v010 — a convention the builder
  *                     established and the specification does not yet state.
  *   `application_id`  which application owns the format. **0 in every sample
  *                     file**, which is to say unset: a Plyvio database is
@@ -23,7 +23,7 @@
  */
 
 /** The schema revision this build of Plyvio is written against. */
-export const SCHEMA_USER_VERSION = 9;
+export const SCHEMA_USER_VERSION = 10;
 
 /**
  * The value `application_id` would carry if it were adopted. Unused: every

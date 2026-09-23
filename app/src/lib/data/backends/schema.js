@@ -33,35 +33,39 @@
 
 /** The schema revision a fresh database is created at. Matches `identify.js`'s
  *  `SCHEMA_USER_VERSION` and `samples/build_samples.py`'s `SCHEMA_USER_VERSION`. */
-export const SCHEMA_USER_VERSION = 9;
+export const SCHEMA_USER_VERSION = 10;
 
 export const GAME_DB_DDL = `
 CREATE TABLE games (
-    id               INTEGER PRIMARY KEY,
-    pgn              TEXT NOT NULL,
-    event            TEXT,
-    site             TEXT,
-    date             TEXT,
-    round            TEXT,
-    white            TEXT,
-    black            TEXT,
-    result           TEXT,
-    white_elo        INTEGER,
-    black_elo        INTEGER,
-    eco              TEXT,
-    time_control     TEXT,
-    fen              TEXT,
-    termination      TEXT,
-    ply_count        INTEGER,
-    tournament       TEXT,
-    current_position TEXT,
-    variant          TEXT,
-    rated            INTEGER,
-    white_accuracy   REAL,
-    black_accuracy   REAL,
-    time_class       TEXT,
-    created_at       TEXT,
-    movetext         TEXT
+    id                 INTEGER PRIMARY KEY,
+    pgn                TEXT NOT NULL,
+    event              TEXT,
+    site               TEXT,
+    date               TEXT,
+    round              TEXT,
+    white              TEXT,
+    black              TEXT,
+    result             TEXT,
+    white_elo          INTEGER,
+    black_elo          INTEGER,
+    eco                TEXT,
+    time_control       TEXT,
+    fen                TEXT,
+    termination        TEXT,
+    ply_count          INTEGER,
+    tournament         TEXT,
+    current_position   TEXT,
+    variant            TEXT,
+    rated              INTEGER,
+    white_accuracy     REAL,
+    black_accuracy     REAL,
+    time_class         TEXT,
+    created_at         TEXT,
+    movetext           TEXT,
+    -- database-schema.md §1, added 23 Sep for per-game source tracking (§2.3):
+    -- provenance of an Online import. NULL for Paste/File.
+    source_type        TEXT,
+    source_identifier  TEXT
 );
 
 -- Derived data (database-schema.md §6) -- reconstructible from games, never a

@@ -127,6 +127,10 @@ describe('the lane runs a real Chess.com import', () => {
     expect(rows[0].white).toBe('GothamChess');
     expect(rows[0].rated).toBe(1);
     expect(rows[0].time_class).toBe('blitz');
+    // §2.3 -- per-game source tracking, added 23 Sep: every row from a real
+    // Online import carries its provenance, end to end through the lane.
+    expect(rows[0].source_type).toBe('chess_com_player');
+    expect(rows[0].source_identifier).toBe('gothamchess');
     expect(get(notice).kind).toBe('clean');
   });
 

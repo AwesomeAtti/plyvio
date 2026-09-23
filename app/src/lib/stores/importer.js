@@ -186,7 +186,7 @@ async function runRealOnlineDownload(p) {
       onMonth: (_count, total) => downloaded.set(total)
     });
     const rows = apiGames
-      .map((g) => chessComRowFromApiGame(g, createdAt))
+      .map((g) => chessComRowFromApiGame(g, createdAt, draft.username))
       .filter(Boolean)
       .map((row) => applyImportRules(row))
       .filter(Boolean);

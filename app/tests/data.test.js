@@ -84,7 +84,7 @@ suite('config.db through the seam', () => {
     expect(identity.userVersion).toBe(SCHEMA_USER_VERSION);
     expect(identity.matchesSchema).toBe(true);
     for (const table of CONFIG_TABLES) expect(identity.tables).toContain(table);
-    expect(describeIdentity(identity)).toBe('a config database at schema v009');
+    expect(describeIdentity(identity)).toBe('a config database at schema v010');
   });
 
   it('carries no application_id, so the file is not self-identifying', async () => {
@@ -392,6 +392,26 @@ suite('insertGame / insertGames — writing', () => {
     expect(row.white_accuracy).toBe(91.2);
     expect(row.black_accuracy).toBe(84.6);
     expect(row.time_class).toBe('blitz');
+    await db.close();
+  });
+
+  it('stores source_type/source_identifier (§2.3, added 23 Sep for per-game source tracking), NULL when omitted', async () => {
+    const db = await fresh();
+    const online = await insertGame(db, {
+      pgn: '[White "A"]\n\n*', white: 'A', created_at: 'now',
+      source_type: 'chess_com_player', source_identifier: 'awesomeatti'
+    });
+    const pasted = await insertGame(db, { pgn: '[White "B"]\n\n*', white: 'B', created_at: 'now' });
+
+    const onlineRow = await db.get('select * from games where id = ?', [online]);
+    expect(onlineRow.source_type).toBe('chess_com_player');
+    expect(onlineRow.source_identifier).toBe('awesomeatti');
+
+    // NULL for Paste/File -- a caller that never supplies the columns gets
+    // no provenance recorded, not a guessed one.
+    const pastedRow = await db.get('select * from games where id = ?', [pasted]);
+    expect(pastedRow.source_type).toBeNull();
+    expect(pastedRow.source_identifier).toBeNull();
     await db.close();
   });
 });
