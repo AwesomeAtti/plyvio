@@ -119,7 +119,10 @@
     text-align: left;
   }
   .trigger:hover { background: var(--chrome-2); }
-  .trigger :global(svg:last-child) { margin-left: auto; color: var(--faint); flex: none; }
+  /* The trailing chevron only -- '>' keeps this off a source mark's own
+     nested svg (also a :last-child, of its own .mark span one level down),
+     which a plain descendant selector matched and washed out to --faint. */
+  .trigger > :global(svg:last-child) { margin-left: auto; color: var(--faint); flex: none; }
 
   .name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
@@ -168,6 +171,8 @@
   .item.disabled { color: var(--faint); }
   .item.disabled:hover { background: none; }
   .item .detail { margin-left: auto; font: 10px var(--mono); color: var(--faint); }
-  .item :global(svg:last-child) { margin-left: auto; color: var(--ink); flex: none; }
+  /* '>' for the same reason as .trigger above: only the trailing Checked
+     icon, never a nested source-mark svg one level down in .mark. */
+  .item > :global(svg:last-child) { margin-left: auto; color: var(--ink); flex: none; }
   .item .detail ~ :global(svg) { margin-left: 6px; }
 </style>

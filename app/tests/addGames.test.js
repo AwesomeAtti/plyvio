@@ -382,7 +382,8 @@ describe('the Add Games dialog', () => {
     await tick();
 
     const trigger = within(dlg).getByLabelText('Source');
-    expect(trigger.querySelector('svg.brand')).toBeTruthy();
+    const triggerMark = trigger.querySelector('svg.brand');
+    expect(triggerMark).toBeTruthy();
     expect(trigger.textContent).not.toMatch(/\bcc\b|\bli\b/);
 
     await fireEvent.click(trigger);
@@ -393,6 +394,22 @@ describe('the Add Games dialog', () => {
     for (const item of items) {
       expect(item.querySelector('svg.brand')).toBeTruthy();
     }
+  });
+
+  it("the trigger's trailing-icon rule never reaches into the nested source mark", () => {
+    // Regression for the follow-up bug: the mark renders (previous test), but
+    // .trigger's old `.trigger :global(svg:last-child)` selector -- meant only
+    // for the trailing chevron -- is a descendant selector, so it ALSO matched
+    // the brand mark's own <svg> one level down inside <span class="mark">
+    // (itself a :last-child, of that span), overriding it from --ink to the
+    // barely-visible --faint. The fix scopes both trailing-icon rules to a
+    // direct child ('>'), so this asserts the source still says so and can't
+    // silently regress to a bare descendant selector.
+    const src = readFileSync('src/lib/components/library/SelectField.svelte', 'utf8');
+    expect(src).toMatch(/\.trigger\s*>\s*:global\(svg:last-child\)/);
+    expect(src).toMatch(/\.item\s*>\s*:global\(svg:last-child\)/);
+    expect(src).not.toMatch(/\.trigger\s+:global\(svg:last-child\)/);
+    expect(src).not.toMatch(/\.item\s+:global\(svg:last-child\)/);
   });
 
   it('cannot commit until a source exists — presence, not validity', async () => {
