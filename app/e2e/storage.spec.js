@@ -80,7 +80,7 @@ test('2. persistence: a write is still there after a reload', async ({ page }) =
   expect(await sidebarCount(page, 'Favorites')).toBe('1');
 });
 
-test('3. second tab: it gets no storage, and the first tab is unaffected', async ({ page, context }) => {
+test('3. second tab: it gets no storage, shows the lock notice, and the first tab is unaffected', async ({ page, context }) => {
   await page.goto('./');
   await expect.poll(() => sidebarCount(page, 'All Games')).toBe('40');
 
@@ -90,11 +90,35 @@ test('3. second tab: it gets no storage, and the first tab is unaffected', async
     .toContain('storage is in use by another tab or window');
   expect(await sidebarCount(second, 'All Games')).toBe('');
 
+  // SecondWindowGate.svelte — the notice from ACTIONS.md's "PWA: a second
+  // window can't open the board once OPFS lands", copy approved in
+  // `working/wireframes/pwa-second-window-gate.html`.
+  await expect(second.getByRole('heading', { name: 'One king to a board.' })).toBeVisible();
+  await expect(second.getByText('Nothing’s been lost — just paused.')).toBeVisible();
+  await expect(second.getByRole('button', { name: 'Try Again' })).toBeVisible();
+
   // The first tab still writes, and what it writes survives.
   await favouriteFirstGame(page);
   await second.close();
   await page.reload();
   await expect.poll(() => sidebarCount(page, 'Favorites')).toBe('1');
+});
+
+test('3b. second tab: Try Again recovers once the first tab closes', async ({ page, context }) => {
+  await page.goto('./');
+  await expect.poll(() => sidebarCount(page, 'All Games')).toBe('40');
+
+  const second = watch(await context.newPage());
+  await second.goto('./');
+  await expect(second.getByRole('button', { name: 'Try Again' })).toBeVisible();
+
+  // Closing the first tab's worker releases the Web Lock. There's no live
+  // recovery (stores/pwaStorageLock.js) — Try Again is a plain reload, which
+  // is enough here because it's now the only instance.
+  await page.close();
+  await second.getByRole('button', { name: 'Try Again' }).click();
+  await expect.poll(() => sidebarCount(second, 'All Games')).toBe('40');
+  await expect(second.getByRole('heading', { name: 'One king to a board.' })).not.toBeVisible();
 });
 
 test('4. bundle: the worker and sqlite3.wasm load cleanly; the dead workers are absent', async ({ page }) => {

@@ -369,6 +369,10 @@ export const STRINGS = {
     'gate.instruction': 'Enlarge the window to continue.',
     'gate.current': 'Current',
     'gate.minimum': 'Minimum',
+    'pwaLock.title': 'One king to a board.',
+    'pwaLock.body': 'Plyvio’s already open in another window, and that one’s holding the game. You can safely close this one and carry on there.',
+    'pwaLock.footer': 'Nothing’s been lost — just paused.',
+    'pwaLock.button': 'Try Again',
     'probe.placeholder': 'scratch text…'
   },
   de: {
@@ -729,6 +733,10 @@ export const STRINGS = {
     'gate.instruction': 'Vergrößern Sie das Fenster, um fortzufahren.',
     'gate.current': 'Aktuell',
     'gate.minimum': 'Minimum',
+    'pwaLock.title': 'Ein König pro Brett.',
+    'pwaLock.body': 'Plyvio ist bereits in einem anderen Fenster geöffnet, und dieses hält die Partie. Sie können dieses Fenster bedenkenlos schließen und dort fortfahren.',
+    'pwaLock.footer': 'Nichts ist verloren — nur pausiert.',
+    'pwaLock.button': 'Erneut versuchen',
     'probe.placeholder': 'Notiztext…'
   },
   fr: {
@@ -1062,6 +1070,10 @@ export const STRINGS = {
     'gate.instruction': 'Agrandissez la fenêtre pour continuer.',
     'gate.current': 'Actuelle',
     'gate.minimum': 'Minimum',
+    'pwaLock.title': 'Un roi par échiquier.',
+    'pwaLock.body': 'Plyvio est déjà ouvert dans une autre fenêtre, qui gère la partie. Vous pouvez fermer celle-ci sans crainte et continuer là-bas.',
+    'pwaLock.footer': 'Rien n’est perdu — juste en pause.',
+    'pwaLock.button': 'Réessayer',
     'probe.placeholder': 'texte libre…'
   }
 };

@@ -2,6 +2,7 @@
   import TabBar from './TabBar.svelte';
   import WorkspaceArea from './WorkspaceArea.svelte';
   import WindowFloorGate from './WindowFloorGate.svelte';
+  import SecondWindowGate from './SecondWindowGate.svelte';
   import QuitNotice from './QuitNotice.svelte';
   import {
     openGame, closeActive, activateByOffset, activateIndex, activateLast
@@ -81,4 +82,6 @@
 
 <!-- §2.4 — covers the shell entirely below 800 x 600 (see WindowFloorGate). -->
 <WindowFloorGate />
+<!-- PWA only — covers the shell when another window already holds storage. -->
+<SecondWindowGate />
 <QuitNotice />
