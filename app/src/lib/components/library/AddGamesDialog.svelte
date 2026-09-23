@@ -30,6 +30,8 @@
     FileIcon, PasteIcon, OnlineIcon, AddGames, ClearIcon, DownloadIcon, Checked
   } from '$lib/icons.js';
   import SelectField from './SelectField.svelte';
+  import ChessComMark from '$lib/components/icons/ChessComMark.svelte';
+  import LichessMark from '$lib/components/icons/LichessMark.svelte';
   import TokenField from './TokenField.svelte';
   import { libraries, activeLibraryId } from '$lib/stores/libraries.js';
   import { collections, tags } from '$lib/stores/library.js';
@@ -81,9 +83,12 @@
     }))
   );
 
+  /* §3.2.4.5's Online tab: "each with its source mark (§4.3.3)" -- the same
+     ChessComMark/LichessMark brand marks the Subscriptions rows use, not a
+     plain-text monogram. */
   const sourceOptions = $derived(
     Object.entries(SOURCE_LABELS).map(([id, label]) => ({
-      id, label, mark: id === 'chesscom' ? 'cc' : 'li'
+      id, label, mark: id === 'chesscom' ? ChessComMark : LichessMark
     }))
   );
 

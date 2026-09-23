@@ -372,6 +372,29 @@ describe('the Add Games dialog', () => {
     expect(names).toEqual(['File', 'Online', 'Paste']);
   });
 
+  it('shows the Chess.com and Lichess brand marks, not text monograms (§4.3.3)', async () => {
+    // A plain-text "cc"/"li" abbreviation is exactly the treatment §7.4's
+    // implementation summary calls a rejected defect for source marks
+    // elsewhere -- the Online tab's Source menu must use the same
+    // ChessComMark/LichessMark svg components as Subscriptions rows do.
+    const dlg = await openDialog();
+    await fireEvent.click(within(dlg).getAllByRole('tab')[1]);      // Online
+    await tick();
+
+    const trigger = within(dlg).getByLabelText('Source');
+    expect(trigger.querySelector('svg.brand')).toBeTruthy();
+    expect(trigger.textContent).not.toMatch(/\bcc\b|\bli\b/);
+
+    await fireEvent.click(trigger);
+    await tick();
+    const menu = within(dlg).getByRole('menu', { name: 'Source' });
+    const items = within(menu).getAllByRole('menuitemradio');
+    expect(items).toHaveLength(2);
+    for (const item of items) {
+      expect(item.querySelector('svg.brand')).toBeTruthy();
+    }
+  });
+
   it('cannot commit until a source exists — presence, not validity', async () => {
     const dlg = await openDialog();
     const submit = () => within(dlg).getByRole('button', { name: 'Add Games' });

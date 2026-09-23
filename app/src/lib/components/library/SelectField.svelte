@@ -20,7 +20,7 @@
 
   let {
     value,
-    options = [],          // [{ id, label, icon?, mark?, detail?, disabled? }]
+    options = [],          // [{ id, label, icon?, mark?, detail?, disabled? }] -- mark is a component (e.g. ChessComMark), rendered directly, not through Icon
     label,                 // accessible name
     width = null,
     align = 'left',
@@ -66,7 +66,10 @@
     aria-label={label}
     onclick={() => (open = !open)}
   >
-    {#if current?.mark}<span class="mark">{current.mark}</span>{/if}
+    {#if current?.mark}
+      {@const Mark = current.mark}
+      <span class="mark"><Mark size={13} /></span>
+    {/if}
     {#if current?.icon}<Icon icon={current.icon} size={13} />{/if}
     <span class="name">{current?.label ?? ''}</span>
     <Icon icon={ChevronDown} size={12} />
@@ -84,7 +87,10 @@
           aria-disabled={o.disabled || undefined}
           onclick={() => choose(o)}
         >
-          {#if o.mark}<span class="mark">{o.mark}</span>{/if}
+          {#if o.mark}
+            {@const Mark = o.mark}
+            <span class="mark"><Mark size={13} /></span>
+          {/if}
           {#if o.icon}<Icon icon={o.icon} size={13} />{/if}
           <span class="name">{o.label}</span>
           {#if o.detail}<span class="detail">{o.detail}</span>{/if}
@@ -121,10 +127,7 @@
     flex: none;
     width: 13px; height: 13px;
     display: grid; place-items: center;
-    border: 1px solid var(--rule-strong);
-    border-radius: 2px;
-    font: 7px var(--mono);
-    color: var(--muted);
+    color: var(--ink);
   }
 
   .menu {
