@@ -99,7 +99,13 @@ export const readGames = async (connection, { limit = 200, offset = 0, order = '
 export const INSERT_COLUMNS = [
   'pgn', 'event', 'site', 'date', 'round', 'white', 'black', 'result',
   'white_elo', 'black_elo', 'eco', 'time_control', 'fen', 'termination',
-  'ply_count', 'created_at'
+  'ply_count', 'created_at',
+  // §4.1's own Chess.com mapping targets every one of these seven -- added
+  // 23 Sep, found missing by a live Chess.com import that silently dropped
+  // all of them on write (the schema and `data/backends/schema.js` already
+  // had the columns; only this allowlist was stale).
+  'tournament', 'current_position', 'variant', 'rated',
+  'white_accuracy', 'black_accuracy', 'time_class'
 ];
 
 /**
@@ -135,8 +141,8 @@ export const insertGame = async (connection, fields) => {
  * shape -- the same fields, the same camelCase -- so a row just inserted and
  * a row just reloaded from the database are indistinguishable to a caller.
  *
- * ONE STATEMENT, not `begin` / one `insertGame` per row / `commit` (what
- * this used to do). That pattern sent four-plus separate calls to the
+ * ONE STATEMENT PER BATCH, not `begin` / one `insertGame` per row / `commit`
+ * (what this used to do). That pattern sent four-plus separate calls to the
  * connection and relied on all of them sharing one physical connection to
  * behave as a single transaction. `@tauri-apps/plugin-sql` pools
  * connections -- each `run()`/`value()` call is its own IPC round trip that
@@ -153,29 +159,58 @@ export const insertGame = async (connection, fields) => {
  * `data/backends/tauri.js`'s own header comment on `last_insert_rowid()`
  * for the earlier instance of this exact class of bug.
  *
+ * BATCHED, not one statement for the whole import (what this used to do,
+ * until 23 Sep). Every bound value is its own SQL variable, and SQLite
+ * refuses a statement past its own limit (`SQLITE_MAX_VARIABLE_NUMBER`,
+ * 32766 by default since 3.32.0) -- a real Chess.com import of ~10,000
+ * games hit exactly this, live: "too many SQL variables", the whole write
+ * silently lost because the caller (`stores/importer.js`'s `runRealWrite`)
+ * only logs a write failure rather than surfacing it. `MAX_INSERT_VARIABLES`
+ * keeps each chunk's statement well under that limit -- headroom against a
+ * smaller compiled limit on either backend, and a reasonably sized IPC
+ * round trip (Tauri) or worker message (PWA) per chunk. This does not
+ * reintroduce the connection-pooling bug above: each chunk is still its own
+ * single, complete INSERT, and its `last_insert_rowid()` is read
+ * immediately after, from the SAME connection call that just wrote it (see
+ * "Ids" below) -- there is no separate `begin`/`commit` for pooling to land
+ * on different connections. What batching does give up is whole-import
+ * atomicity: chunks are not wrapped in one enclosing transaction (doing so
+ * would reintroduce that exact bug, an explicit `begin`/`commit` as their
+ * own separate pooled calls), so a chunk that fails after earlier chunks
+ * already committed leaves a partial write rather than none. Accepted: the
+ * only way this now happens is a genuine per-chunk SQL failure, not
+ * exceeding a limit -- sizing is what used to fail, and that's exactly what
+ * this fixes.
+ *
  * Every row in one INSERT must supply the same columns, so `columns` is the
  * union of whatever any row in the batch actually carries (in
  * `INSERT_COLUMNS`' own order) -- a row that doesn't carry one of them gets
  * an explicit NULL for it, the same value an omitted column would already
- * default to, so this changes nothing about what gets stored.
+ * default to, so this changes nothing about what gets stored. Computed once
+ * from every row across the whole import, not per chunk, so every chunk's
+ * statement shares the same column list.
  *
  * Validated up front, before anything touches the connection: a batch with
- * a `pgn`-less row throws before the INSERT is even built, so a bad row
- * still loses the whole import (nothing partial to roll back, because
+ * a `pgn`-less row throws before the first INSERT is even built, so a bad
+ * row still loses the whole import (nothing partial to roll back, because
  * nothing partial was ever sent).
  *
  * Ids: SQLite assigns a multi-row INSERT's own rowids sequentially, in the
  * order the rows were listed, when -- as here -- no row supplies its own
  * `id` (`INSERT_COLUMNS` never includes it). `last_insert_rowid()` reports
- * the LAST row's id, so the batch's ids run backward from it. This depends
- * on nothing else inserting into `games` between this statement and reading
- * its result, which is exactly what `stores/importer.js`'s own single-lane
- * rule ("EXACTLY ONE IMPORT AT A TIME") already guarantees.
+ * the LAST row's id, so each chunk's own ids run backward from it. This
+ * depends on nothing else inserting into `games` between one chunk's
+ * statement and reading its result, and on chunks themselves running
+ * strictly in order -- both exactly what `stores/importer.js`'s own
+ * single-lane rule ("EXACTLY ONE IMPORT AT A TIME") and this function's own
+ * sequential `await`-per-chunk loop already guarantee.
  *
  * @param {import('./connection.js').Connection} connection
  * @param {Record<string, unknown>[]} rows one per game -- see `insertGame`.
  * @returns {Promise<object[]>}
  */
+const MAX_INSERT_VARIABLES = 16000;
+
 export const insertGames = async (connection, rows) => {
   if (!rows.length) return [];
 
@@ -187,26 +222,36 @@ export const insertGames = async (connection, rows) => {
 
   const columns = INSERT_COLUMNS.filter((c) => rows.some((fields) => fields[c] !== undefined));
   const placeholders = `(${columns.map(() => '?').join(', ')})`;
-  const sql =
-    `insert into games (${columns.join(', ')}) values ${rows.map(() => placeholders).join(', ')}`;
-  const params = rows.flatMap((fields) => columns.map((c) => fields[c] ?? null));
+  const rowsPerBatch = Math.max(1, Math.floor(MAX_INSERT_VARIABLES / columns.length));
 
-  await connection.run(sql, params);
-  const lastId = Number(await connection.value('select last_insert_rowid()'));
-  const firstId = lastId - (rows.length - 1);
+  const inserted = [];
+  for (let start = 0; start < rows.length; start += rowsPerBatch) {
+    const batch = rows.slice(start, start + rowsPerBatch);
+    const sql =
+      `insert into games (${columns.join(', ')}) values ${batch.map(() => placeholders).join(', ')}`;
+    const params = batch.flatMap((fields) => columns.map((c) => fields[c] ?? null));
 
-  return rows.map((fields, i) => ({
-    id: firstId + i,
-    date: fields.date ?? null,
-    white: fields.white ?? null,
-    whiteElo: fields.white_elo ?? null,
-    black: fields.black ?? null,
-    blackElo: fields.black_elo ?? null,
-    event: fields.event ?? null,
-    result: fields.result ?? null,
-    plyCount: fields.ply_count ?? null,
-    createdAt: fields.created_at ?? null
-  }));
+    await connection.run(sql, params);
+    const lastId = Number(await connection.value('select last_insert_rowid()'));
+    const firstId = lastId - (batch.length - 1);
+
+    batch.forEach((fields, i) => {
+      inserted.push({
+        id: firstId + i,
+        date: fields.date ?? null,
+        white: fields.white ?? null,
+        whiteElo: fields.white_elo ?? null,
+        black: fields.black ?? null,
+        blackElo: fields.black_elo ?? null,
+        event: fields.event ?? null,
+        result: fields.result ?? null,
+        plyCount: fields.ply_count ?? null,
+        createdAt: fields.created_at ?? null
+      });
+    });
+  }
+
+  return inserted;
 };
 
 /**

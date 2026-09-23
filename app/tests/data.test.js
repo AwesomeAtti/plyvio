@@ -351,6 +351,49 @@ suite('insertGame / insertGames — writing', () => {
     expect(await insertGames(db, [])).toEqual([]);
     await db.close();
   });
+
+  it('batches a large import instead of exceeding SQLite\'s bound-parameter limit (regression, 23 Sep)', async () => {
+    // A real ~10,000-game Chess.com import hit "too many SQL variables" when
+    // this was one statement for the whole batch. 6,000 rows here, at 3
+    // bound columns each, crosses MAX_INSERT_VARIABLES' chunk boundary at
+    // least once against the real SQLite build -- enough to prove chunking
+    // actually happens and that rowids stay correct across the seam.
+    const db = await fresh();
+    const before = await countGames(db);
+    const n = 6000;
+    const rows = Array.from({ length: n }, (_, i) => ({
+      pgn: `[White "P${i}"]\n\n*`, white: `P${i}`, created_at: 'now'
+    }));
+
+    const inserted = await insertGames(db, rows);
+
+    expect(inserted).toHaveLength(n);
+    expect(inserted.map((r) => r.white)).toEqual(rows.map((r) => r.white));
+    const ids = inserted.map((r) => r.id);
+    expect(new Set(ids).size).toBe(n);
+    for (let i = 1; i < ids.length; i++) expect(ids[i]).toBe(ids[i - 1] + 1);
+    expect(await countGames(db)).toBe(before + n);
+    await db.close();
+  });
+
+  it('stores the seven columns added to INSERT_COLUMNS 23 Sep for §4.1\'s Chess.com mapping', async () => {
+    const db = await fresh();
+    const id = await insertGame(db, {
+      pgn: '[White "A"]\n\n*', white: 'A', created_at: 'now',
+      tournament: 'https://example/t', current_position: '8/8/8/8/8/8/8/K6k w - - 0 1',
+      variant: 'freestyle', rated: 1, white_accuracy: 91.2, black_accuracy: 84.6, time_class: 'blitz'
+    });
+
+    const row = await db.get('select * from games where id = ?', [id]);
+    expect(row.tournament).toBe('https://example/t');
+    expect(row.current_position).toBe('8/8/8/8/8/8/8/K6k w - - 0 1');
+    expect(row.variant).toBe('freestyle');
+    expect(row.rated).toBe(1);
+    expect(row.white_accuracy).toBe(91.2);
+    expect(row.black_accuracy).toBe(84.6);
+    expect(row.time_class).toBe('blitz');
+    await db.close();
+  });
 });
 
 suite('§3.1 — movetext precedence and complete replacement', () => {
