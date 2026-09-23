@@ -222,16 +222,23 @@ export function applyImportRules(row) {
 export function planRealOnlineImport({ sourceDescription, rows, destination, duplicates, tags, collections }) {
   const seed = 900000 + (++jobSeq) * 7919;
 
+  /* Unlike Paste's own empty case (`planRealPasteImport`, above) -- where
+     `sources: []` is correct, because "no games found" needs no source name
+     to fill in -- Online's own message DOES carry one (`add.none.online`,
+     "No games found for {name}"), and the report's own fallback for an empty
+     `sources` array assumes Paste (its only other real, empty-sources case).
+     So `sources` is always populated here, empty account included. */
+  const sources = [{ kind: 'online', label: sourceDescription, detail: null, games: rows.length }];
+
   if (!rows.length) {
     return {
-      tab: 'online', sources: [], destination, duplicates, tags, collections, seed,
+      tab: 'online', sources, destination, duplicates, tags, collections, seed,
       outcome: 'none',
       total: 0, added: 0, skipped: 0, failures: [], failedSources: [],
       download: false, rows: []
     };
   }
 
-  const sources = [{ kind: 'online', label: sourceDescription, detail: null, games: rows.length }];
   return {
     tab: 'online', sources, destination, duplicates, tags, collections, seed,
     outcome: 'clean',

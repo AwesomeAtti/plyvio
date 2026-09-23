@@ -14,7 +14,7 @@
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
-import { planImport, resolveOutcome } from '../src/lib/library/importJob.js';
+import { planImport, resolveOutcome, outcomeMessage } from '../src/lib/library/importJob.js';
 
 vi.mock('$lib/data/session.js', () => ({
   libraryConnection: vi.fn(), isTauri: () => false,
@@ -149,6 +149,16 @@ describe('the lane runs a real Chess.com import', () => {
     expect(insertGames).not.toHaveBeenCalled();
     expect(get(notice).kind).toBe('attention');
     expect(get(notice).plan.outcome).toBe('none');
+    // Regression, 23 Sep: `planRealOnlineImport`'s empty-rows case used to
+    // leave `sources: []`, which made the report fall back to its
+    // Paste-only default ("Pasted text") and left `add.none.online`'s
+    // `{name}` empty -- "No games found for" with nothing after it.
+    expect(get(notice).plan.sources).toEqual([
+      { kind: 'online', label: 'chess.com — gothamchess', detail: null, games: 0 }
+    ]);
+    expect(outcomeMessage(get(notice).plan)).toEqual({
+      key: 'add.none.online', vars: { name: 'chess.com — gothamchess' }
+    });
   });
 
   it('reports a network failure, with nothing written, when the fetch itself fails', async () => {
