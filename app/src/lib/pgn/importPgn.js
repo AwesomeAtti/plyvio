@@ -39,7 +39,7 @@ const TAG_FIELDS = {
 const INTEGER_FIELDS = new Set(['white_elo', 'black_elo', 'ply_count']);
 
 /** The standard initial position — an explicit `FEN` tag matching it means the same as no tag (§2.4). */
-const STANDARD_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+export const STANDARD_START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
 const TAG_LINE = /^\s*\[\w+\s+"(?:[^"\\]|\\.)*"\]\s*$/;
 

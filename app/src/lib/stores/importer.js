@@ -4,8 +4,9 @@ import { games, collections, tags, connectionForLibrary, loadGames } from '$lib/
 import { activeLibraryId } from '$lib/stores/libraries.js';
 import { requestPersistentStorage } from '$lib/data/session.js';
 import { makeImportedGames } from '$lib/library/mock.js';
-import { planImport, notAddedCount, outcomeMessage } from '$lib/library/importJob.js';
+import { planImport, planRealOnlineImport, applyImportRules, notAddedCount, outcomeMessage, sourceLabel } from '$lib/library/importJob.js';
 import { insertGames } from '$lib/data/games.js';
+import { fetchAllGames, chessComRowFromApiGame, ChessComUserNotFoundError } from '$lib/import/sources/chesscom.js';
 
 /**
  * The import lane. §3.2.4.5
@@ -69,6 +70,13 @@ let noticeTimer = null;
    where the request was sound and nothing was written. */
 let lastRequest = null;
 
+/* Invalidates an in-flight Chess.com fetch when the user cancels or the lane
+   resets mid-download -- `fetch()` itself is not aborted here (no
+   AbortController wired up, out of this slice's scope), so this is what
+   stops a fetch that finally settles AFTER a cancel from overwriting the
+   cancelled state with a write. */
+let onlineFetchToken = 0;
+
 function clearTimers() {
   if (timer) { clearTimeout(timer); timer = null; }
 }
@@ -89,6 +97,22 @@ export function startImport(request) {
   if (get(running)) return false;
 
   const p = planImport(request);
+
+  /* `needsOnlineFetch` is `planImport`'s marker for the one real online path
+     that exists so far (Chess.com, `import/sources/chesscom.js`) -- there is
+     no plan yet to check `.sources` on, because nothing has been fetched. */
+  if (p.needsOnlineFetch) {
+    lastRequest = request;
+    clearNotice();
+    plan.set(null);
+    written.set(0);
+    downloaded.set(0);
+    onlineFetchToken++;
+    phase.set('downloading');
+    runRealOnlineDownload(p);
+    return true;
+  }
+
   if (!p.sources.length) return false;
 
   lastRequest = request;
@@ -125,6 +149,72 @@ function finishDownload(p) {
   if (p.outcome === 'network') { finish(p); return; }
   phase.set('writing');
   runWrite(p, 0);
+}
+
+/**
+ * Chess.com's real download-then-write path. `p` here is `planImport`'s
+ * marker for `{ tab: 'online', draft: { source: 'chesscom' } }` -- not a
+ * plan yet, because nothing is knowable about the import (row count
+ * included -- the variant-scope skip in `chessComRowFromApiGame` means it
+ * is not even the game count Chess.com itself reports) until the fetch
+ * finishes.
+ *
+ * `downloaded` climbs with each month Chess.com returns -- a real count, not
+ * `runDownload`'s paced simulation -- so the Status Bar's existing
+ * `kind: 'downloading'` rendering needs no change to show real progress.
+ *
+ * A missing account (`ChessComUserNotFoundError`) resolves the same way an
+ * empty paste does: `planRealOnlineImport({ rows: [] })`, the outcome the
+ * rest of the lane already renders as "no games found". Any other failure --
+ * offline, Chess.com down, a malformed response -- is the one outcome
+ * nothing was written for, so Retry (`retryImport`) is safe.
+ */
+async function runRealOnlineDownload(p) {
+  const { draft, destination, duplicates, tags, collections } = p;
+  const sourceDescription = `${sourceLabel(draft.source)} — ${draft.username.trim()}`;
+  const token = onlineFetchToken;
+
+  if (!browser) {
+    finish(planRealOnlineImport({ sourceDescription, rows: [], destination, duplicates, tags, collections }));
+    return;
+  }
+
+  let finalPlan;
+  try {
+    const createdAt = new Date().toISOString();
+    const apiGames = await fetchAllGames(draft.username, {
+      onMonth: (_count, total) => downloaded.set(total)
+    });
+    const rows = apiGames
+      .map((g) => chessComRowFromApiGame(g, createdAt))
+      .filter(Boolean)
+      .map((row) => applyImportRules(row))
+      .filter(Boolean);
+    finalPlan = planRealOnlineImport({ sourceDescription, rows, destination, duplicates, tags, collections });
+  } catch (err) {
+    if (err instanceof ChessComUserNotFoundError) {
+      finalPlan = planRealOnlineImport({ sourceDescription, rows: [], destination, duplicates, tags, collections });
+    } else {
+      console.error('Plyvio: failed to fetch Chess.com games', err);
+      const failedSource = { kind: 'online', label: sourceDescription, detail: null, games: 0 };
+      finalPlan = {
+        tab: 'online', sources: [failedSource], destination, duplicates, tags, collections, seed: 0,
+        outcome: 'network',
+        total: 0, added: 0, skipped: 0, failures: [],
+        failedSources: [{ ...failedSource, errorKind: 'network' }],
+        download: false
+      };
+    }
+  }
+
+  /* The user cancelled while this was in flight -- `cancelImport()` already
+     set phase to 'done' and posted its own notice; don't clobber it now that
+     the fetch has finally settled. */
+  if (token !== onlineFetchToken) return;
+
+  plan.set(finalPlan);
+  phase.set('writing');
+  runWrite(finalPlan, 0);
 }
 
 function runWrite(p, elapsed) {
@@ -276,6 +366,7 @@ function registerOrganisation(p) {
 export function cancelImport() {
   if (!get(running)) return false;
   clearTimers();
+  onlineFetchToken++;   // invalidate any in-flight Chess.com fetch
   const kept = get(written);
   const p = get(plan);
   phase.set('done');
@@ -308,6 +399,7 @@ export function closeReport() { clearNotice(); }
 
 export function resetImporter() {
   clearTimers();
+  onlineFetchToken++;   // invalidate any in-flight Chess.com fetch
   lastRequest = null;
   if (noticeTimer) { clearTimeout(noticeTimer); noticeTimer = null; }
   phase.set('idle');

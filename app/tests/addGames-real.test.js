@@ -45,14 +45,17 @@ const request = (over = {}) => ({
   ...over
 });
 
-describe('resolveOutcome — real is Paste-only so far', () => {
+describe('resolveOutcome — real now applies past Paste too', () => {
   it('resolves on Paste', () => {
     expect(resolveOutcome('paste', 'real')).toBe('real');
   });
-  it('falls back to no-games-found on File and Online, which have no real path yet', () => {
+  it('falls back to no-games-found on File, which has no real path yet', () => {
     expect(resolveOutcome('file', 'real')).toBe('none');
-    expect(resolveOutcome('online', 'real')).toBe('none');
   });
+  // Online's own "real" behavior -- a fetch marker for Chess.com, a fallback
+  // to 'none' for any other source -- is covered in `addGames-chesscom.test.js`,
+  // not here: it depends on `draft.source`, which this file's Paste-only
+  // `request()` helper never varies.
 });
 
 describe('planImport — real Paste', () => {

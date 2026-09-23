@@ -21,15 +21,19 @@ import { gameRowsFromPgnText } from '$lib/pgn/importPgn.js';
  *
  * `real` means what it says: actually read what was given, no simulation.
  * It is first because it is the ordinary state now that a real path exists
- * for Paste (`planRealPasteImport`, below) -- File and Online still have
- * none, so `OUTCOME_APPLIES` keeps `real` off those tabs until they do.
+ * for Paste (`planRealPasteImport`, below) and for Online-via-Chess.com
+ * (`planRealOnlineImport`, plus the fetch in `import/sources/chesscom.js`)
+ * -- File, and Online via any other source, still have none, so
+ * `OUTCOME_APPLIES` keeps `real` off File, and `planImport` falls back to
+ * `none` for a "real" Online import that isn't Chess.com.
  *
  * The other five remain what they always were: a real importer derives its
- * result from the PGN, and until every tab has one, the result for that tab
- * has to be chosen instead. It is chosen in Settings → General → Prototype
- * (§ "Simulated import result"). That row is a prototype affordance and is
- * not specified: it exists so every path through §3.2.4.5 is reachable by
- * hand, including ones a real, well-formed import cannot easily reach.
+ * result from the PGN, and until every tab (and, for Online, every source)
+ * has one, the result has to be chosen instead. It is chosen in
+ * Settings → General → Prototype (§ "Simulated import result"). That row is
+ * a prototype affordance and is not specified: it exists so every path
+ * through §3.2.4.5 is reachable by hand, including ones a real,
+ * well-formed import cannot easily reach.
  */
 export const OUTCOMES = ['real', 'clean', 'problems', 'none', 'file', 'network'];
 
@@ -37,7 +41,7 @@ export const DEFAULT_OUTCOME = 'clean';
 
 /** Which tabs each outcome can actually occur on. */
 const OUTCOME_APPLIES = {
-  real:     ['paste'],                     // File and Online: no real path yet
+  real:     ['paste', 'online'],           // File: no real path yet
   clean:    ['file', 'online', 'paste'],
   problems: ['file', 'online', 'paste'],
   none:     ['file', 'online', 'paste'],
@@ -187,10 +191,75 @@ function planRealPasteImport({ draft, destination, duplicates, tags, collections
   };
 }
 
+/**
+ * The processing-rules seam, agreed 23 Sep (`working/EXPLORATION.md`) and
+ * left empty on purpose: a place for future per-row rules (tags and
+ * collections routing were the use case discussed) to run against each row
+ * an online or file import produces, before it is written. No rules ship
+ * yet -- returning the row unchanged is the whole implementation until the
+ * first rule exists.
+ *
+ * A rule may return `null` to drop the row entirely, the same convention
+ * `chessComRowFromApiGame` uses for a row that should never be stored.
+ */
+const IMPORT_RULES = [];
+
+export function applyImportRules(row) {
+  return IMPORT_RULES.reduce((r, rule) => (r ? rule(r) : r), row);
+}
+
+/**
+ * An online import, for real -- mirrors `planRealPasteImport`'s shape
+ * exactly, so `stores/importer.js`'s existing `Array.isArray(p.rows)` branch
+ * (built for Paste) handles this without any change of its own.
+ *
+ * By the time this is called, the fetch, the source's own field mapping and
+ * `applyImportRules` have already run (`stores/importer.js`'s
+ * `runRealOnlineDownload`); this just shapes the result the same way every
+ * other outcome is shaped. `sourceDescription` is the one label the Status
+ * Bar and the report need -- `sourceLabel(draft.source)` plus the username.
+ */
+export function planRealOnlineImport({ sourceDescription, rows, destination, duplicates, tags, collections }) {
+  const seed = 900000 + (++jobSeq) * 7919;
+
+  if (!rows.length) {
+    return {
+      tab: 'online', sources: [], destination, duplicates, tags, collections, seed,
+      outcome: 'none',
+      total: 0, added: 0, skipped: 0, failures: [], failedSources: [],
+      download: false, rows: []
+    };
+  }
+
+  const sources = [{ kind: 'online', label: sourceDescription, detail: null, games: rows.length }];
+  return {
+    tab: 'online', sources, destination, duplicates, tags, collections, seed,
+    outcome: 'clean',
+    total: rows.length, added: rows.length, skipped: 0, failures: [], failedSources: [],
+    download: false, rows
+  };
+}
+
 export function planImport({ tab, draft, outcome, destination, duplicates, tags, collections }) {
-  const resolved = resolveOutcome(tab, outcome);
-  if (resolved === 'real') {
+  let resolved = resolveOutcome(tab, outcome);
+
+  if (resolved === 'real' && tab === 'paste') {
     return planRealPasteImport({ draft, destination, duplicates, tags, collections });
+  }
+
+  /* Online's real path exists only for Chess.com so far (`import/sources/
+     chesscom.js`); the actual fetch happens in `stores/importer.js`, which
+     is why this returns a marker rather than a plan -- there is nothing to
+     plan until the download finishes. */
+  if (resolved === 'real' && tab === 'online' && draft.source === 'chesscom') {
+    return { needsOnlineFetch: true, draft, destination, duplicates, tags, collections };
+  }
+
+  /* Lichess (or any future online source with no adapter yet) chose "real"
+     but has nothing real to run -- fall back to the same "no games found"
+     outcome Online used for every source before any real path existed. */
+  if (resolved === 'real') {
+    resolved = 'none';
   }
 
   const sources = describeSources(tab, draft);
