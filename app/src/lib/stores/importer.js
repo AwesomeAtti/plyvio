@@ -5,8 +5,11 @@ import { activeLibraryId } from '$lib/stores/libraries.js';
 import { requestPersistentStorage } from '$lib/data/session.js';
 import { makeImportedGames } from '$lib/library/mock.js';
 import { planImport, planRealOnlineImport, applyImportRules, notAddedCount, outcomeMessage, sourceLabel } from '$lib/library/importJob.js';
-import { insertGames } from '$lib/data/games.js';
-import { fetchAllGames, chessComRowFromApiGame, ChessComUserNotFoundError } from '$lib/import/sources/chesscom.js';
+import { insertGames, latestGameDateForSource, gamePgnsForSourceOnDate } from '$lib/data/games.js';
+import {
+  SOURCE_TYPE, fetchAllGames, chessComRowsSinceCursor, latestEndTimeFromPgns,
+  normalizeUsername, ChessComUserNotFoundError
+} from '$lib/import/sources/chesscom.js';
 
 /**
  * The import lane. §3.2.4.5
@@ -152,6 +155,31 @@ function finishDownload(p) {
 }
 
 /**
+ * Stage 2's read side (`EXPLORATION.md`, "Per-game source tracking"): the
+ * account's latest known `date` already on record in `destination`, and,
+ * for that one boundary date, the latest end time already known -- both
+ * best-effort. Any failure here (no connection, a query error, a database
+ * predating these columns) falls back to `{ cursorDate: null,
+ * knownEndTimeOnCursorDate: null }`, the same as a genuine first import:
+ * `fetchAllGames`/`chessComRowsSinceCursor` both treat a null cursor as
+ * "fetch and keep everything", never as a reason to fail the download.
+ */
+async function resolveCursor(destination, username) {
+  try {
+    const connection = await connectionForLibrary(destination);
+    if (!connection) return { cursorDate: null, knownEndTimeOnCursorDate: null };
+    const identifier = normalizeUsername(username);
+    const cursorDate = await latestGameDateForSource(connection, SOURCE_TYPE, identifier);
+    if (!cursorDate) return { cursorDate: null, knownEndTimeOnCursorDate: null };
+    const pgns = await gamePgnsForSourceOnDate(connection, SOURCE_TYPE, identifier, cursorDate);
+    return { cursorDate, knownEndTimeOnCursorDate: latestEndTimeFromPgns(pgns) };
+  } catch (err) {
+    console.error('Plyvio: failed to resolve the Chess.com incremental-import cursor', err);
+    return { cursorDate: null, knownEndTimeOnCursorDate: null };
+  }
+}
+
+/**
  * Chess.com's real download-then-write path. `p` here is `planImport`'s
  * marker for `{ tab: 'online', draft: { source: 'chesscom' } }` -- not a
  * plan yet, because nothing is knowable about the import (row count
@@ -161,7 +189,10 @@ function finishDownload(p) {
  *
  * `downloaded` climbs with each month Chess.com returns -- a real count, not
  * `runDownload`'s paced simulation -- so the Status Bar's existing
- * `kind: 'downloading'` rendering needs no change to show real progress.
+ * `kind: 'downloading'` rendering needs no change to show real progress. An
+ * incremental re-import (`resolveCursor` found a cursor) climbs from fewer
+ * months, honestly: the total was never meant to be the account's whole
+ * history, only what this run actually asked for.
  *
  * A missing account (`ChessComUserNotFoundError`) resolves the same way an
  * empty paste does: `planRealOnlineImport({ rows: [] })`, the outcome the
@@ -179,15 +210,16 @@ async function runRealOnlineDownload(p) {
     return;
   }
 
+  const { cursorDate, knownEndTimeOnCursorDate } = await resolveCursor(destination, draft.username);
+
   let finalPlan;
   try {
     const createdAt = new Date().toISOString();
     const apiGames = await fetchAllGames(draft.username, {
+      cursorDate,
       onMonth: (_count, total) => downloaded.set(total)
     });
-    const rows = apiGames
-      .map((g) => chessComRowFromApiGame(g, createdAt, draft.username))
-      .filter(Boolean)
+    const rows = chessComRowsSinceCursor(apiGames, createdAt, draft.username, cursorDate, knownEndTimeOnCursorDate)
       .map((row) => applyImportRules(row))
       .filter(Boolean);
     finalPlan = planRealOnlineImport({ sourceDescription, rows, destination, duplicates, tags, collections });

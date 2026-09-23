@@ -35,6 +35,8 @@ import {
   readTagIdsByGame,
   readCollectionIdsByGame,
   countNewGamesForSubscription,
+  latestGameDateForSource,
+  gamePgnsForSourceOnDate,
   readEngines,
   readLibraries,
   readMovetextFor,
@@ -412,6 +414,63 @@ suite('insertGame / insertGames — writing', () => {
     const pastedRow = await db.get('select * from games where id = ?', [pasted]);
     expect(pastedRow.source_type).toBeNull();
     expect(pastedRow.source_identifier).toBeNull();
+    await db.close();
+  });
+});
+
+suite('latestGameDateForSource / gamePgnsForSourceOnDate -- stage 2\'s cursor reads', () => {
+  const fresh = async () => openMemoryDatabase(bytesOf('sample-games.db'));
+  const online = (db, over) => insertGame(db, {
+    pgn: `[White "${over.white ?? 'A'}"]\n\n*`, created_at: 'now',
+    source_type: 'chess_com_player', source_identifier: 'awesomeatti', ...over
+  });
+
+  it('returns null when nothing from that source pair is on record yet', async () => {
+    const db = await fresh();
+    expect(await latestGameDateForSource(db, 'chess_com_player', 'nobody')).toBeNull();
+    await db.close();
+  });
+
+  it('returns the latest date, chronologically, not lexicographically-first', async () => {
+    const db = await fresh();
+    await online(db, { date: '2026.03.15' });
+    await online(db, { date: '2026.09.01' });
+    await online(db, { date: '2025.12.31' });
+    expect(await latestGameDateForSource(db, 'chess_com_player', 'awesomeatti')).toBe('2026.09.01');
+    await db.close();
+  });
+
+  it('is scoped to the exact source pair -- a different identifier or type doesn\'t contribute', async () => {
+    const db = await fresh();
+    await online(db, { date: '2026.09.01' });
+    await online(db, { date: '2026.09.20', source_identifier: 'someoneelse' });
+    await online(db, { date: '2026.09.25', source_type: 'lichess_player' });
+    expect(await latestGameDateForSource(db, 'chess_com_player', 'awesomeatti')).toBe('2026.09.01');
+    await db.close();
+  });
+
+  it('ignores Paste/File rows (NULL source_type), which max() already skips', async () => {
+    const db = await fresh();
+    await insertGame(db, { pgn: '[White "P"]\n\n*', white: 'P', date: '2099.01.01', created_at: 'now' });
+    expect(await latestGameDateForSource(db, 'chess_com_player', 'awesomeatti')).toBeNull();
+    await db.close();
+  });
+
+  it('gamePgnsForSourceOnDate returns only that source pair\'s pgns for that exact date', async () => {
+    const db = await fresh();
+    await online(db, { date: '2026.09.01', white: 'Same-day-1' });
+    await online(db, { date: '2026.09.01', white: 'Same-day-2' });
+    await online(db, { date: '2026.09.02', white: 'Next-day' });
+    await online(db, { date: '2026.09.01', white: 'Other-account', source_identifier: 'someoneelse' });
+
+    const pgns = await gamePgnsForSourceOnDate(db, 'chess_com_player', 'awesomeatti', '2026.09.01');
+    expect(pgns.sort()).toEqual(['[White "Same-day-1"]\n\n*', '[White "Same-day-2"]\n\n*'].sort());
+    await db.close();
+  });
+
+  it('gamePgnsForSourceOnDate returns an empty array for a date with nothing on record', async () => {
+    const db = await fresh();
+    expect(await gamePgnsForSourceOnDate(db, 'chess_com_player', 'awesomeatti', '2026.09.01')).toEqual([]);
     await db.close();
   });
 });

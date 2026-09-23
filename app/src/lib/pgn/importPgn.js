@@ -123,6 +123,27 @@ export function splitPgnGames(text) {
 }
 
 /**
+ * One game's raw PGN tag headers (chessops), or null when `parsePgn` can't
+ * make sense of the text. The one place this file's try/catch around it
+ * lives — reused by `gameFieldsFromPgn` below for the tags §1 defines
+ * fields for, and available to a caller that needs a tag this schema
+ * doesn't promote to a column (an import source's own extension tag, e.g.
+ * `import/sources/chesscom.js`'s `EndDate`/`EndTime` reparse for its
+ * incremental-reimport tie-break).
+ *
+ * @param {string} gameText one game's own PGN text, as `splitPgnGames` returns it.
+ * @returns {Map<string, string>|null}
+ */
+export function headersFromPgn(gameText) {
+  try {
+    const [{ headers } = {}] = parsePgn(gameText, emptyHeaders);
+    return headers ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/**
  * One game's insertable row fields — everything `data/games.js`'s
  * `insertGame` needs — from its own PGN text. §4's own rule, applied:
  * stores `pgn` verbatim, lifts each tag §1 defines a field for, sets
@@ -146,12 +167,7 @@ export function splitPgnGames(text) {
 export function gameFieldsFromPgn(gameText, createdAt) {
   const fields = { pgn: gameText, created_at: createdAt };
 
-  let headers;
-  try {
-    [{ headers } = {}] = parsePgn(gameText, emptyHeaders);
-  } catch {
-    headers = undefined;
-  }
+  const headers = headersFromPgn(gameText);
   if (!headers) return fields;
 
   for (const [tag, field] of Object.entries(TAG_FIELDS)) {

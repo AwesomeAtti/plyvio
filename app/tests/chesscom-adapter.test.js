@@ -16,7 +16,13 @@ import {
   fetchArchives,
   fetchMonthGames,
   fetchAllGames,
-  chessComRowFromApiGame
+  chessComRowFromApiGame,
+  archiveMonthOf,
+  archivesFromCursor,
+  endTimeFromPgn,
+  latestEndTimeFromPgns,
+  chessComRowsSinceCursor,
+  normalizeUsername
 } from '../src/lib/import/sources/chesscom.js';
 
 describe('chessComRowFromApiGame', () => {
@@ -146,4 +152,222 @@ describe('fetchArchives / fetchMonthGames / fetchAllGames', () => {
 
 it('has a stable source_type matching database-schema.md §5.2\'s existing vocabulary', () => {
   expect(SOURCE_TYPE).toBe('chess_com_player');
+});
+
+// Stage 2 -- incremental re-import (`EXPLORATION.md`, "Per-game source
+// tracking", approved and built 23 Sep). `end_time`/`EndDate`/`EndTime`
+// values below (1788271197 / 2026.09.01 / 13:59:57) are a real Chess.com
+// game, cross-checked live against 381 real games with zero mismatches
+// (`working/CLOSED.md`, 23 Sep) -- not invented numbers.
+
+describe('archiveMonthOf', () => {
+  it('reads {year, month} from a real archive URL', () => {
+    expect(archiveMonthOf('https://api.chess.com/pub/player/x/games/2026/08')).toEqual({ year: 2026, month: 8 });
+  });
+
+  it('returns null for anything that doesn\'t carry the archive URL shape', () => {
+    expect(archiveMonthOf('https://api.chess.com/pub/player/x/games/archives')).toBeNull();
+    expect(archiveMonthOf('not a url')).toBeNull();
+  });
+});
+
+describe('archivesFromCursor', () => {
+  const archives = [
+    'https://api.chess.com/pub/player/x/games/2026/06',
+    'https://api.chess.com/pub/player/x/games/2026/07',
+    'https://api.chess.com/pub/player/x/games/2026/08',
+    'https://api.chess.com/pub/player/x/games/2026/09'
+  ];
+
+  it('returns every archive unchanged for a first import (no cursor)', () => {
+    expect(archivesFromCursor(archives, null)).toEqual(archives);
+  });
+
+  it('drops whole months strictly before the cursor\'s month, keeping its own month and later', () => {
+    expect(archivesFromCursor(archives, '2026.08.15')).toEqual([
+      'https://api.chess.com/pub/player/x/games/2026/08',
+      'https://api.chess.com/pub/player/x/games/2026/09'
+    ]);
+  });
+
+  it('keeps everything when the cursor date can\'t be placed in a month (an unknown-digit date)', () => {
+    expect(archivesFromCursor(archives, '2026.??.??')).toEqual(archives);
+  });
+
+  it('a cursor in the very last archived month keeps only that one', () => {
+    expect(archivesFromCursor(archives, '2026.09.01')).toEqual([
+      'https://api.chess.com/pub/player/x/games/2026/09'
+    ]);
+  });
+});
+
+const pgnWithEnd = ({ date = '2026.09.01', white = 'A', black = 'B', endDate = date, endTime = '12:00:00' } = {}) => [
+  '[Event "Live Chess"]',
+  `[Date "${date}"]`,
+  `[White "${white}"]`,
+  `[Black "${black}"]`,
+  '[Result "1-0"]',
+  '[Timezone "UTC"]',
+  `[EndDate "${endDate}"]`,
+  `[EndTime "${endTime}"]`,
+  '',
+  '1. e4 e5 1-0'
+].join('\n');
+
+describe('endTimeFromPgn', () => {
+  it('combines EndDate/EndTime into the same Unix timestamp Chess.com\'s own end_time uses (live-verified value)', () => {
+    const pgn = pgnWithEnd({ endDate: '2026.09.01', endTime: '13:59:57' });
+    expect(endTimeFromPgn(pgn)).toBe(1788271197);
+  });
+
+  it('returns null when EndDate or EndTime is missing', () => {
+    const noEnd = '[Event "Live Chess"]\n[Date "2026.09.01"]\n\n1. e4 e5 1-0';
+    expect(endTimeFromPgn(noEnd)).toBeNull();
+  });
+
+  it('returns null for unparseable text', () => {
+    expect(endTimeFromPgn('')).toBeNull();
+  });
+});
+
+describe('latestEndTimeFromPgns', () => {
+  it('returns the latest of several', () => {
+    const pgns = [
+      pgnWithEnd({ endTime: '10:00:00' }),
+      pgnWithEnd({ endTime: '15:30:00' }),
+      pgnWithEnd({ endTime: '12:00:00' })
+    ];
+    expect(latestEndTimeFromPgns(pgns)).toBe(endTimeFromPgn(pgnWithEnd({ endTime: '15:30:00' })));
+  });
+
+  it('returns null for an empty list, or one with nothing parseable', () => {
+    expect(latestEndTimeFromPgns([])).toBeNull();
+    expect(latestEndTimeFromPgns(['no tags here'])).toBeNull();
+  });
+});
+
+describe('chessComRowsSinceCursor', () => {
+  const apiGame = (over = {}) => ({
+    rules: 'chess', pgn: pgnWithEnd(over), end_time: over.end_time, ...over
+  });
+
+  it('with no cursor, maps everything -- same as a first import', () => {
+    const rows = chessComRowsSinceCursor(
+      [apiGame({ date: '2026.09.01' }), apiGame({ date: '2026.09.02' })],
+      'now', 'AwesomeAtti', null, null
+    );
+    expect(rows).toHaveLength(2);
+  });
+
+  it('drops a row dated strictly before the cursor -- guaranteed already known', () => {
+    const rows = chessComRowsSinceCursor(
+      [apiGame({ date: '2026.08.31' })], 'now', 'AwesomeAtti', '2026.09.01', null
+    );
+    expect(rows).toEqual([]);
+  });
+
+  it('keeps a row dated strictly after the cursor -- unambiguously new, no comparison needed', () => {
+    const rows = chessComRowsSinceCursor(
+      [apiGame({ date: '2026.09.02', end_time: 1 })], 'now', 'AwesomeAtti', '2026.09.01', 999999999
+    );
+    expect(rows).toHaveLength(1);
+  });
+
+  describe('on the boundary date itself', () => {
+    const cursorDate = '2026.09.01';
+    const knownEndTime = endTimeFromPgn(pgnWithEnd({ date: cursorDate, endTime: '12:00:00' }));
+
+    it('drops a fetched game whose end_time is not after what\'s already known for that day', () => {
+      const rows = chessComRowsSinceCursor(
+        [apiGame({ date: cursorDate, end_time: knownEndTime })], 'now', 'AwesomeAtti', cursorDate, knownEndTime
+      );
+      expect(rows).toEqual([]);
+    });
+
+    it('keeps a fetched game whose end_time is after what\'s already known for that day', () => {
+      const later = knownEndTime + 60;
+      const rows = chessComRowsSinceCursor(
+        [apiGame({ date: cursorDate, end_time: later })], 'now', 'AwesomeAtti', cursorDate, knownEndTime
+      );
+      expect(rows).toHaveLength(1);
+    });
+
+    it('keeps a boundary-date row when nothing is known for that day (knownEndTimeOnCursorDate null)', () => {
+      const rows = chessComRowsSinceCursor(
+        [apiGame({ date: cursorDate, end_time: 1 })], 'now', 'AwesomeAtti', cursorDate, null
+      );
+      expect(rows).toHaveLength(1);
+    });
+
+    it('keeps rather than drops when the fetched game\'s own end_time can\'t be compared (missing/non-numeric)', () => {
+      const rows = chessComRowsSinceCursor(
+        [{ rules: 'chess', pgn: pgnWithEnd({ date: cursorDate }), end_time: undefined }],
+        'now', 'AwesomeAtti', cursorDate, knownEndTime
+      );
+      expect(rows).toHaveLength(1);
+    });
+  });
+
+  it('still applies the variant-scope skip -- an unsupported row never reaches the date filter at all', () => {
+    const rows = chessComRowsSinceCursor(
+      [{ rules: 'bughouse', pgn: pgnWithEnd({ date: '2026.09.02' }), end_time: 1 }],
+      'now', 'AwesomeAtti', '2026.09.01', null
+    );
+    expect(rows).toEqual([]);
+  });
+});
+
+describe('normalizeUsername', () => {
+  it('trims and lowercases, matching fetchArchives\' own request-URL normalization', () => {
+    expect(normalizeUsername('  AwesomeAtti  ')).toBe('awesomeatti');
+  });
+});
+
+describe('fetchAllGames with a cursor (stage 2)', () => {
+  beforeEach(() => { vi.stubGlobal('fetch', vi.fn()); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it('never requests a month archivesFromCursor rules out', async () => {
+    const requested = [];
+    fetch.mockImplementation(async (url) => {
+      requested.push(url);
+      if (url.endsWith('/archives')) {
+        return {
+          ok: true, status: 200, json: async () => ({
+            archives: [
+              'https://api.chess.com/pub/player/x/games/2026/07',
+              'https://api.chess.com/pub/player/x/games/2026/08',
+              'https://api.chess.com/pub/player/x/games/2026/09'
+            ]
+          })
+        };
+      }
+      return { ok: true, status: 200, json: async () => ({ games: [{ rules: 'chess' }] }) };
+    });
+
+    const games = await fetchAllGames('x', { cursorDate: '2026.08.15' });
+
+    expect(requested).toEqual([
+      'https://api.chess.com/pub/player/x/games/archives',
+      'https://api.chess.com/pub/player/x/games/2026/08',
+      'https://api.chess.com/pub/player/x/games/2026/09'
+    ]);
+    expect(games).toHaveLength(2);
+  });
+
+  it('with no cursor, requests every month, same as before stage 2', async () => {
+    const requested = [];
+    fetch.mockImplementation(async (url) => {
+      requested.push(url);
+      if (url.endsWith('/archives')) {
+        return { ok: true, status: 200, json: async () => ({ archives: ['https://api.chess.com/pub/player/x/games/2026/09'] }) };
+      }
+      return { ok: true, status: 200, json: async () => ({ games: [] }) };
+    });
+    await fetchAllGames('x', {});
+    expect(requested).toEqual([
+      'https://api.chess.com/pub/player/x/games/archives',
+      'https://api.chess.com/pub/player/x/games/2026/09'
+    ]);
+  });
 });

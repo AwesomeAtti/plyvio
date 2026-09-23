@@ -45,6 +45,8 @@ export {
   insertGames,
   countGames,
   countNewGamesForSubscription,
+  latestGameDateForSource,
+  gamePgnsForSourceOnDate,
   readGames,
   movetextFromRow,
   readMovetextFor,

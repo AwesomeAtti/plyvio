@@ -63,6 +63,48 @@ export const countNewGamesForSubscription = async (connection, subscriptionId, s
 };
 
 /**
+ * The latest `date` (§2.2's format, chronologically string-sortable)
+ * already on record for one online source -- an Online import's cursor for
+ * "have we already imported this account up to here" (`working/
+ * EXPLORATION.md`, "Per-game source tracking"). Generic: nothing here is
+ * Chess.com-specific, so any future source's adapter can use the same
+ * query against its own `source_type`/`source_identifier` pair (§2.3).
+ *
+ * Plain SQL `max()` is enough because `date` is stored NULL-safe and
+ * chronologically sortable as text; SQLite's `max()` already ignores NULL
+ * rows, so a mix of dated and undated games for the same source pair still
+ * answers correctly.
+ *
+ * @returns {Promise<string|null>} null when nothing from this source pair
+ *   is on record yet -- a first import, nothing to skip.
+ */
+export const latestGameDateForSource = async (connection, sourceType, sourceIdentifier) => {
+  const value = await connection.value(
+    'select max(date) from games where source_type = ? and source_identifier = ?',
+    [sourceType, sourceIdentifier]
+  );
+  return value ?? null;
+};
+
+/**
+ * The stored `pgn` of every game from one online source dated exactly
+ * `date` -- the one day an incremental re-import can't tell "already
+ * imported" from "new" by date alone (`EXPLORATION.md`'s "same-day ties").
+ * The caller re-parses these for whatever its own source-specific tie-break
+ * needs (Chess.com: `import/sources/chesscom.js`'s `EndDate`/`EndTime`);
+ * nothing here is Chess.com-specific.
+ *
+ * @returns {Promise<string[]>}
+ */
+export const gamePgnsForSourceOnDate = async (connection, sourceType, sourceIdentifier, date) => {
+  const rows = await connection.all(
+    'select pgn from games where source_type = ? and source_identifier = ? and date = ?',
+    [sourceType, sourceIdentifier, date]
+  );
+  return rows.map((row) => row.pgn);
+};
+
+/**
  * A page of games, shaped for the Content Table.
  *
  * `plyCount` is very often null: `games.ply_count` is deliberately unfilled in

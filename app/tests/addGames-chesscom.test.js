@@ -28,7 +28,12 @@ vi.mock('$lib/data/games.js', () => ({
   readTags: vi.fn(async () => []),
   readCollections: vi.fn(async () => []),
   readTagIdsByGame: vi.fn(async () => ({})),
-  readCollectionIdsByGame: vi.fn(async () => ({}))
+  readCollectionIdsByGame: vi.fn(async () => ({})),
+  // Stage 2 (incremental re-import) defaults every test to "first import,
+  // nothing known yet" unless a test overrides them -- its own describe
+  // block below does.
+  latestGameDateForSource: vi.fn(async () => null),
+  gamePgnsForSourceOnDate: vi.fn(async () => [])
 }));
 vi.mock('$lib/import/sources/chesscom.js', async () => {
   const actual = await vi.importActual('$lib/import/sources/chesscom.js');
@@ -80,8 +85,8 @@ const { startImport, resetImporter, cancelImport, retryImport, phase, downloaded
 const { libraryConnection } = await import('$lib/data/session.js');
 const { objects } = await import('../src/lib/stores/settings.js');
 const { activeLibraryId } = await import('../src/lib/stores/libraries.js');
-const { insertGames, readGames } = await import('$lib/data/games.js');
-const { fetchAllGames, ChessComUserNotFoundError } = await import('$lib/import/sources/chesscom.js');
+const { insertGames, readGames, latestGameDateForSource, gamePgnsForSourceOnDate } = await import('$lib/data/games.js');
+const { fetchAllGames, ChessComUserNotFoundError, endTimeFromPgn } = await import('$lib/import/sources/chesscom.js');
 
 describe('the lane runs a real Chess.com import', () => {
   beforeEach(() => {
@@ -93,6 +98,10 @@ describe('the lane runs a real Chess.com import', () => {
     insertGames.mockReset();
     readGames.mockReset();
     readGames.mockImplementation(async () => []);
+    latestGameDateForSource.mockReset();
+    latestGameDateForSource.mockImplementation(async () => null);
+    gamePgnsForSourceOnDate.mockReset();
+    gamePgnsForSourceOnDate.mockImplementation(async () => []);
     fetchAllGames.mockReset();
     objects.update((o) => ({
       ...o,
@@ -196,6 +205,11 @@ describe('the lane runs a real Chess.com import', () => {
     fetchAllGames.mockImplementation(() => new Promise((resolve) => { resolveFetch = resolve; }));
 
     expect(startImport(request())).toBe(true);
+    // Stage 2 (`resolveCursor`) awaits the destination connection and a
+    // cursor lookup before `fetchAllGames` is even called -- wait for that
+    // to actually happen before racing it with a cancel.
+    while (!resolveFetch) await Promise.resolve();
+
     expect(cancelImport()).toBe(true);
     expect(get(phase)).toBe('done');
     expect(get(notice).kind).toBe('cancelled');
@@ -207,5 +221,110 @@ describe('the lane runs a real Chess.com import', () => {
 
     expect(insertGames).not.toHaveBeenCalled();
     expect(get(notice).kind).toBe('cancelled');
+  });
+});
+
+describe('stage 2 -- incremental re-import (EXPLORATION.md, "Per-game source tracking")', () => {
+  const BOUNDARY_PGN = (endTime) => [
+    '[Event "Live Chess"]', '[Date "2026.09.01"]', '[White "Already"]', '[Black "Known"]',
+    '[Result "1-0"]', '[Timezone "UTC"]', '[EndDate "2026.09.01"]', `[EndTime "${endTime}"]`,
+    '', '1. e4 e5 1-0'
+  ].join('\n');
+  const KNOWN_END_TIME = endTimeFromPgn(BOUNDARY_PGN('12:00:00'));
+
+  const chessComGameOn = (date, over = {}) => ({
+    rules: 'chess', pgn: `[Event "Live Chess"]\n[Date "${date}"]\n[White "X"]\n[Black "Y"]\n[Result "1-0"]\n\n1. e4 e5 1-0`,
+    rated: true, time_class: 'blitz', ...over
+  });
+
+  beforeEach(() => {
+    games.set([]);
+    tags.set([]);
+    collections.set([]);
+    resetImporter();
+    libraryConnection.mockReset();
+    libraryConnection.mockResolvedValue({});
+    insertGames.mockReset();
+    readGames.mockReset();
+    readGames.mockImplementation(async () => []);
+    fetchAllGames.mockReset();
+    latestGameDateForSource.mockReset();
+    gamePgnsForSourceOnDate.mockReset();
+    objects.update((o) => ({
+      ...o,
+      databases: [{ id: 'db-1', name: 'Destination Library', location: '/tmp/db-1.db', enabled: true, status: 'indexed' }]
+    }));
+    activeLibraryId.set('db-1');
+  });
+  afterEach(() => resetImporter());
+
+  const flush = () => new Promise((resolve) => {
+    const unsub = phase.subscribe((p) => { if (p === 'done') { unsub(); resolve(); } });
+  });
+
+  it('passes the destination\'s cursor to fetchAllGames, and writes only what\'s new since it', async () => {
+    latestGameDateForSource.mockImplementation(async (_conn, sourceType, identifier) => {
+      expect(sourceType).toBe('chess_com_player');
+      expect(identifier).toBe('gothamchess');
+      return '2026.09.01';
+    });
+    gamePgnsForSourceOnDate.mockImplementation(async (_conn, _type, _id, date) => {
+      expect(date).toBe('2026.09.01');
+      return [BOUNDARY_PGN('12:00:00')];
+    });
+    fetchAllGames.mockImplementation(async (username, { cursorDate }) => {
+      expect(username).toBe('gothamchess');
+      expect(cursorDate).toBe('2026.09.01');
+      return [
+        // Same day as the cursor, ended before what's already known -- drop.
+        chessComGameOn('2026.09.01', { end_time: KNOWN_END_TIME - 60 }),
+        // Same day, ended after what's already known -- keep.
+        chessComGameOn('2026.09.01', { end_time: KNOWN_END_TIME + 60 }),
+        // A later day entirely -- keep, no comparison needed.
+        chessComGameOn('2026.09.02', { end_time: KNOWN_END_TIME + 3600 })
+      ];
+    });
+    insertGames.mockImplementation(async (_conn, rows) => rows.map((r, i) => ({ id: i + 1, ...r })));
+
+    expect(startImport(request())).toBe(true);
+    await flush();
+
+    expect(insertGames).toHaveBeenCalledTimes(1);
+    const rows = insertGames.mock.calls[0][1];
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.date)).toEqual(['2026.09.01', '2026.09.02']);
+  });
+
+  it('a first import (no cursor found) behaves exactly like before stage 2', async () => {
+    latestGameDateForSource.mockImplementation(async () => null);
+    fetchAllGames.mockImplementation(async (username, { cursorDate }) => {
+      expect(cursorDate).toBeNull();
+      return [chessComGameOn('2020.01.01', { end_time: 1 })];
+    });
+    insertGames.mockImplementation(async (_conn, rows) => rows.map((r, i) => ({ id: i + 1, ...r })));
+
+    expect(startImport(request())).toBe(true);
+    await flush();
+
+    expect(gamePgnsForSourceOnDate).not.toHaveBeenCalled();
+    expect(insertGames.mock.calls[0][1]).toHaveLength(1);
+  });
+
+  it('a cursor-lookup failure falls back to a full fetch rather than failing the import', async () => {
+    // The connection itself is fine (write-time still uses it normally,
+    // below) -- only the cursor query fails, e.g. a database predating
+    // these columns.
+    latestGameDateForSource.mockRejectedValue(new Error('no such column: source_type'));
+    fetchAllGames.mockImplementation(async (username, { cursorDate }) => {
+      expect(cursorDate).toBeNull();
+      return [chessComGameOn('2020.01.01', { end_time: 1 })];
+    });
+    insertGames.mockImplementation(async (_conn, rows) => rows.map((r, i) => ({ id: i + 1, ...r })));
+
+    expect(startImport(request())).toBe(true);
+    await flush();
+
+    expect(get(notice).kind).toBe('clean');
+    expect(insertGames.mock.calls[0][1]).toHaveLength(1);
   });
 });
