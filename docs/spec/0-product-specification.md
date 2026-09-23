@@ -2893,6 +2893,7 @@ One entry per redistributed component: its name, and its licence as an **SPDX id
 | Component | Licence |
 | --- | --- |
 | Chessground | `GPL-3.0-or-later` |
+| chessops | `GPL-3.0-or-later` |
 | Svelte | `MIT` |
 | Lucide | `ISC` |
 | Simple Icons | `CC0-1.0` |
