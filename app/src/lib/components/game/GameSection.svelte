@@ -15,7 +15,7 @@
   import { t } from '$lib/stores/i18n.js';
   import { SECTION_HEADER_H } from '$lib/game/layout.js';
   import Icon from '$lib/components/Icon.svelte';
-  import { SectionToggle, SectionOptions, SectionCollapse, SectionExpand, Favorites, EngineOn, EngineOff }
+  import { SectionToggle, SectionOptions, SectionCollapse, SectionExpand, Favorites, EngineOn, EngineOff, SaveGame }
     from '$lib/icons.js';
   import GameInfo from './GameInfo.svelte';
   import MoveList from './MoveList.svelte';
@@ -35,7 +35,7 @@
     explorer = null, onselectlibrary, onexplorersettings,
     engineView = null, onengine, onselectengine, onenginelines, onenginedepth,
     onenginesettings,
-    info = null, onfavourite, oneditinfo, onedittags
+    info = null, onfavourite, oneditinfo, onedittags, dirty = false, onsave
   } = $props();
 
   /**
@@ -233,6 +233,15 @@
       ><Icon icon={engineView?.running ? EngineOn : EngineOff} size={20} /></button>
     {:else if section.control}
       <button class="ic" type="button" aria-label={$t('game.sec.control')}><Icon icon={SectionToggle} size={13} /></button>
+    {/if}
+
+    {#if section.id === 'info' && dirty}
+      <button
+        class="ic"
+        type="button"
+        aria-label={$t('game.save')}
+        onclick={() => onsave?.()}
+      ><Icon icon={SaveGame} size={13} /></button>
     {/if}
 
     {#if section.options && section.id === 'info'}

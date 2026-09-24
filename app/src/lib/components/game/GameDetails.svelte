@@ -25,7 +25,7 @@
     explorer = null, onselectlibrary, onexplorersettings,
     engineView = null, onengine, onselectengine, onenginelines, onenginedepth,
     onenginesettings,
-    info = null, onfavourite, oneditinfo, onedittags,
+    info = null, onfavourite, oneditinfo, onedittags, dirty = false, onsave,
     plyCount = 1, playing = false,
     oncollapse, onhide, onselectply,
     onfirst, onprev, onnext, onlast, onflip, onplay,
@@ -93,6 +93,8 @@
         {onfavourite}
         {oneditinfo}
         {onedittags}
+        {dirty}
+        {onsave}
         {onselectply}
         {oncollapse}
         {onhide}

@@ -8,6 +8,7 @@
     active = false,
     width = null,        // px; null = intrinsic width (pinned tab)
     pinned = false,
+    dirty = false,        // unsaved edits (analysis-board-plan.md, Stage 1)
     onselect,
     onclose
   } = $props();
@@ -49,12 +50,22 @@
   {#if tab.closable}
     <button
       class="close"
+      class:dirty
       type="button"
       tabindex="-1"
       aria-label={$t('tab.closeNamed', { name: label })}
+      title={dirty ? $t('tab.confirmUnsavedBody') : null}
       onclick={closeClick}
     >
-      <Icon icon={CloseTab} size={12} />
+      <!--
+        Dirty → the × is replaced by a filled dot (VS Code's own pattern);
+        hovering or focusing swaps it back so the tab can still be closed —
+        that swap doesn't bypass the close-time confirmation, it just says
+        "you can still click here." Both are always in the DOM so the swap
+        is a CSS-only opacity change, not a re-render on every hover.
+      -->
+      <span class="dot" aria-hidden="true"></span>
+      <span class="xicon"><Icon icon={CloseTab} size={12} /></span>
     </button>
   {/if}
 </div>
@@ -123,5 +134,18 @@
     color: var(--faint);
   }
   .close:hover { background: var(--chrome-3); color: var(--ink); }
+
+  /* Dirty: dot shows, × hidden -- until hover/focus swaps them back. */
+  .close .dot { display: none; }
+  .close.dirty .dot {
+    display: block;
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: currentColor;
+    color: var(--ink-2);
+  }
+  .close.dirty:hover .dot, .close.dirty:focus-visible .dot { display: none; }
+  .close.dirty .xicon { display: none; }
+  .close.dirty:hover .xicon, .close.dirty:focus-visible .xicon { display: grid; }
   /* Icon size comes from the `size` prop, not from CSS — see TabBar.svelte. */
 </style>

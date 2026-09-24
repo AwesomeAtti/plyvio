@@ -524,7 +524,9 @@ export const activeGame = derived(
      dialog's own unsaved edits onto whichever base is real — the library
      row when this game has one, the mock row otherwise — so both the Info
      card and a reopened dialog show the same, current, unsaved value. */
-  const record = { ...(row ?? game), ...(st.pendingInfo ?? {}) };
+  const infoBase = row ?? game;
+  const record = { ...infoBase, ...(st.pendingInfo ?? {}) };
+  const dirty = computeDirty(st, infoBase);
   const info = {
     white: known(record.white),
     black: known(record.black),
@@ -541,7 +543,7 @@ export const activeGame = derived(
   };
 
   return {
-    tabId: $id, state: st, game, record, plies, ply, position: plies[ply], engine: gameEngine,
+    tabId: $id, state: st, game, record, dirty, plies, ply, position: plies[ply], engine: gameEngine,
     // This tab's drawn annotations for the ply on the board right now — see
     // `setPlyShapes`. Empty for a ply nothing has been drawn on yet.
     shapes: st.shapes?.[ply] ?? [],
@@ -895,15 +897,35 @@ const fieldsEqual = (a, b) => (a ?? '') === (b ?? '');
  * real immediately, on their own existing path, on purpose (Stage 1's
  * revision, 24 Sep).
  */
-export function isDirty(tabId) {
-  const st = get(gameStates)[tabId];
-  if (!st) return false;
+function computeDirty(st, base) {
   if (Object.values(st.shapes ?? {}).some((shapes) => shapes?.length)) return true;
   const pending = st.pendingInfo ?? {};
   if (Object.keys(pending).length === 0) return false;
-  const base = baseRecordFor(st);
   return Object.entries(pending).some(([key, value]) => !fieldsEqual(base[key], value));
 }
+
+export function isDirty(tabId) {
+  const st = get(gameStates)[tabId];
+  if (!st) return false;
+  return computeDirty(st, baseRecordFor(st));
+}
+
+/**
+ * Every tab currently dirty, reactively — what the tab strip's dot
+ * indicator (`Tab.svelte`) reads, since it draws every open tab, not just
+ * the active one that `activeGame`'s own `dirty` field covers.
+ */
+export const dirtyTabs = derived([gameStates, libraryGames], ([$states, $libraryGames]) => {
+  const ids = new Set();
+  for (const [tabId, st] of Object.entries($states)) {
+    const game = gameById(st.gameId);
+    const row = st.libraryGameId != null
+      ? ($libraryGames ?? []).find((r) => r.id === st.libraryGameId) ?? null
+      : null;
+    if (computeDirty(st, row ?? game)) ids.add(tabId);
+  }
+  return ids;
+});
 
 /**
  * Write everything staged in this tab for real, then clear its dirty

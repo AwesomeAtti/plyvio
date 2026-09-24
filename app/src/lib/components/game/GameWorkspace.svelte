@@ -17,7 +17,7 @@
     flipBoard, toggleCollapsed, toggleHidden, setPlyShapes,
   explorerContentHeight, setExplorerLibrary,
   engineContentHeight, setEngineOn, setEngineSource, setEngineLines, setEngineDepth,
-  infoHeight, toggleFavourite, saveGameInfo
+  infoHeight, toggleFavourite, saveGameInfo, saveTab
 } from '$lib/stores/game.js';
   import { openSettings } from '$lib/stores/tabs.js';
   import { selectSection } from '$lib/stores/settings.js';
@@ -157,6 +157,8 @@
       onfavourite={() => toggleFavourite(tabId)}
       oneditinfo={() => openEdit('top')}
       onedittags={() => openEdit('tags')}
+      dirty={g.dirty}
+      onsave={() => saveTab(tabId)}
       ontoggleSection={(id) => toggleHidden(tabId, id)}
       oncollapse={(id) => toggleCollapsed(tabId, id)}
       onhide={(id) => toggleHidden(tabId, id)}

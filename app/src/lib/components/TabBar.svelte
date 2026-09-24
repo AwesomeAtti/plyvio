@@ -7,8 +7,10 @@
   import { NEW_TAB_BUTTON } from '$lib/features.js';
   import {
     stripTabs, activeId, allTabs, libraryTab,
-    openGame, closeTab, activate
+    openGame, activate
   } from '$lib/stores/tabs.js';
+  import { requestCloseTab } from '$lib/stores/closeGuard.js';
+  import { dirtyTabs } from '$lib/stores/game.js';
   import { computeLayout } from '$lib/layout.js';
   import { SIDEBAR_W } from '$lib/library/switcher.js';
   import Icon from '$lib/components/Icon.svelte';
@@ -140,8 +142,9 @@
         {tab}
         width={tabWidth}
         active={$activeId === tab.id}
+        dirty={$dirtyTabs.has(tab.id)}
         onselect={activate}
-        onclose={closeTab}
+        onclose={requestCloseTab}
       />
     {/each}
 
@@ -196,7 +199,7 @@
       tabs={listRows}
       activeId={$activeId}
       onselect={activate}
-      onclose={closeTab}
+      onclose={requestCloseTab}
       ondismiss={() => (listOpen = false)}
     />
   {/if}

@@ -80,6 +80,7 @@ export { default as FlipBoardIcon } from '@lucide/svelte/icons/flip-vertical-2';
 export { default as SectionCollapse } from '@lucide/svelte/icons/chevron-up';
 export { default as SectionExpand }   from '@lucide/svelte/icons/chevron-down';
 export { default as SectionOptions }  from '@lucide/svelte/icons/ellipsis';
+export { default as SaveGame }         from '@lucide/svelte/icons/save';
 
 /*
  * A move that carries a comment — §5.4.2, Moves.

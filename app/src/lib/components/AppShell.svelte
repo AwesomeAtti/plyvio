@@ -4,9 +4,15 @@
   import WindowFloorGate from './WindowFloorGate.svelte';
   import SecondWindowGate from './SecondWindowGate.svelte';
   import QuitNotice from './QuitNotice.svelte';
+  import { get } from 'svelte/store';
   import {
-    openGame, closeActive, activateByOffset, activateIndex, activateLast
+    openGame, activeId, activateByOffset, activateIndex, activateLast
   } from '$lib/stores/tabs.js';
+  import {
+    requestCloseActiveTab, pendingCloseTab, saveAndClose, discardAndClose, cancelClose
+  } from '$lib/stores/closeGuard.js';
+  import { saveTab } from '$lib/stores/game.js';
+  import ConfirmUnsavedChanges from './ConfirmUnsavedChanges.svelte';
   import { enforceWindowFloor } from '$lib/windowFloor.js';
   import { watchFullscreen } from '$lib/stores/appCommands.js';
   import {
@@ -50,6 +56,15 @@
   // no-op outside Tauri.
   $effect(() => { loadSubscriptions(); });
 
+  /*
+    Cmd/Ctrl+S — Stage 1's save shortcut. A no-op on any tab `saveTab`
+    itself already no-ops on (nothing dirty, or no library id to save to
+    yet) rather than something this handler needs to check first.
+  */
+  function saveCurrentTab() {
+    saveTab(get(activeId));
+  }
+
   function onNavigate(detail) {
     if (detail?.section === 'about') {
       // §2.2 — About opens or focuses the Settings tab AND jumps to the
@@ -66,7 +81,8 @@
     const mod = e.metaKey || e.ctrlKey;
     if (!mod) return;
 
-    if (e.key.toLowerCase() === 'w') { e.preventDefault(); closeActive(); return; }
+    if (e.key.toLowerCase() === 'w') { e.preventDefault(); requestCloseActiveTab(); return; }
+    if (e.key.toLowerCase() === 's') { e.preventDefault(); saveCurrentTab(); return; }
     if (e.key === 'Tab') { e.preventDefault(); activateByOffset(e.shiftKey ? -1 : 1); return; }
     if (/^[1-8]$/.test(e.key)) { e.preventDefault(); activateIndex(Number(e.key)); return; }
     if (e.key === '9') { e.preventDefault(); activateLast(); return; }
@@ -85,3 +101,12 @@
 <!-- PWA only — covers the shell when another window already holds storage. -->
 <SecondWindowGate />
 <QuitNotice />
+
+{#if $pendingCloseTab}
+  <ConfirmUnsavedChanges
+    name={$pendingCloseTab.title}
+    onsave={saveAndClose}
+    ondontsave={discardAndClose}
+    oncancel={cancelClose}
+  />
+{/if}
