@@ -13,7 +13,10 @@
   import ChessBoard from './ChessBoard.svelte';
   import EvalBar from './EvalBar.svelte';
 
-  let { position, live = null, orientation = 'white', evalVisible = true } = $props();
+  let {
+    position, live = null, orientation = 'white', evalVisible = true,
+    shapes = [], onshapeschange = null
+  } = $props();
 
   /*
     §5.4.1 and Q8 — what the bar is showing an evaluation OF.
@@ -43,6 +46,8 @@
       lastMove={position.m}
       check={!!position.k}
       {orientation}
+      {shapes}
+      {onshapeschange}
     />
   </div>
 </div>

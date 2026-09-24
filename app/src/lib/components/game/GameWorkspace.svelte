@@ -14,7 +14,7 @@
   import {
     activeGame, composition, ensureGameState,
     firstPly, prevPly, nextPly, lastPly, goToPly, atLastPly,
-    flipBoard, toggleCollapsed, toggleHidden,
+    flipBoard, toggleCollapsed, toggleHidden, setPlyShapes,
   explorerContentHeight, setExplorerLibrary,
   engineContentHeight, setEngineOn, setEngineSource, setEngineLines, setEngineDepth,
   infoHeight, toggleFavourite, saveGameInfo
@@ -128,6 +128,8 @@
       live={liveEval}
       orientation={g.state.orientation}
       evalVisible={g.state.evalVisible}
+      shapes={g.shapes}
+      onshapeschange={(s) => setPlyShapes(tabId, g.ply, s)}
     />
     <GameDetails
       sections={composition(g.state, {

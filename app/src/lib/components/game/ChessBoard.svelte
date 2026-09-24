@@ -25,7 +25,10 @@
   import '@lichess-org/chessground/assets/chessground.brown.css';
   import '@lichess-org/chessground/assets/chessground.cburnett.css';
 
-  let { size = 360, fen, lastMove = null, check = false, orientation = 'white' } = $props();
+  let {
+    size = 360, fen, lastMove = null, check = false, orientation = 'white',
+    shapes = [], onshapeschange = null
+  } = $props();
 
   let el = $state(null);
   let api = null;
@@ -36,7 +39,24 @@
       orientation,
       lastMove: lastMove ?? undefined,
       check,
-      viewOnly: true,
+      /*
+       * `viewOnly: true` looked like the right setting for a board that
+       * doesn't move pieces (§5.3 — ply navigation is the only navigation),
+       * but chessground's `bindBoard` returns before attaching ANY
+       * board-level pointer listener when `viewOnly` is true (events.js) —
+       * that includes the one `drawable` needs to start a shape, not just
+       * the one piece dragging needs. Confirmed by testing: `drawable:
+       * { enabled: true }` alone did nothing while `viewOnly` stayed true.
+       * So `viewOnly` comes off, and "no piece movement" is enforced the
+       * same way a movable-but-restricted board always does it elsewhere —
+       * `movable`/`draggable` below — plus `selectable: { enabled: false }`,
+       * which stops the one other viewOnly side effect: clicking a piece
+       * still calls chessground's own `selectSquare` regardless of
+       * `movable`, and would otherwise highlight it as if a move might
+       * follow, which it can't.
+       */
+      viewOnly: false,
+      selectable: { enabled: false },
       coordinates: true,
       // §5.4.1 — the Evaluation Bar sits to the board's left, so coordinates
       // render inside the squares rather than in an outside margin.
@@ -44,7 +64,13 @@
       disableContextMenu: true,
       highlight: { lastMove: true, check: true },
       animation: { enabled: true, duration: 180 },
-      drawable: { enabled: false },
+      /*
+       * Drawing (arrows + square highlights) only — analysis test, no
+       * persistence. `onChange` is chessground's own hook, firing with the
+       * live shapes array on every draw/erase/Esc; the caller (GameView →
+       * GameWorkspace) is the one that decides where that goes.
+       */
+      drawable: { enabled: true, shapes, onChange: (s) => onshapeschange?.(s) },
       movable: { free: false, color: undefined },
       draggable: { enabled: false }
     });
@@ -53,9 +79,12 @@
 
   // One push per change. Chessground diffs internally, so handing it the whole
   // position each time is cheaper than it looks and avoids tracking what moved.
+  // `drawable.shapes` rides along here too: chessground does not clear drawn
+  // shapes on its own when the position changes, so without this line an
+  // annotation drawn on one ply would keep showing on every ply after it.
   $effect(() => {
     if (!api) return;
-    api.set({ fen, orientation, lastMove: lastMove ?? undefined, check });
+    api.set({ fen, orientation, lastMove: lastMove ?? undefined, check, drawable: { shapes } });
   });
 
   /* Chessground reads its own element's box, so a resize needs an explicit

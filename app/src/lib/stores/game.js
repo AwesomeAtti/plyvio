@@ -314,6 +314,15 @@ export function ensureGameState(tabId, libraryGameId = null) {
     orientation: 'white',
     evalVisible: true,
     /*
+      Board annotations (arrows/highlights) drawn during this tab's own
+      session — { [ply]: DrawShape[] }. Tab-scoped like `ply`/`orientation`
+      above, not game-scoped like `gameEdits` below: closing this tab (or
+      never having opened one) leaves nothing to find, which is the whole
+      point — no persistence, and a fresh tab on the same game starts blank.
+      Set by `setPlyShapes`, read back in `activeGame`.
+    */
+    shapes: {},
+    /*
       Which library the Explorer is reading. Per tab, like the ply and the
       orientation: two tabs on one game must be able to ask different libraries.
       The library explored is deliberately independent of the game's own — reading
@@ -519,6 +528,9 @@ export const activeGame = derived(
 
   return {
     tabId: $id, state: st, game, plies, ply, position: plies[ply], engine: gameEngine,
+    // This tab's drawn annotations for the ply on the board right now — see
+    // `setPlyShapes`. Empty for a ply nothing has been drawn on yet.
+    shapes: st.shapes?.[ply] ?? [],
     /*
       True while a real game's movetext hasn't landed yet (or failed to).
       Nothing reads this today — the board/move list/engine sections render
@@ -818,6 +830,17 @@ export function atLastPly(tabId) {
 
 export function flipBoard(tabId) {
   patch(tabId, (cur) => ({ orientation: cur.orientation === 'white' ? 'black' : 'white' }));
+}
+
+/**
+ * Record what's drawn on the board for one ply — chessground's own
+ * `DrawShape[]`, straight from its `drawable.onChange`, no translation.
+ * Overlays `cur.shapes` rather than replacing it, so drawing on ply 4 does
+ * not lose whatever is already recorded for ply 2. Test-only for now — not
+ * persisted anywhere, gone with the tab.
+ */
+export function setPlyShapes(tabId, ply, shapes) {
+  patch(tabId, (cur) => ({ shapes: { ...cur.shapes, [ply]: shapes } }));
 }
 
 /**
