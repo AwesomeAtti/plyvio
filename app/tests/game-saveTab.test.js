@@ -104,6 +104,69 @@ describe('saveTab — real write round trip', () => {
     expect(movetext).toContain('[%csl Ge4]');
   });
 
+  it('a saved shape reads back onto the board of a freshly opened tab, clean', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+
+    // Ply 0 specifically -- the "arrow drawn before the first move" case
+    // that exposed ply 0 never actually reading back at all (24 Sep).
+    game.setPlyShapes('t1', 0, [{ orig: 'd2', brush: 'green' }, { orig: 'd4', brush: 'green' }]);
+    await game.saveTab('t1');
+
+    // A second tab on the same game, opened fresh after the save -- not the
+    // tab that did the saving, so nothing here can be riding on session
+    // state left over from the write.
+    game.ensureGameState('t2', gameId);
+    tabs.activeId.set('t2');
+    await vi.waitFor(() => {
+      expect(get(game.activeGame).plies[0].sh).toEqual(
+        expect.arrayContaining([
+          { orig: 'd2', brush: 'green' },
+          { orig: 'd4', brush: 'green' }
+        ])
+      );
+    });
+    expect(get(game.activeGame).shapes).toEqual(
+      expect.arrayContaining([
+        { orig: 'd2', brush: 'green' },
+        { orig: 'd4', brush: 'green' }
+      ])
+    );
+    // Showing a previously-saved annotation is not itself an edit.
+    expect(game.isDirty('t2')).toBe(false);
+  });
+
+  it('erasing a previously-saved shape (without ever redrawing it) is dirty, and saving removes it', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    game.setPlyShapes('t1', 0, [{ orig: 'e4', brush: 'red' }]);
+    await game.saveTab('t1');
+
+    game.ensureGameState('t2', gameId);
+    tabs.activeId.set('t2');
+    await vi.waitFor(() => {
+      expect(get(game.activeGame).shapes).toEqual([{ orig: 'e4', brush: 'red' }]);
+    });
+
+    // The user erases it on the board -- chessground reports the ply's new,
+    // now-empty, complete shape list.
+    game.setPlyShapes('t2', 0, []);
+    expect(game.isDirty('t2')).toBe(true);
+
+    await game.saveTab('t2');
+    const connection = await library.activeLibraryConnection();
+    const { movetext } = await gamesData.readMovetextFor(connection, gameId);
+    expect(movetext).not.toContain('%csl');
+  });
+
   it('leaves the library row and movetext alone when the tab has no library id', async () => {
     const mods = await freshModules();
     const { game, tabs } = mods;

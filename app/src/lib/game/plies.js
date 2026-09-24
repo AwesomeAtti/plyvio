@@ -21,27 +21,48 @@
  *   x  mate in n, signed from White's point of view; overrides e
  *   c  what remains of the comment once the banner has taken its commands, or null
  *   b  the engine's own move for this position, in SAN, or null
+ *   sh drawn board annotations for this position — chessground DrawShape[],
+ *      decoded from `[%csl]`/`[%cal]` (`pgn/boardAnnotations.js`); empty
+ *      when the ply carries none
  *
  * `e` and `x` are read from `[%eval]`, which PGN writes from White's point of view
  * and which the schema work of 12 Sep confirmed describes the position the move led
  * to — so a move's own comment carries that move's evaluation. A game carrying none
  * leaves both null, which is every game in `games.js` today; §5.4.1's bar draws that
  * state rather than guessing at 0.00.
+ *
+ * Ply 0's `c`/`b`/`sh`/eval all read `doc.comments`, whether the game has
+ * moves or not — never the first move's `startingAnn`. chessops only ever
+ * fills a node's `startingAnn` for a comment at the start of a VARIATION
+ * (right after its opening paren); a comment before the game's own first
+ * move is read in the parser's ROOT frame and lands in the document's own
+ * `comments` instead (`pgn.js`'s `handleComment`). `startingAnn` is
+ * therefore always empty for the main line, found 24 Sep chasing "an arrow
+ * drawn before the first move doesn't show up after reopening" —
+ * `pgn/boardAnnotations.js`'s `applyShapesToMovetext` writes ply 0 to
+ * `doc.comments` for the same reason.
  */
 
 import { INITIAL_FEN } from 'chessops/fen';
-import { readMovetext, resolveMovetext, engineSummary } from '$lib/pgn/index.js';
+import { readMovetext, resolveMovetext, engineSummary, shapesFromAnnotations } from '$lib/pgn/index.js';
 import { movetextFromRow } from '$lib/data/games.js';
 
 /**
- * Commands the comment banner draws.
+ * Commands the comment banner draws, plus `engine` — not banner-drawn per
+ * ply, but not prose either. `[%engine]` is document metadata (`doc.engine`
+ * / `engineSummary`, read once for the whole game, not per ply) that PGN
+ * still has to write somewhere textual, and the only somewhere is a leading
+ * comment — `doc.comments`, the same place ply 0's own comment now reads
+ * from (found 24 Sep, fixing ply 0 to read `doc.comments` at all for the
+ * first time). Left out of this set, `[%engine ...]` would show up as
+ * ply 0's comment text verbatim.
  *
  * A command with a banner is drawn by the banner and removed from the comment text, so it
  * is never shown twice. A command without one stays in the text exactly as written — the
  * banner is a presentation for commands we understand, not a filter that hides the rest.
  * Adding a banner for a command means adding it here and nowhere else.
  */
-const BANNER_COMMANDS = new Set(['eval', 'bestmove']);
+const BANNER_COMMANDS = new Set(['eval', 'bestmove', 'engine']);
 
 /**
  * Chessground highlights the two squares a move ran between, so castling has to reach
@@ -104,8 +125,10 @@ const bestMoveOf = (annotations) => {
   return null;
 };
 
+/** A ply's drawn board annotations — see `sh` above. */
+const shapesOf = (annotations) => shapesFromAnnotations(annotations);
+
 const none = () => ({ e: null, x: null });
-const unevaluated = (ev) => ev.e === null && ev.x === null;
 
 /** `[%eval]` mapped onto the two fields §5.4.1's bar reads. The first one wins. */
 const evaluationOf = (annotations) => {
@@ -121,9 +144,9 @@ const evaluationOf = (annotations) => {
 /**
  * Walk a movetext document's main line into the per-ply array.
  *
- * An evaluation for the starting position can only have been written before the
- * first move, so ply 0 reads the leading comments — the first node's, then the
- * document's — rather than a move's.
+ * Ply 0 has no move of its own to carry a comment, so it reads the
+ * document's own leading comments (`doc.comments`) instead — see this
+ * file's own header comment for why that is the only place it can be.
  */
 export const pliesOf = (movetext) => readGame(movetext).plies;
 
@@ -142,15 +165,15 @@ export const readGame = (movetext) => {
   while (node.children.length) {
     const next = node.children[0];
     if (!plies.length) {
-      const opening = evaluationOf(next.data.startingAnn);
       plies.push({
         s: null,
         f: next.data.fenBefore,
         m: null,
         k: false,
-        c: commentOf(next.data.startingAnn),
-        b: bestMoveOf(next.data.startingAnn),
-        ...(unevaluated(opening) ? evaluationOf(doc.comments) : opening)
+        c: commentOf(doc.comments),
+        b: bestMoveOf(doc.comments),
+        sh: shapesOf(doc.comments),
+        ...evaluationOf(doc.comments)
       });
     }
     plies.push({
@@ -162,6 +185,7 @@ export const readGame = (movetext) => {
       k: next.data.check,
       c: commentOf(next.data.ann),
       b: bestMoveOf(next.data.ann),
+      sh: shapesOf(next.data.ann),
       ...evaluationOf(next.data.ann)
     });
     node = next;
@@ -173,6 +197,7 @@ export const readGame = (movetext) => {
       s: null, f: INITIAL_FEN, m: null, k: false,
       c: commentOf(doc.comments),
       b: bestMoveOf(doc.comments),
+      sh: shapesOf(doc.comments),
       ...evaluationOf(doc.comments)
     });
   }

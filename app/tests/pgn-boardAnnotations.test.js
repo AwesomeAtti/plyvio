@@ -4,7 +4,7 @@
  * `analysis-board-plan.md`'s Stage 2, folded into Stage 1's save path.
  */
 import { describe, it, expect } from 'vitest';
-import { shapesToArgs, setShapes, applyShapesToMovetext } from '../src/lib/pgn/boardAnnotations.js';
+import { shapesToArgs, setShapes, applyShapesToMovetext, shapesFromAnnotations } from '../src/lib/pgn/boardAnnotations.js';
 import { formatAnnotation } from '../src/lib/pgn/annotations.js';
 import { readMovetext, resolveMovetext, writeMovetext } from '../src/lib/pgn/index.js';
 
@@ -68,11 +68,18 @@ describe('setShapes', () => {
 });
 
 describe('applyShapesToMovetext', () => {
-  it('writes ply 0 (before the first move) into the first move\'s startingAnn', () => {
+  it('writes ply 0 (before the first move) into the document\'s own comments, and it reads back', () => {
     const doc = resolveMovetext(readMovetext('1. e4 e5'));
     applyShapesToMovetext(doc, { 0: [{ orig: 'e4', brush: 'green' }] });
     const text = writeMovetext(doc);
     expect(text).toMatch(/\{\s*\[%csl Ge4\]\s*\}\s*1\.\s*e4/);
+
+    // Not the first move's startingAnn -- chessops never fills that for the
+    // main line (see boardAnnotations.js's note). Prove it survives an
+    // actual reparse, not just that the text looks right.
+    const reread = resolveMovetext(readMovetext(text));
+    expect(reread.moves.children[0].data.startingAnn).toEqual([]);
+    expect(reread.comments[0].shapes).toEqual([{ color: 'green', from: expect.any(Number), to: expect.any(Number) }]);
   });
 
   it('writes ply N (after the Nth move) into that move\'s own ann', () => {
@@ -100,6 +107,22 @@ describe('applyShapesToMovetext', () => {
     expect(writeMovetext(doc)).toBe(before);
   });
 
+  it('an empty override on a ply that already has %csl/%cal removes it, and the stub comment with it', () => {
+    const doc = resolveMovetext(readMovetext('1. e4 { [%csl Ge4] } e5'));
+    applyShapesToMovetext(doc, { 1: [] });
+    const text = writeMovetext(doc);
+    expect(text).not.toContain('%csl');
+    // No comment left on e4 to force "1..." before e5 either.
+    expect(text).toBe('1. e4 e5');
+  });
+
+  it('an empty override on a ply with nothing to clear writes no spurious empty comment', () => {
+    const before = writeMovetext(resolveMovetext(readMovetext('1. e4 e5')));
+    const doc = resolveMovetext(readMovetext('1. e4 e5'));
+    applyShapesToMovetext(doc, { 1: [] });
+    expect(writeMovetext(doc)).toBe(before);
+  });
+
   it('falls back to the document\'s own comments when the game has no moves at all', () => {
     const doc = resolveMovetext(readMovetext(''));
     applyShapesToMovetext(doc, { 0: [{ orig: 'd4', brush: 'yellow' }] });
@@ -119,5 +142,61 @@ describe('applyShapesToMovetext', () => {
         { color: 'green', from: expect.any(Number), to: expect.any(Number) }
       ])
     );
+  });
+});
+
+describe('shapesFromAnnotations — the read-back direction', () => {
+  it('decodes a circle back into a chessground shape', () => {
+    const { comments } = readMovetext('{ [%csl Ge4] }');
+    expect(shapesFromAnnotations(comments)).toEqual([{ orig: 'e4', brush: 'green' }]);
+  });
+
+  it('decodes an arrow back into a chessground shape', () => {
+    const { comments } = readMovetext('{ [%cal Be2e4] }');
+    expect(shapesFromAnnotations(comments)).toEqual([{ orig: 'e2', dest: 'e4', brush: 'blue' }]);
+  });
+
+  it('decodes several circles and arrows together, order not required to match', () => {
+    const { comments } = readMovetext('{ [%csl Ge4,Rf7][%cal Gc4c7] }');
+    expect(shapesFromAnnotations(comments)).toEqual(
+      expect.arrayContaining([
+        { orig: 'e4', brush: 'green' },
+        { orig: 'f7', brush: 'red' },
+        { orig: 'c4', dest: 'c7', brush: 'green' }
+      ])
+    );
+    expect(shapesFromAnnotations(comments)).toHaveLength(3);
+  });
+
+  it('is empty when the annotation has no shapes at all', () => {
+    const { comments } = readMovetext('{ a plain comment }');
+    expect(shapesFromAnnotations(comments)).toEqual([]);
+    expect(shapesFromAnnotations([])).toEqual([]);
+    expect(shapesFromAnnotations(undefined)).toEqual([]);
+  });
+
+  it('round-trips a full save through applyShapesToMovetext, write, reread and decode', () => {
+    const doc = resolveMovetext(readMovetext('1. e4 e5 2. Nf3'));
+    applyShapesToMovetext(doc, {
+      0: [{ orig: 'd2', brush: 'green' }, { orig: 'd4', brush: 'green' }],
+      2: [{ orig: 'e5', dest: 'e4', brush: 'red' }]
+    });
+    const written = writeMovetext(doc);
+
+    const reread = resolveMovetext(readMovetext(written));
+    const firstMove = reread.moves.children[0];
+    const secondMove = firstMove.children[0]; // ply 2 (after e5) -- shapesByPly's key 2
+
+    // Ply 0 reads from the document's own comments, not the first move's
+    // startingAnn -- see boardAnnotations.js's own note on why.
+    expect(shapesFromAnnotations(reread.comments)).toEqual(
+      expect.arrayContaining([
+        { orig: 'd2', brush: 'green' },
+        { orig: 'd4', brush: 'green' }
+      ])
+    );
+    expect(shapesFromAnnotations(secondMove.data.ann)).toEqual([
+      { orig: 'e5', dest: 'e4', brush: 'red' }
+    ]);
   });
 });

@@ -296,13 +296,17 @@ export function ensureGameState(tabId, libraryGameId = null) {
     orientation: 'white',
     evalVisible: true,
     /*
-      Board annotations (arrows/highlights) drawn during this tab's own
-      session — { [ply]: DrawShape[] }. Tab-scoped like `ply`/`orientation`
-      above: closing this tab (or never having opened one) leaves nothing to
-      find, which is the whole point — no persistence yet (Stage 2 of
-      `analysis-board-plan.md`), and a fresh tab on the same game starts
-      blank. Set by `setPlyShapes`, read back in `activeGame`; counted by
-      `isDirty` below.
+      Board annotations drawn or cleared during this tab's own SESSION —
+      { [ply]: DrawShape[] }, a per-ply OVERRIDE of whatever's already
+      persisted, not the whole of what the board shows (`activeGame`
+      overlays it onto `plies[ply].sh`, the decoded `%csl`/`%cal` — see
+      that field's own comment). Tab-scoped like `ply`/`orientation` above:
+      a fresh tab on the same game starts with no overrides of its own,
+      showing the persisted annotations plain, exactly as a second tab on
+      the same game would. Set by `setPlyShapes`; `isDirty` below compares
+      each overridden ply against `plies[ply].sh` rather than treating
+      presence alone as dirty, so opening a game that already carries
+      annotations is not itself an edit.
     */
     shapes: {},
     /*
@@ -526,7 +530,7 @@ export const activeGame = derived(
      card and a reopened dialog show the same, current, unsaved value. */
   const infoBase = row ?? game;
   const record = { ...infoBase, ...(st.pendingInfo ?? {}) };
-  const dirty = computeDirty(st, infoBase);
+  const dirty = computeDirty(st, infoBase, plies);
   const info = {
     white: known(record.white),
     black: known(record.black),
@@ -544,9 +548,16 @@ export const activeGame = derived(
 
   return {
     tabId: $id, state: st, game, record, dirty, plies, ply, position: plies[ply], engine: gameEngine,
-    // This tab's drawn annotations for the ply on the board right now — see
-    // `setPlyShapes`. Empty for a ply nothing has been drawn on yet.
-    shapes: st.shapes?.[ply] ?? [],
+    /*
+      This tab's drawn annotations for the ply on the board right now —
+      see `setPlyShapes`. A ply this session has actually drawn on (even
+      to clear it back to nothing) shows exactly that; a ply nobody has
+      touched this session falls back to what's already persisted for it
+      (`plies[ply].sh`, decoded from `%csl`/`%cal`), so a game opened with
+      existing annotations shows them, and a save's result is visible
+      immediately rather than only after the tab is closed and reopened.
+    */
+    shapes: st.shapes?.[ply] !== undefined ? st.shapes[ply] : (plies[ply]?.sh ?? []),
     /*
       True while a real game's movetext hasn't landed yet (or failed to).
       Nothing reads this today — the board/move list/engine sections render
@@ -882,14 +893,42 @@ export function setPendingInfo(tabId, fields) {
 const fieldsEqual = (a, b) => (a ?? '') === (b ?? '');
 
 /**
+ * Whether a ply's SESSION shapes (a `setPlyShapes` override — the board's
+ * current, interactive drawing for that ply) differ from the PERSISTED
+ * shapes a fresh `readGame` would decode for it right now. Order-
+ * independent: chessground reports a complete shape list on every change,
+ * not a diff, so two draws that ended at the same set must compare equal
+ * regardless of the order shapes happened to land in.
+ */
+function shapesDiffer(a, b) {
+  const key = (s) => `${s.orig}|${s.dest ?? ''}|${s.brush}`;
+  const setA = new Set((a ?? []).map(key));
+  const setB = new Set((b ?? []).map(key));
+  if (setA.size !== setB.size) return true;
+  for (const k of setA) if (!setB.has(k)) return true;
+  return false;
+}
+
+/**
  * True once anything in this tab differs from what a save would currently
  * write over it. Two categories today, more as later stages land:
  *
- *   - board annotations — nothing persists them yet (Stage 2), so any
- *     drawn shape at all counts, on any ply;
+ *   - board annotations — only a ply this session has actually drawn on
+ *     (`st.shapes` holds a session override for it) AND whose result
+ *     differs from what's already persisted there (`plies[ply].sh`,
+ *     decoded from `%csl`/`%cal` by `game/plies.js`). A ply nobody touched
+ *     this session is never dirty just because it happens to carry a
+ *     previously-saved arrow — reopening a game that already has
+ *     annotations is not itself an edit;
  *   - staged Game Info fields — only those that actually differ from the
  *     record they'd replace, so reopening the dialog and hitting Save
  *     without changing anything does not manufacture a dirty tab.
+ *
+ * `plies` is passed in rather than resolved here because the two callers
+ * already have it two different ways — `isDirty` reads it imperatively
+ * from `realGames`/mock data, `dirtyTabs` and `activeGame` read it
+ * reactively — and computing it a third way here would risk a third
+ * answer.
  *
  * The single flag Stage 1's save button, tab-close indicator and
  * confirmation dialog all read from (`analysis-board-plan.md`). Favourite/
@@ -897,8 +936,11 @@ const fieldsEqual = (a, b) => (a ?? '') === (b ?? '');
  * real immediately, on their own existing path, on purpose (Stage 1's
  * revision, 24 Sep).
  */
-function computeDirty(st, base) {
-  if (Object.values(st.shapes ?? {}).some((shapes) => shapes?.length)) return true;
+function computeDirty(st, base, plies) {
+  const overrides = st.shapes ?? {};
+  for (const ply of Object.keys(overrides)) {
+    if (shapesDiffer(overrides[ply], plies?.[Number(ply)]?.sh)) return true;
+  }
   const pending = st.pendingInfo ?? {};
   if (Object.keys(pending).length === 0) return false;
   return Object.entries(pending).some(([key, value]) => !fieldsEqual(base[key], value));
@@ -907,22 +949,28 @@ function computeDirty(st, base) {
 export function isDirty(tabId) {
   const st = get(gameStates)[tabId];
   if (!st) return false;
-  return computeDirty(st, baseRecordFor(st));
+  return computeDirty(st, baseRecordFor(st), pliesForState(st));
 }
 
 /**
  * Every tab currently dirty, reactively — what the tab strip's dot
  * indicator (`Tab.svelte`) reads, since it draws every open tab, not just
- * the active one that `activeGame`'s own `dirty` field covers.
+ * the active one that `activeGame`'s own `dirty` field covers. Depends on
+ * `realGames` too now, alongside `gameStates`/`libraryGames` — a real
+ * game's persisted shapes only exist once its movetext has loaded.
  */
-export const dirtyTabs = derived([gameStates, libraryGames], ([$states, $libraryGames]) => {
+export const dirtyTabs = derived(
+  [gameStates, libraryGames, realGames],
+  ([$states, $libraryGames, $realGames]) => {
   const ids = new Set();
   for (const [tabId, st] of Object.entries($states)) {
     const game = gameById(st.gameId);
     const row = st.libraryGameId != null
       ? ($libraryGames ?? []).find((r) => r.id === st.libraryGameId) ?? null
       : null;
-    if (computeDirty(st, row ?? game)) ids.add(tabId);
+    const real = readsRealGame(st) ? ($realGames.get(st.libraryGameId) ?? EMPTY_REAL_GAME) : null;
+    const plies = real ? real.plies : pliesFor(game);
+    if (computeDirty(st, row ?? game, plies)) ids.add(tabId);
   }
   return ids;
 });
@@ -960,7 +1008,16 @@ export async function saveTab(tabId) {
   const changedFields = Object.fromEntries(
     Object.entries(pending).filter(([key, value]) => !fieldsEqual(base[key], value))
   );
-  const hasShapes = Object.values(st.shapes ?? {}).some((shapes) => shapes?.length);
+  /*
+    Presence, not length: a ply the user drew on and then fully erased is a
+    key holding an empty array, not an absent key, and still has to reach
+    `applyShapesToMovetext` -- that's what actually removes a previously-
+    saved `%csl`/`%cal` (or correctly no-ops if there was nothing to
+    remove; see that function's own `shouldWrite`). Checking `.length` here
+    instead would treat "erased, save it" the same as "never touched",
+    silently skip the write, and leave the stale annotation in place.
+  */
+  const hasShapes = Object.keys(st.shapes ?? {}).length > 0;
 
   try {
     if (Object.keys(changedFields).length) {

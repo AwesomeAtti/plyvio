@@ -57,4 +57,5 @@ export {
   shapesToArgs,
   setShapes,
   applyShapesToMovetext,
+  shapesFromAnnotations,
 } from './boardAnnotations.js';
