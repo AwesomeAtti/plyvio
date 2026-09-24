@@ -23,7 +23,10 @@ import {
   setFavorite, insertGame
 } from '$lib/data/games.js';
 import { explorerConnection, requestPersistentStorage } from '$lib/data/session.js';
-import { readMovetext, resolveMovetext, writeMovetext, applyShapesToMovetext } from '$lib/pgn/index.js';
+import {
+  readMovetext, resolveMovetext, writeMovetext, applyShapesToMovetext, appendMoves
+} from '$lib/pgn/index.js';
+import { destsForFen, turnFromFen, playMove as computeMove } from '$lib/game/moves.js';
 
 /**
  * Game Workspace state — §5.3, §2.3.
@@ -190,10 +193,10 @@ function loadRealGame(libraryGameId) {
  * the two do not each grow their own idea of where a game's moves come from.
  */
 function pliesForState(st) {
-  if (readsRealGame(st)) {
-    return (get(realGames).get(st.libraryGameId) ?? EMPTY_REAL_GAME).plies;
-  }
-  return pliesFor(gameById(st.gameId));
+  const base = readsRealGame(st)
+    ? (get(realGames).get(st.libraryGameId) ?? EMPTY_REAL_GAME).plies
+    : pliesFor(gameById(st.gameId));
+  return st.pendingMoves?.length ? [...base, ...st.pendingMoves] : base;
 }
 
 /**
@@ -331,6 +334,20 @@ export function ensureGameState(tabId, libraryGameId = null) {
     */
     shapes: {},
     /*
+      Moves played on the board THIS SESSION, not yet saved — Stage 4 of
+      `analysis-board-plan.md`. Each entry is a full ply object, the exact
+      shape `game/plies.js` produces (`{s,f,m,k,e,x,c,b,sh}`), appended
+      after whatever `realGames`/`draftSeeds` already has: this stage only
+      ever plays a move at the mainline's own last ply (see `playMove`
+      below), so "append" is the whole operation, never an insertion.
+      `pliesForState`/`activeGame` both read the base plies and this
+      overlay as one array, so ply navigation, the move list and `saveTab`
+      all see the played move as if it were already part of the game.
+      Cleared on save (folded into the real movetext by `appendMoves` first)
+      or when the tab closes with it discarded.
+    */
+    pendingMoves: [],
+    /*
       Staged Game Info edits — white/white_elo/black/black_elo/result/
       event/site/date/round — made in the Edit dialog but not yet saved.
       TAB-scoped, like `shapes` above, replacing the role `gameEdits` used
@@ -445,7 +462,8 @@ export function isPristineDraft(tabId) {
   const seed = draftSeeds.get(st.libraryGameId);
   const blank = !seed || (!seed.movetext && !seed.fen && Object.keys(seed.fields ?? {}).length === 0);
   const untouched = Object.keys(st.shapes ?? {}).length === 0
-    && Object.keys(st.pendingInfo ?? {}).length === 0;
+    && Object.keys(st.pendingInfo ?? {}).length === 0
+    && (st.pendingMoves?.length ?? 0) === 0;
   return blank && untouched;
 }
 
@@ -505,7 +523,10 @@ export const activeGame = derived(
     ? ($realGames.get(st.libraryGameId) ?? { status: 'loading', ...EMPTY_REAL_GAME })
     : null;
   const loading = !!real && real.status !== 'ready';
-  const plies = real ? real.plies : pliesFor(game);
+  const basePlies = real ? real.plies : pliesFor(game);
+  // Moves played this session (Stage 4) extend the base array — see
+  // `ensureGameState`'s own comment on `pendingMoves`.
+  const plies = st.pendingMoves?.length ? [...basePlies, ...st.pendingMoves] : basePlies;
   const gameEngine = real ? real.engine : engineFor(game);
   const ply = Math.min(st.ply, plies.length - 1);
 
@@ -940,6 +961,62 @@ export function atLastPly(tabId) {
   return !!st && st.ply >= pliesForState(st).length - 1;
 }
 
+/* --------------------------------- moves --------------------------------- */
+
+/**
+ * Board interaction inputs for the ply on the board right now — what
+ * `ChessBoard.svelte` needs to turn pieces on at all, restricted to Stage
+ * 4's own scope: movable only when this tab is a real game or draft (there
+ * is nowhere to save a move played on a mock/sandbox tab) AND the board is
+ * at the mainline's own last ply (playing anywhere earlier would start a
+ * variation — `analysis-board-plan.md`'s Stage 5, unbuilt).
+ */
+export function moveInputs(tabId) {
+  const st = get(gameStates)[tabId];
+  if (!st || !readsRealGame(st) || !atLastPly(tabId)) {
+    return { movable: false, dests: new Map(), turnColor: 'white' };
+  }
+  const fen = pliesForState(st).at(-1)?.f;
+  if (!fen) return { movable: false, dests: new Map(), turnColor: 'white' };
+  return { movable: true, dests: destsForFen(fen), turnColor: turnFromFen(fen) };
+}
+
+/**
+ * Play one move at the mainline's own last ply — Stage 4. Appends a new
+ * ply to `pendingMoves` (see `ensureGameState`'s comment on that field) and
+ * moves the cursor onto it, exactly like any other navigation. Refuses
+ * silently (returns `null`) for anything `moveInputs` would already have
+ * kept the board from offering: a mock/sandbox tab, a ply that isn't the
+ * last one, or a move `game/moves.js` doesn't recognize as legal — the
+ * board is the only caller and its own `dests` should already have ruled
+ * those out, but nothing here trusts it over the rules a second time.
+ *
+ * `promotion` is chessops' role name (`queen`/`rook`/`bishop`/`knight`);
+ * required exactly when a pawn move lands on the last rank
+ * (`ChessBoard.svelte` checks this itself, via `game/moves.js`'s own
+ * `isPromotionMove`, before ever calling this with one).
+ */
+export function playMove(tabId, { from, to, promotion } = {}) {
+  const st = get(gameStates)[tabId];
+  if (!st || !readsRealGame(st) || !atLastPly(tabId)) return null;
+  const plies = pliesForState(st);
+  const fen = plies.at(-1)?.f;
+  if (!fen) return null;
+  const result = computeMove(fen, { from, to, promotion });
+  if (!result) return null;
+  const ply = {
+    s: result.san, f: result.fenAfter, m: [result.from, result.to],
+    k: result.check, e: null, x: null, c: null, b: null, sh: []
+  };
+  patch(tabId, (cur) => ({
+    pendingMoves: [...(cur.pendingMoves ?? []), ply],
+    ply: cur.ply + 1,
+    engineHold: null
+  }));
+  refreshExplorerStats(tabId);
+  return result;
+}
+
 /* --------------------------------- board -------------------------------- */
 
 export function flipBoard(tabId) {
@@ -1025,6 +1102,7 @@ function shapesDiffer(a, b) {
  * revision, 24 Sep).
  */
 function computeDirty(st, base, plies) {
+  if ((st.pendingMoves?.length ?? 0) > 0) return true;
   const overrides = st.shapes ?? {};
   for (const ply of Object.keys(overrides)) {
     if (shapesDiffer(overrides[ply], plies?.[Number(ply)]?.sh)) return true;
@@ -1112,24 +1190,31 @@ export async function saveTab(tabId) {
     silently skip the write, and leave the stale annotation in place.
   */
   const hasShapes = Object.keys(st.shapes ?? {}).length > 0;
+  const hasMoves = (st.pendingMoves ?? []).length > 0;
 
   try {
     if (Object.keys(changedFields).length) {
       await updateGameFields(connection, st.libraryGameId, changedFields);
     }
 
-    if (hasShapes) {
+    if (hasShapes || hasMoves) {
       const { movetext } = await readMovetextFor(connection, st.libraryGameId);
       const doc = resolveMovetext(readMovetext(movetext ?? ''));
-      applyShapesToMovetext(doc, st.shapes ?? {});
+      if (hasShapes) applyShapesToMovetext(doc, st.shapes ?? {});
+      // Moves played this session (Stage 4) are appended after shapes are
+      // applied to the EXISTING plies -- `appendMoves` only ever adds new
+      // nodes past the mainline's current end, so the order between the
+      // two doesn't matter, but doing shapes first keeps this branch
+      // reading top-to-bottom as "apply session edits, then extend".
+      if (hasMoves) appendMoves(doc, st.pendingMoves);
       await writeMovetextFor(connection, st.libraryGameId, writeMovetext(doc));
     }
 
     requestPersistentStorage();
-    patch(tabId, () => ({ pendingInfo: {}, shapes: {} }));
+    patch(tabId, () => ({ pendingInfo: {}, shapes: {}, pendingMoves: [] }));
 
     if (Object.keys(changedFields).length) await loadGames();
-    if (hasShapes) {
+    if (hasShapes || hasMoves) {
       // `loadRealGame` is load-once (`if (get(realGames).has(id)) return;`),
       // so the stale parse has to be evicted before asking for it again --
       // simply re-calling it would see the old entry and no-op.
@@ -1168,6 +1253,7 @@ async function createGameFromDraft(tabId, st, connection) {
   const draft = draftSeeds.get(st.libraryGameId) ?? { movetext: '', fen: null, fields: {} };
   const doc = resolveMovetext(readMovetext(draft.movetext ?? ''), { fen: draft.fen ?? null });
   if (Object.keys(st.shapes ?? {}).length) applyShapesToMovetext(doc, st.shapes ?? {});
+  if ((st.pendingMoves ?? []).length) appendMoves(doc, st.pendingMoves);
 
   const fields = {
     ...draft.fields,
@@ -1187,7 +1273,7 @@ async function createGameFromDraft(tabId, st, connection) {
       next.delete(st.libraryGameId);
       return next;
     });
-    patch(tabId, () => ({ libraryGameId: newId, gameId: newId, pendingInfo: {}, shapes: {} }));
+    patch(tabId, () => ({ libraryGameId: newId, gameId: newId, pendingInfo: {}, shapes: {}, pendingMoves: [] }));
 
     requestPersistentStorage();
     await loadGames();

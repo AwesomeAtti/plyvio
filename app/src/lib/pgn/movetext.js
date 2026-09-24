@@ -151,6 +151,44 @@ export const writeMovetext = (doc, options = {}) => {
   return wrapTokens(tokens, wrap);
 };
 
+/**
+ * Extend the mainline with newly played moves — Stage 4 of
+ * `analysis-board-plan.md`. Each entry is `{s}` from a ply this session's
+ * board produced (`game/moves.js`'s own `san`, renamed the way
+ * `game/plies.js`'s terse ply shape already spells it); nothing else in
+ * that shape (`f`/`m`/`k`/…) is stored on a node — a save always re-reads
+ * the game fresh afterwards (`realGames` is evicted and `loadRealGame`
+ * reruns), so nothing here needs to be right the first time except the SAN.
+ *
+ * Deliberately dumb about WHERE it attaches: it walks to the mainline's own
+ * last node (`children[0]` all the way down, same walk `plyCount`/
+ * `applyShapesToMovetext` already do) and appends there, in order — correct
+ * because this stage only ever plays a move at the last ply to begin with
+ * (`stores/game.js`'s `playMove` refuses anywhere else). Mutates `doc` in
+ * place and returns it, the same convention `applyShapesToMovetext` uses,
+ * since both run once on a document about to be thrown away after
+ * `writeMovetext` reads it.
+ *
+ * @param {object} doc from `readMovetext` (resolved or not — only
+ *   `.moves`'s tree shape matters, not the per-node FEN/check fields
+ *   `resolveMovetext` adds, which `writeMovetext` never reads anyway).
+ * @param {{s: string}[]} moves plies to append, mainline order.
+ */
+export function appendMoves(doc, moves) {
+  if (!moves?.length) return doc;
+  let node = doc.moves;
+  while (node.children.length) node = node.children[0];
+  for (const { s } of moves) {
+    const child = {
+      data: { san: s, nags: [], ann: [], startingAnn: [], comments: [], startingComments: [] },
+      children: [],
+    };
+    node.children.push(child);
+    node = child;
+  }
+  return doc;
+}
+
 /** Main-line length in plies — the value `games.ply_count` is to hold. No board needed. */
 export const plyCount = (doc) => {
   let count = 0;

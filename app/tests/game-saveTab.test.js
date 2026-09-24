@@ -361,3 +361,151 @@ describe('isPristineDraft — the one case a board paste’s confirm dialog skip
     expect(game.isPristineDraft('t1')).toBe(false);
   });
 });
+
+describe('moveInputs / playMove — moving a piece on the board (Stage 4, "move pieces")', () => {
+  it('a mock/sandbox tab (no library id) is never movable', async () => {
+    const mods = await freshModules();
+    const { game, tabs } = mods;
+    await setUpRealLibrary(mods);
+    game.ensureGameState('t1', null);
+    tabs.activeId.set('t1');
+
+    expect(game.moveInputs('t1').movable).toBe(false);
+    expect(game.playMove('t1', { from: 'e2', to: 'e4' })).toBeNull();
+  });
+
+  it('a real game is not movable anywhere but its own last ply', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?', ['1. e4 e5 2. Nf3', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(4));
+
+    game.goToPly('t1', 1);
+    expect(game.moveInputs('t1').movable).toBe(false);
+    expect(game.playMove('t1', { from: 'g1', to: 'f3' })).toBeNull();
+
+    game.lastPly('t1');
+    expect(game.moveInputs('t1').movable).toBe(true);
+    expect(game.moveInputs('t1').turnColor).toBe('black');
+  });
+
+  it('playing a move at the last ply appends a ply, advances the cursor and marks the tab dirty', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?', ['1. e4 e5', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(3));
+    game.lastPly('t1');
+
+    expect(game.isDirty('t1')).toBe(false);
+    const result = game.playMove('t1', { from: 'g1', to: 'f3' });
+    expect(result.san).toBe('Nf3');
+
+    const active = get(game.activeGame);
+    expect(active.plies).toHaveLength(4);
+    expect(active.ply).toBe(3);
+    expect(active.plies[3].s).toBe('Nf3');
+    expect(game.isDirty('t1')).toBe(true);
+    expect(game.atLastPly('t1')).toBe(true);
+  });
+
+  it('rejects an illegal move without changing anything', async () => {
+    const mods = await freshModules();
+    const { game, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const draftId = game.seedDraftGame();
+    game.ensureGameState('t1', draftId);
+    tabs.activeId.set('t1');
+
+    expect(game.playMove('t1', { from: 'e2', to: 'e5' })).toBeNull();
+    expect(get(game.activeGame).plies).toHaveLength(1);
+  });
+
+  it('a promotion move is refused without a promotion piece and succeeds with one', async () => {
+    const mods = await freshModules();
+    const { game, tabs } = mods;
+    await setUpRealLibrary(mods);
+    const draftId = game.seedDraftGame({ fen: '7k/4P3/8/8/8/8/8/4K3 w - - 0 1' });
+    game.ensureGameState('t1', draftId);
+    tabs.activeId.set('t1');
+
+    expect(game.playMove('t1', { from: 'e7', to: 'e8' })).toBeNull();
+    const result = game.playMove('t1', { from: 'e7', to: 'e8', promotion: 'queen' });
+    expect(result.san).toBe('e8=Q+');
+    expect(get(game.activeGame).plies.at(-1).k).toBe(true);
+  });
+
+  it('a move played on a fresh draft makes it dirty and no longer pristine', async () => {
+    const mods = await freshModules();
+    const { game, tabs } = mods;
+    await setUpRealLibrary(mods);
+    const draftId = game.seedDraftGame();
+    game.ensureGameState('t1', draftId);
+    tabs.activeId.set('t1');
+    expect(game.isPristineDraft('t1')).toBe(true);
+
+    game.playMove('t1', { from: 'e2', to: 'e4' });
+    expect(game.isPristineDraft('t1')).toBe(false);
+  });
+
+  it('saving a real game with a pending move writes it into the movetext and clears dirty', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?', ['1. e4 e5', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(3));
+    game.lastPly('t1');
+
+    game.playMove('t1', { from: 'g1', to: 'f3' });
+    expect(game.isDirty('t1')).toBe(true);
+
+    const wrote = await game.saveTab('t1');
+    expect(wrote).toBe(true);
+    expect(game.isDirty('t1')).toBe(false);
+
+    const { movetext } = await gamesData.readMovetextFor(connection, gameId);
+    expect(movetext.trim()).toBe('1. e4 e5 2. Nf3');
+
+    // The reload lands on the same logical ply, now read back as a REAL
+    // (persisted) ply rather than a pending one.
+    await vi.waitFor(() => {
+      const active = get(game.activeGame);
+      expect(active.plies).toHaveLength(4);
+      expect(active.plies[3].s).toBe('Nf3');
+    });
+  });
+
+  it('saving a draft with moves played on it carries them into the new row', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData } = mods;
+    await setUpRealLibrary(mods);
+    const draftId = game.seedDraftGame();
+    game.ensureGameState('t1', draftId);
+    tabs.activeId.set('t1');
+
+    game.playMove('t1', { from: 'e2', to: 'e4' });
+    game.playMove('t1', { from: 'e7', to: 'e5' });
+
+    const wrote = await game.saveTab('t1');
+    expect(wrote).toBe(true);
+    expect(game.isDirty('t1')).toBe(false);
+
+    const newId = get(game.gameStates).t1.libraryGameId;
+    const connection = await library.activeLibraryConnection();
+    const { movetext } = await gamesData.readMovetextFor(connection, newId);
+    expect(movetext.trim()).toBe('1. e4 e5');
+  });
+});

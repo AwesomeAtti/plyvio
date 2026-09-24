@@ -15,7 +15,8 @@
 
   let {
     position, live = null, orientation = 'white', evalVisible = true,
-    shapes = [], onshapeschange = null
+    shapes = [], onshapeschange = null,
+    movable = false, dests = new Map(), turnColor = 'white', onmove = null
   } = $props();
 
   /*
@@ -48,6 +49,10 @@
       {orientation}
       {shapes}
       {onshapeschange}
+      {movable}
+      {dests}
+      {turnColor}
+      {onmove}
     />
   </div>
 </div>

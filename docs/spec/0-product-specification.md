@@ -1548,6 +1548,14 @@ File letters are **lowercase** (`a`–`h`) and ranks numeric (`1`–`8`), wherev
 
 Because the Evaluation Bar sits to the board's left, coordinates render **inside** the squares. Were coordinates ever placed outside the board on the left, the bar would move to the board's right and every rule here would apply mirrored.
 
+#### Playing moves
+
+At the mainline's own last ply, the board accepts moves: dragging or clicking a piece to a legal destination plays it. Everywhere earlier in the game the board stays exactly as inert as ply navigation alone leaves it — a move played away from the last ply would start a variation, which the Game Workspace does not yet support (§11.2, item 26).
+
+A pawn reaching the last rank asks which piece it becomes before anything is recorded: a small picker appears over the destination square, and dismissing it without a choice returns the board to the position it was in before the drop.
+
+A move played this way is unsaved, exactly like a header edit or a drawn annotation (§2.1.2) — it exists only in the tab until the tab is saved, and is discarded with it if the tab is closed without saving.
+
 #### Paste target
 
 Pasting (`Ctrl/⌘ + V`) while a Game Workspace tab is active and the target isn't an editable control elsewhere in the shell (a text field, the Add Games Paste tab's own textarea) is read as either a **FEN** or a **single-game PGN**. Anything else — plain text, more than one game — is ignored; a multi-game paste belongs in Add Games (§4.4.5), not on the board.
@@ -3041,3 +3049,4 @@ These are unresolved items carried forward from the four source documents' own a
 23. **Game Info's `Hideable: No`** [A] **is provisional**, per its own marked assumption: locking it protects the game's identity, but every other reporting Section can be hidden and a reader who knows the game may not need it either.
 24. **The Game View's 16px padding on all sides** [A] **is written to reconcile the 427px floor but was not confirmed against a source design document.** Every board-sizing figure in §5.4.1 derives from it.
 25. **Whether Object rows' free-text Name field should remain typed input, or move to a reported/structured pattern like General's Library location (§6.1, §6.6), is unreviewed.** General avoids free text specifically because auto-apply removes any save step at which a bad value could be caught; Object rows (and a Subscription's identifying value, item 13) are currently the sole exception to that avoidance, and it is worth determining whether the exception is necessary or simply unexamined.
+26. **A move played away from the mainline's own last ply is not supported.** §5.4.1's "Playing moves" restricts the board to extending the mainline because nothing in the Game Workspace yet reads, shows or steps into a variation — playing one elsewhere in the game would have nowhere to go. Move deletion/undo of a played-but-unsaved move is similarly undesigned; closing the tab without saving is currently the only way back.

@@ -14,12 +14,24 @@
    * `@lichess-org/chessground`. The unscoped `chessground` package stopped at
    * 9.2.1 and does not have this version.
    *
-   * The board is viewOnly. §5.3 makes ply navigation the workspace's only
-   * navigation, so pieces are not draggable — moving one would mean creating a
-   * variation, which no Section specifies yet.
+   * §5.3 makes ply navigation the workspace's only navigation while the
+   * board sits anywhere but the mainline's own last ply — everywhere else it
+   * is exactly as inert as it always was. AT the last ply, Stage 4 of
+   * `analysis-board-plan.md` turns pieces on: the `movable`/`dests` prop pair
+   * comes from `stores/game.js`'s `moveInputs`, which is the one place that
+   * decides whether THIS tab, THIS ply, is a legal place to move a piece at
+   * all — this component plays whatever it's handed and nothing more.
+   *
+   * Promotion is the one piece of interaction this component owns outright
+   * rather than reporting upward: chessground's own `movable.events.after`
+   * fires once the piece has already been dropped, with no pause for a
+   * choice, so the picker (`PromotionPicker.svelte`) has to sit here, between
+   * that event and `onmove`, holding the move back until a piece is chosen.
    */
   import { onMount } from 'svelte';
   import { Chessground } from '@lichess-org/chessground';
+  import { isPromotionMove } from '$lib/game/moves.js';
+  import PromotionPicker from './PromotionPicker.svelte';
 
   import '@lichess-org/chessground/assets/chessground.base.css';
   import '@lichess-org/chessground/assets/chessground.brown.css';
@@ -27,11 +39,40 @@
 
   let {
     size = 360, fen, lastMove = null, check = false, orientation = 'white',
-    shapes = [], onshapeschange = null
+    shapes = [], onshapeschange = null,
+    movable = false, dests = new Map(), turnColor = 'white', onmove = null
   } = $props();
 
   let el = $state(null);
   let api = null;
+
+  /** `{from, to}` while the promotion picker is up; `null` the rest of the
+      time. Squares only -- the piece choice comes back through the
+      picker's own callback, not stored here. */
+  let pendingPromotion = $state(null);
+
+  function handleAfter(orig, dest) {
+    if (isPromotionMove(fen, orig, dest)) {
+      pendingPromotion = { from: orig, to: dest };
+    } else {
+      onmove?.(orig, dest, null);
+    }
+  }
+
+  function choosePromotion(piece) {
+    const move = pendingPromotion;
+    pendingPromotion = null;
+    onmove?.(move.from, move.to, piece);
+  }
+
+  /** The picker was dismissed without a choice -- chessground has already
+      moved the pawn visually (its own optimistic update, ahead of anything
+      `onmove` would do), and nothing recorded it, so the only way back is
+      telling chessground the position again. */
+  function cancelPromotion() {
+    pendingPromotion = null;
+    api?.set({ fen, lastMove: lastMove ?? undefined });
+  }
 
   onMount(() => {
     api = Chessground(el, {
@@ -71,8 +112,9 @@
        * GameWorkspace) is the one that decides where that goes.
        */
       drawable: { enabled: true, shapes, onChange: (s) => onshapeschange?.(s) },
-      movable: { free: false, color: undefined },
-      draggable: { enabled: false }
+      movable: { free: false, color: undefined, showDests: true, events: { after: handleAfter } },
+      draggable: { enabled: false },
+      selectable: { enabled: false }
     });
     return () => { api?.destroy(); api = null; };
   });
@@ -84,7 +126,17 @@
   // annotation drawn on one ply would keep showing on every ply after it.
   $effect(() => {
     if (!api) return;
-    api.set({ fen, orientation, lastMove: lastMove ?? undefined, check, drawable: { shapes } });
+    // A move dragged into the promotion picker stays uncommitted, so
+    // nothing else is draggable until it's resolved (chosen or cancelled) --
+    // reading `pendingPromotion` here is what makes this effect rerun the
+    // moment that happens, same as any other prop change below.
+    const interactive = movable && !pendingPromotion;
+    api.set({
+      fen, orientation, lastMove: lastMove ?? undefined, check, drawable: { shapes },
+      movable: { color: interactive ? turnColor : undefined, dests: interactive ? dests : new Map() },
+      draggable: { enabled: interactive },
+      selectable: { enabled: interactive }
+    });
   });
 
   /* Chessground reads its own element's box, so a resize needs an explicit
@@ -95,14 +147,35 @@
   });
 </script>
 
-<div
-  class="board"
-  bind:this={el}
-  style="width:{size}px;height:{size}px"
-  aria-hidden="true"
-></div>
+<div class="board-wrap" style="width:{size}px;height:{size}px">
+  <div
+    class="board"
+    bind:this={el}
+    style="width:{size}px;height:{size}px"
+    aria-hidden="true"
+  ></div>
+  {#if pendingPromotion}
+    <PromotionPicker
+      {size}
+      square={pendingPromotion.to}
+      color={turnColor}
+      {orientation}
+      onchoose={choosePromotion}
+      oncancel={cancelPromotion}
+    />
+  {/if}
+</div>
 
 <style>
+  .board-wrap {
+    /* Purely a positioning context for `PromotionPicker`, which sits over
+       the board as a sibling of the chessground-owned `.board` element
+       rather than a child of it -- chessground manages `.board`'s own DOM
+       directly and would clobber anything Svelte rendered inside it. */
+    flex: none;
+    position: relative;
+  }
+
   .board {
     flex: none;
     /* Chessground positions absolutely inside this box; it must not be the

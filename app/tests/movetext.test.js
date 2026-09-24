@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MovetextError,
+  appendMoves,
   plyCount,
   readMovetext,
   resolveMovetext,
@@ -288,5 +289,51 @@ describe('resolving positions', () => {
     const [white, black] = nodes.slice(-2).map((n) => n.data);
     expect([white.from, white.to]).toEqual(['e1', 'a1']);
     expect([black.from, black.to]).toEqual(['e8', 'a8']);
+  });
+});
+
+
+/**
+ * `appendMoves` -- Stage 4 of `analysis-board-plan.md`: folding moves
+ * played on the board into the movetext tree at save time. It only ever
+ * extends the mainline's own last node (this stage's own scope -- see
+ * `game/moves.js`'s header comment), so these tests never touch a
+ * variation.
+ */
+describe('appendMoves', () => {
+  it('appends onto a blank document', () => {
+    const doc = appendMoves(readMovetext(''), [{ s: 'e4' }, { s: 'e5' }]);
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5');
+  });
+
+  it('appends after an existing mainline, continuing the move numbers', () => {
+    const doc = appendMoves(readMovetext('1. e4 e5 2. Nf3'), [{ s: 'Nc6' }, { s: 'Bb5' }]);
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. Nf3 Nc6 3. Bb5');
+  });
+
+  it('leaves existing comments, NAGs and variations on earlier nodes untouched', () => {
+    const doc = appendMoves(
+      readMovetext('1. e4 {Good choice} e5 2. Nf3 $1 (2. f4 exf4) Nc6'),
+      [{ s: 'Bb5' }]
+    );
+    // A black move right after a comment or NAG always gets its own
+    // move number (`writeMovetext`'s own rule, unrelated to appendMoves) --
+    // both pre-existing, neither something appending a move changes.
+    expect(writeMovetext(doc, { wrap: null }))
+      .toBe('1. e4 {Good choice} 1... e5 2. Nf3 $1 (2. f4 exf4) 2... Nc6 3. Bb5');
+  });
+
+  it('does nothing to a document when handed no moves', () => {
+    const before = readMovetext('1. e4 e5');
+    const doc = appendMoves(before, []);
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5');
+  });
+
+  it('a resolved document (fenBefore/fenAfter already attached) appends the same way', () => {
+    // `stores/game.js` always hands `appendMoves` a RESOLVED doc (it needs
+    // one anyway for `applyShapesToMovetext`) -- this is what `writeMovetext`
+    // actually reads at save time, so it is the shape worth proving against.
+    const doc = appendMoves(resolveMovetext(readMovetext('1. e4 e5')), [{ s: 'Nf3' }]);
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. Nf3');
   });
 });

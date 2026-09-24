@@ -14,6 +14,7 @@
   import {
     activeGame, composition, ensureGameState,
     firstPly, prevPly, nextPly, lastPly, goToPly, atLastPly,
+    moveInputs, playMove,
     flipBoard, toggleCollapsed, toggleHidden, setPlyShapes,
   explorerContentHeight, setExplorerLibrary,
   engineContentHeight, setEngineOn, setEngineSource, setEngineLines, setEngineDepth,
@@ -36,6 +37,12 @@
   untrack(() => ensureGameState(tabId, libraryGameId));
 
   const g = $derived($activeGame);
+
+  /* Board interaction inputs for the ply on screen right now (Stage 4) --
+     `g` is read only to establish the dependency; `moveInputs` re-reads the
+     stores itself so this always answers for the CURRENT ply, not a stale
+     snapshot from when the tab was opened. */
+  const moves = $derived.by(() => { g; return moveInputs(tabId); });
 
   /** null, 'top' or 'tags' — which part of the Edit dialog was asked for. */
   let editing = $state(null);
@@ -130,6 +137,10 @@
       evalVisible={g.state.evalVisible}
       shapes={g.shapes}
       onshapeschange={(s) => setPlyShapes(tabId, g.ply, s)}
+      movable={moves.movable}
+      dests={moves.dests}
+      turnColor={moves.turnColor}
+      onmove={(from, to, promotion) => playMove(tabId, { from, to, promotion })}
     />
     <GameDetails
       sections={composition(g.state, {
