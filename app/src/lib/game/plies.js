@@ -148,7 +148,7 @@ const evaluationOf = (annotations) => {
  * document's own leading comments (`doc.comments`) instead — see this
  * file's own header comment for why that is the only place it can be.
  */
-export const pliesOf = (movetext) => readGame(movetext).plies;
+export const pliesOf = (movetext, options) => readGame(movetext, options).plies;
 
 /**
  * A movetext read once, into everything the Section needs.
@@ -156,9 +156,19 @@ export const pliesOf = (movetext) => readGame(movetext).plies;
  * The engine context is a property of the *document*, not of a move: the extension writes
  * one `[%engine]` before the first move and every evaluation in the game is that engine's.
  * So it is read here and handed to the banner, rather than copied onto each ply.
+ *
+ * `options.fen` is §2.2's custom starting position (`games.fen`) — NULL/
+ * absent means the standard initial array, same as the column itself.
+ * `resolveMovetext` already knows how to start from an arbitrary FEN (built
+ * for `[FEN]`-tagged imports); this is its second caller, not new chessops
+ * surface. Threading it through fixes two things at once, found 24 Sep:
+ * a custom-position game's ply 0 previously showed the standard start
+ * whenever it had no moves yet, and Stage 3's New Game (a blank tab, or one
+ * seeded by a pasted FEN) needed exactly this same plumbing to show
+ * anything but the standard board.
  */
-export const readGame = (movetext) => {
-  const doc = resolveMovetext(readMovetext(movetext ?? ''));
+export const readGame = (movetext, { fen } = {}) => {
+  const doc = resolveMovetext(readMovetext(movetext ?? ''), { fen });
   const plies = [];
   let node = doc.moves;
 
@@ -191,10 +201,11 @@ export const readGame = (movetext) => {
     node = next;
   }
 
-  // A game with no moves is still a position to show.
+  // A game with no moves is still a position to show -- its own custom
+  // starting position (§2.2) if it has one, the standard array otherwise.
   if (!plies.length) {
     plies.push({
-      s: null, f: INITIAL_FEN, m: null, k: false,
+      s: null, f: fen ?? INITIAL_FEN, m: null, k: false,
       c: commentOf(doc.comments),
       b: bestMoveOf(doc.comments),
       sh: shapesOf(doc.comments),
@@ -222,7 +233,8 @@ const cache = new WeakMap();
 const readRow = (game) => {
   const hit = cache.get(game);
   if (hit) return hit;
-  const read = readGame(movetextFromRow(game).movetext);
+  const { movetext, fen } = movetextFromRow(game);
+  const read = readGame(movetext, { fen });
   cache.set(game, read);
   return read;
 };

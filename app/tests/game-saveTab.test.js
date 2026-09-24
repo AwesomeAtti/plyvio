@@ -38,6 +38,25 @@ beforeEach(() => {
   resetPool();
 });
 
+describe('loadRealGame reads a custom starting position (\u00a72.2\u2019s games.fen)', () => {
+  it('a game with a custom fen shows it on the board instead of the standard start', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const customFen = '4k3/8/8/8/8/8/8/4K3 w - - 0 1';
+
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set fen = ?, movetext = ? where id = ?', [customFen, '', gameId]);
+
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => {
+      expect(get(game.activeGame).plies[0].f).toBe(customFen);
+    });
+  });
+});
+
 describe('saveTab — real write round trip', () => {
   it('does nothing and reports false when the tab is not dirty', async () => {
     const mods = await freshModules();

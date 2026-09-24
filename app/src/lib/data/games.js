@@ -336,25 +336,38 @@ export const movetextOf = (pgn) => {
  * already — mock data included — applies the same rule as one reading a database
  * instead of a second copy of it that can drift.
  *
- * @param {{movetext?: string|null, pgn?: string|null}|null} row
- * @returns {{movetext: string, source: 'movetext'|'pgn'|'none'}}
+ * `fen` rides alongside for the same reason `site`/`round` get their own
+ * fetch in `stores/game.js`'s `loadRealGame` — §2.2's custom starting
+ * position (`games.fen`, NULL for the standard initial array) is read here
+ * too so a caller building plies from this movetext can pass it straight to
+ * `game/plies.js`'s `readGame`, rather than every caller needing its own
+ * second query. Found 24 Sep: nothing did this before, so a game with a
+ * genuine custom starting position (a puzzle, `[FEN]`-tagged on import) was
+ * silently displayed as if it started from the standard array — the same
+ * plumbing Stage 3's New-Game-from-a-pasted-FEN needs, fixed for existing
+ * games at the same time rather than only for new ones.
+ *
+ * @param {{movetext?: string|null, pgn?: string|null, fen?: string|null}|null} row
+ * @returns {{movetext: string, source: 'movetext'|'pgn'|'none', fen: string|null}}
  */
 export const movetextFromRow = (row) => {
-  if (!row) return { movetext: '', source: 'none' };
+  if (!row) return { movetext: '', source: 'none', fen: null };
+  const fen = row.fen ?? null;
   if (row.movetext !== null && row.movetext !== undefined) {
-    return { movetext: row.movetext, source: 'movetext' };
+    return { movetext: row.movetext, source: 'movetext', fen };
   }
-  if (row.pgn === null || row.pgn === undefined) return { movetext: '', source: 'none' };
-  return { movetext: movetextOf(row.pgn), source: 'pgn' };
+  if (row.pgn === null || row.pgn === undefined) return { movetext: '', source: 'none', fen };
+  return { movetext: movetextOf(row.pgn), source: 'pgn', fen };
 };
 
 /**
- * The movetext for a game in a database. §3.1's precedence, applied to the row.
+ * The movetext for a game in a database, plus its starting `fen` (§2.2) —
+ * §3.1's precedence, applied to the row.
  *
- * @returns {Promise<{movetext: string, source: 'movetext'|'pgn'|'none'}>}
+ * @returns {Promise<{movetext: string, source: 'movetext'|'pgn'|'none', fen: string|null}>}
  */
 export const readMovetextFor = async (connection, id) =>
-  movetextFromRow(await connection.get('select movetext, pgn from games where id = ?', [id]));
+  movetextFromRow(await connection.get('select movetext, pgn, fen from games where id = ?', [id]));
 
 /**
  * Store an edited movetext. §3.1: every write stores the complete resulting

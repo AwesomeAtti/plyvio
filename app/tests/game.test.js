@@ -483,13 +483,19 @@ describe('sample games', () => {
 
   it('prefers a row\u2019s own movetext when it has one', () => {
     const row = { ...GAMES[0], movetext: '1. f3 e5 2. g4 Qh4# 0-1' };
-    expect(movetextFromRow(row)).toEqual({ movetext: '1. f3 e5 2. g4 Qh4# 0-1', source: 'movetext' });
+    expect(movetextFromRow(row)).toEqual({ movetext: '1. f3 e5 2. g4 Qh4# 0-1', source: 'movetext', fen: row.fen ?? null });
     expect(pliesFor(row).at(-1).s).toBe('Qh4#');
   });
 
   it('reports a row with neither rather than guessing', () => {
-    expect(movetextFromRow({ movetext: null, pgn: null })).toEqual({ movetext: '', source: 'none' });
-    expect(movetextFromRow(null)).toEqual({ movetext: '', source: 'none' });
+    expect(movetextFromRow({ movetext: null, pgn: null })).toEqual({ movetext: '', source: 'none', fen: null });
+    expect(movetextFromRow(null)).toEqual({ movetext: '', source: 'none', fen: null });
+  });
+
+  it('carries a row\u2019s custom starting position (\u00a72.2) alongside its movetext', () => {
+    expect(movetextFromRow({ movetext: '1. e4', pgn: null, fen: '8/8/8/8/8/8/8/K6k w - - 0 1' }))
+      .toEqual({ movetext: '1. e4', source: 'movetext', fen: '8/8/8/8/8/8/8/K6k w - - 0 1' });
+    expect(movetextFromRow({ movetext: null, pgn: '1. e4 *' }).fen).toBeNull();
   });
 
   it('reads four complete games out of their PGN', () => {
@@ -1360,6 +1366,36 @@ describe('§5.4.2 Moves — comments', () => {
 });
 
 /* ========================= the comment banner =========================== */
+
+describe('readGame — a custom starting position (\u00a72.2\u2019s games.fen)', () => {
+  const CUSTOM_FEN = '4k3/8/8/8/8/8/8/4K3 w - - 0 1';
+
+  it('a game with no moves shows its own starting position, not the standard array', () => {
+    const { plies } = readGame('', { fen: CUSTOM_FEN });
+    expect(plies).toHaveLength(1);
+    expect(plies[0].f).toBe(CUSTOM_FEN);
+  });
+
+  it('falls back to the standard array when no fen is given, same as before', () => {
+    const { plies } = readGame('');
+    expect(plies[0].f).not.toBe(CUSTOM_FEN);
+  });
+
+  it('a game WITH moves resolves every ply from the custom start, not just ply 0', () => {
+    const { plies } = readGame('1. Kf1 Kd8 2. Kg1', { fen: CUSTOM_FEN });
+    expect(plies[0].f).toBe(CUSTOM_FEN);
+    // Ply 1 (after 1. Kf1) is a real position reached FROM the custom
+    // start, not from the standard game's own opening.
+    expect(plies[1].s).toBe('Kf1');
+    expect(plies[1].f).not.toBe(CUSTOM_FEN);
+    expect(plies).toHaveLength(4);
+  });
+
+  it('pliesFor threads a mock row\u2019s own fen the same way', () => {
+    const row = { ...GAMES[0], movetext: null, pgn: '*', fen: CUSTOM_FEN };
+    expect(pliesFor(row)[0].f).toBe(CUSTOM_FEN);
+  });
+});
 
 describe('§5.4.2 Moves — comment banner', () => {
   const ANNOTATED = '{ [%engine name="Stockfish 16" depth=32 hash=512] } '

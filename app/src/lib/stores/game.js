@@ -136,8 +136,8 @@ function loadRealGame(libraryGameId) {
          Treating it as ready-with-nothing would tell a caller the fetch
          succeeded when it never ran. */
       if (!connection) throw new Error('no database connection');
-      const { movetext } = await readMovetextFor(connection, libraryGameId);
-      const parsed = readGame(movetext);
+      const { movetext, fen } = await readMovetextFor(connection, libraryGameId);
+      const parsed = readGame(movetext, { fen });
       /*
         `site`/`round` are fetched alongside the movetext — same id, same tab-
         open moment — but their own failure is caught separately and does not
