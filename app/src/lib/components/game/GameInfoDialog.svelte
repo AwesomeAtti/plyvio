@@ -32,7 +32,7 @@
   import { tags as libraryTags, collections as libraryCollections } from '$lib/stores/library.js';
   import { parseGameDate } from '$lib/game/info.js';
 
-  let { game = null, info = null, focus = 'top', onclose, onsave } = $props();
+  let { record = null, info = null, focus = 'top', onclose, onsave } = $props();
 
   let dialogEl = $state(null);
   let tagsEl = $state(null);
@@ -53,15 +53,15 @@
     mounts it under `{#if editing}` — so the props cannot change beneath it.
   */
   const seed = untrack(() => ({
-    white: game?.white ?? '',
-    whiteElo: game?.white_elo != null ? String(game.white_elo) : '',
-    black: game?.black ?? '',
-    blackElo: game?.black_elo != null ? String(game.black_elo) : '',
-    result: game?.result ?? '*',
-    event: game?.event ?? '',
-    site: game?.site ?? '',
-    date: game?.date ?? '',
-    round: game?.round ?? '',
+    white: record?.white ?? '',
+    whiteElo: record?.white_elo != null ? String(record.white_elo) : '',
+    black: record?.black ?? '',
+    blackElo: record?.black_elo != null ? String(record.black_elo) : '',
+    result: record?.result ?? '*',
+    event: record?.event ?? '',
+    site: record?.site ?? '',
+    date: record?.date ?? '',
+    round: record?.round ?? '',
     favorite: !!info?.favorite,
     tags: (info?.chips ?? []).filter((c) => c.kind === 'tag').map((c) => ({ id: c.id, name: c.name })),
     collections: (info?.chips ?? []).filter((c) => c.kind === 'collection').map((c) => ({ id: c.id, name: c.name }))

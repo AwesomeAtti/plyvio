@@ -36,25 +36,6 @@ import { explorerConnection, requestPersistentStorage } from '$lib/data/session.
 export const gameStates = writable({});
 
 /**
- * EDITS TO A GAME'S RECORD, as an overlay rather than a mutation.
- *
- * `GAMES` is a hand-maintained, read-only table standing in for rows the
- * database would hold, and it says so: the UI cannot add, remove or modify a
- * game. The Edit dialog does not change that — it records what a write WOULD
- * have changed, keyed by game id, and `activeGame` merges the overlay over the
- * row when it reads it.
- *
- * Which is also the honest model of the schema. §2.1 keeps `pgn` byte-for-byte
- * as received and treats the lifted columns as the editable copies, so editing
- * White changes a column and leaves the tag pair alone — a column and its tag
- * can legitimately disagree, and this overlay is exactly that disagreement.
- *
- * NOT PERSISTED. The prototype has no writable database; edits last the
- * session. Nothing here writes to `pgn`, here or anywhere.
- */
-export const gameEdits = writable({});
-
-/**
  * The prototype has four real games; a mock/sandbox library id is mapped
  * onto one by hash. A real `games.id` (a `number`, `isRealGameId()` below)
  * never reaches this function — `ensureGameState()` only calls it once it
@@ -316,12 +297,25 @@ export function ensureGameState(tabId, libraryGameId = null) {
     /*
       Board annotations (arrows/highlights) drawn during this tab's own
       session — { [ply]: DrawShape[] }. Tab-scoped like `ply`/`orientation`
-      above, not game-scoped like `gameEdits` below: closing this tab (or
-      never having opened one) leaves nothing to find, which is the whole
-      point — no persistence, and a fresh tab on the same game starts blank.
-      Set by `setPlyShapes`, read back in `activeGame`.
+      above: closing this tab (or never having opened one) leaves nothing to
+      find, which is the whole point — no persistence yet (Stage 2 of
+      `analysis-board-plan.md`), and a fresh tab on the same game starts
+      blank. Set by `setPlyShapes`, read back in `activeGame`; counted by
+      `isDirty` below.
     */
     shapes: {},
+    /*
+      Staged Game Info edits — white/white_elo/black/black_elo/result/
+      event/site/date/round — made in the Edit dialog but not yet saved.
+      TAB-scoped, like `shapes` above, replacing the role `gameEdits` used
+      to play: that store was keyed by GAME id, so an in-progress edit in
+      one tab leaked into every other tab open on the same game, and for a
+      library game it was invisible anyway (`activeGame`'s `record`
+      preferred the real row over it). Set by `setPendingInfo`, applied as
+      an overlay in `activeGame`'s own `record`, counted by `isDirty` below.
+      See `analysis-board-plan.md`'s Stage 1 revision, 24 Sep.
+    */
+    pendingInfo: {},
     /*
       Which library the Explorer is reading. Per tab, like the ply and the
       orientation: two tabs on one game must be able to ask different libraries.
@@ -373,6 +367,21 @@ function patch(tabId, fn) {
 export const gameById = (id) => GAMES.find((g) => g.id === id) || GAMES[0];
 
 /**
+ * The base `activeGame`'s `record` and `isDirty` both mean by "the game" —
+ * the library row when this tab has a real one open (§2.1's lifted columns,
+ * already loaded by `loadGames()`), the mock row otherwise. `pendingInfo` is
+ * a separate, tab-scoped overlay laid over this, not part of it — see
+ * `ensureGameState`'s own doc comment on that field.
+ */
+function baseRecordFor(st) {
+  const game = gameById(st.gameId);
+  const row = st.libraryGameId != null
+    ? (get(libraryGames) ?? []).find((r) => r.id === st.libraryGameId) ?? null
+    : null;
+  return row ?? game;
+}
+
+/**
  * The game and ply shown in the active tab.
  *
  * `plies` is read from the row's movetext rather than stored on it (§3 keeps the
@@ -380,16 +389,16 @@ export const gameById = (id) => GAMES.find((g) => g.id === id) || GAMES[0];
  * downstream indexes the same array instead of parsing its own.
  */
 export const activeGame = derived(
-  [gameStates, activeId, objects, libraryGames, libraryTags, libraryCollections, gameEdits,
+  [gameStates, activeId, objects, libraryGames, libraryTags, libraryCollections,
     realGames, explorerStats],
-  ([$s, $id, $objects, $libraryGames, $libraryTags, $libraryCollections, $gameEdits,
+  ([$s, $id, $objects, $libraryGames, $libraryTags, $libraryCollections,
     $realGames, $explorerStats]) => {
   const st = $s[$id];
   if (!st) return null;
-  /* The row, with any edits made this session laid over it. `pgn` is never in
-     the overlay: the document as received is not editable, by design. */
-  const base = gameById(st.gameId);
-  const game = { ...base, ...($gameEdits?.[st.gameId] ?? {}) };
+  /* `pgn` is never overlaid: the document as received is not editable, by
+     design. Session edits to the record's OTHER fields are a tab-scoped
+     overlay applied below, once `record`'s base (row-or-game) is known. */
+  const game = gameById(st.gameId);
 
   /*
     THE FIX: a real library game's board, move list, engine banner and
@@ -510,7 +519,11 @@ export const activeGame = derived(
     row for everything else. A null here is a game that genuinely has no
     Round, not a fallback — see `readRecordFields`.
   */
-  const record = row ?? game;
+  /* `pendingInfo` (Stage 1 of `analysis-board-plan.md`) overlays the Edit
+     dialog's own unsaved edits onto whichever base is real — the library
+     row when this game has one, the mock row otherwise — so both the Info
+     card and a reopened dialog show the same, current, unsaved value. */
+  const record = { ...(row ?? game), ...(st.pendingInfo ?? {}) };
   const info = {
     white: known(record.white),
     black: known(record.black),
@@ -527,7 +540,7 @@ export const activeGame = derived(
   };
 
   return {
-    tabId: $id, state: st, game, plies, ply, position: plies[ply], engine: gameEngine,
+    tabId: $id, state: st, game, record, plies, ply, position: plies[ply], engine: gameEngine,
     // This tab's drawn annotations for the ply on the board right now — see
     // `setPlyShapes`. Empty for a ply nothing has been drawn on yet.
     shapes: st.shapes?.[ply] ?? [],
@@ -692,40 +705,39 @@ function persistGameInfo(gameId, prev, v) {
  * Save the Edit dialog (GI-M).
  *
  * TWO DESTINATIONS, because the values have two owners. The game's record —
- * players, ratings, result, event, site, date, round — goes to the overlay
- * above. The user's marks on their copy — favourite, tags, collections — go to
- * the LIBRARY ROW, which is where they already live and where the Library reads
- * them from. Writing the marks onto the game would put one user's opinion into
- * the shared record of what happened.
+ * players, ratings, result, event, site, date, round — is staged into the
+ * tab's own pending edits (`setPendingInfo`), on the same unsaved-until-Save
+ * footing as board annotations, until Stage 1's save path exists to write it
+ * for real. The user's marks on their copy — favourite, tags, collections —
+ * go straight to the LIBRARY ROW, which is where they already live, where the
+ * Library reads them from, and where a real write already lands (below).
+ * Writing the marks onto the game would put one user's opinion into the
+ * shared record of what happened, and they are not "unsaved" the way the
+ * record's own fields are (`analysis-board-plan.md`'s Stage 1 revision).
  *
  * Collections are written as a full array, matching how a library row
  * already carries `collections` (many-to-many, the same shape as `tags`) and
  * how the Info card's own chips already read it back.
  *
- * The store update below is optimistic and session-only, same as always;
- * `persistGameInfo` (above) commits the same values to the real database in
- * the background, diffed against the row's state just before this update
- * applied.
+ * The store update below is optimistic, same as always; `persistGameInfo`
+ * (above) commits the same values to the real database in the background,
+ * diffed against the row's state just before this update applied.
  */
 export function saveGameInfo(tabId, v) {
   const st = get(gameStates)[tabId];
   if (!st) return;
 
-  gameEdits.update((e) => ({
-    ...e,
-    [st.gameId]: {
-      ...(e[st.gameId] ?? {}),
-      white: v.white,
-      white_elo: v.white_elo,
-      black: v.black,
-      black_elo: v.black_elo,
-      result: v.result,
-      event: v.event,
-      site: v.site,
-      date: v.date,
-      round: v.round
-    }
-  }));
+  setPendingInfo(tabId, {
+    white: v.white,
+    white_elo: v.white_elo,
+    black: v.black,
+    black_elo: v.black_elo,
+    result: v.result,
+    event: v.event,
+    site: v.site,
+    date: v.date,
+    round: v.round
+  });
 
   if (st.libraryGameId == null) return;
 
@@ -836,11 +848,60 @@ export function flipBoard(tabId) {
  * Record what's drawn on the board for one ply — chessground's own
  * `DrawShape[]`, straight from its `drawable.onChange`, no translation.
  * Overlays `cur.shapes` rather than replacing it, so drawing on ply 4 does
- * not lose whatever is already recorded for ply 2. Test-only for now — not
- * persisted anywhere, gone with the tab.
+ * not lose whatever is already recorded for ply 2. Not persisted anywhere
+ * yet (Stage 2), gone with the tab; counted by `isDirty` below in the
+ * meantime.
  */
 export function setPlyShapes(tabId, ply, shapes) {
   patch(tabId, (cur) => ({ shapes: { ...cur.shapes, [ply]: shapes } }));
+}
+
+/**
+ * Stage Game Info edits made in the dialog for later saving — see
+ * `ensureGameState`'s doc comment on `pendingInfo` for why this replaced
+ * `gameEdits`. Merges onto whatever's already staged rather than replacing
+ * it outright, the same shape as `setPlyShapes` above, though today's only
+ * caller (`saveGameInfo`) always supplies every field at once.
+ */
+export function setPendingInfo(tabId, fields) {
+  patch(tabId, (cur) => ({ pendingInfo: { ...cur.pendingInfo, ...fields } }));
+}
+
+/**
+ * `a` and `b` as a save would compare them — a Game Info field staged in
+ * `pendingInfo` against the same field on the row/mock base it would
+ * overwrite. The dialog always sends a trimmed string or `null`/a number,
+ * never `undefined`, but the base can genuinely hold `null` for "not set"
+ * where the dialog's own empty string means the same thing — treating
+ * `null`/`undefined`/`''` as one value here is what stops an untouched
+ * blank field from reading as a change.
+ */
+const fieldsEqual = (a, b) => (a ?? '') === (b ?? '');
+
+/**
+ * True once anything in this tab differs from what a save would currently
+ * write over it. Two categories today, more as later stages land:
+ *
+ *   - board annotations — nothing persists them yet (Stage 2), so any
+ *     drawn shape at all counts, on any ply;
+ *   - staged Game Info fields — only those that actually differ from the
+ *     record they'd replace, so reopening the dialog and hitting Save
+ *     without changing anything does not manufacture a dirty tab.
+ *
+ * The single flag Stage 1's save button, tab-close indicator and
+ * confirmation dialog all read from (`analysis-board-plan.md`). Favourite/
+ * tags/collections are deliberately not part of this — they commit for
+ * real immediately, on their own existing path, on purpose (Stage 1's
+ * revision, 24 Sep).
+ */
+export function isDirty(tabId) {
+  const st = get(gameStates)[tabId];
+  if (!st) return false;
+  if (Object.values(st.shapes ?? {}).some((shapes) => shapes?.length)) return true;
+  const pending = st.pendingInfo ?? {};
+  if (Object.keys(pending).length === 0) return false;
+  const base = baseRecordFor(st);
+  return Object.entries(pending).some(([key, value]) => !fieldsEqual(base[key], value));
 }
 
 /**

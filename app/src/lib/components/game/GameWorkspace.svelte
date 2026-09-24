@@ -177,7 +177,7 @@
       pressed the tags is a different dialog from the one you asked for.
     -->
     <GameInfoDialog
-      game={g.game}
+      record={g.record}
       info={g.info}
       focus={editing}
       onclose={() => (editing = null)}
