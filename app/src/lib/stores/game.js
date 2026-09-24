@@ -17,12 +17,13 @@ import {
 } from './library.js';
 import { known, ratingText, resultText, infoContentHeight } from '$lib/game/info.js';
 import {
-  readMovetextFor, readRecordFields, readPositionStats,
+  readMovetextFor, writeMovetextFor, updateGameFields, readRecordFields, readPositionStats,
   findOrCreateTag, addTagToGame, removeTagFromGame,
   findOrCreateCollection, addGameToCollection, removeGameFromCollection,
   setFavorite
 } from '$lib/data/games.js';
 import { explorerConnection, requestPersistentStorage } from '$lib/data/session.js';
+import { readMovetext, resolveMovetext, writeMovetext, applyShapesToMovetext } from '$lib/pgn/index.js';
 
 /**
  * Game Workspace state — §5.3, §2.3.
@@ -902,6 +903,76 @@ export function isDirty(tabId) {
   if (Object.keys(pending).length === 0) return false;
   const base = baseRecordFor(st);
   return Object.entries(pending).some(([key, value]) => !fieldsEqual(base[key], value));
+}
+
+/**
+ * Write everything staged in this tab for real, then clear its dirty
+ * state — the "what Save actually writes" half of `analysis-board-plan.md`'s
+ * Stage 1. Two writers, same as the plan lays out, both reached from here:
+ * `updateGameFields` for the nine header fields staged in `pendingInfo`,
+ * `writeMovetextFor` for board annotations, folded into the resolved
+ * movetext tree by `applyShapesToMovetext` before being serialized back by
+ * `writeMovetext`. Neither runs unless it has something to write.
+ *
+ * Only a library-backed tab has anywhere real to save to. A tab with no
+ * `libraryGameId` cannot be saved yet — Stage 3 ("New Game") is what gives
+ * one somewhere to be created; nothing today opens a real tab without one.
+ *
+ * Not called from any UI yet — the save button, `Cmd/Ctrl+S`, and the
+ * close-time confirmation dialog are next.
+ *
+ * @returns {Promise<boolean>} whether anything was actually written.
+ */
+export async function saveTab(tabId) {
+  const st = get(gameStates)[tabId];
+  if (!st || st.libraryGameId == null || !isDirty(tabId)) return false;
+
+  const connection = await activeLibraryConnection();
+  if (!connection) {
+    console.error(`Plyvio: no database connection to save tab ${tabId}`);
+    return false;
+  }
+
+  const pending = st.pendingInfo ?? {};
+  const base = baseRecordFor(st);
+  const changedFields = Object.fromEntries(
+    Object.entries(pending).filter(([key, value]) => !fieldsEqual(base[key], value))
+  );
+  const hasShapes = Object.values(st.shapes ?? {}).some((shapes) => shapes?.length);
+
+  try {
+    if (Object.keys(changedFields).length) {
+      await updateGameFields(connection, st.libraryGameId, changedFields);
+    }
+
+    if (hasShapes) {
+      const { movetext } = await readMovetextFor(connection, st.libraryGameId);
+      const doc = resolveMovetext(readMovetext(movetext ?? ''));
+      applyShapesToMovetext(doc, st.shapes ?? {});
+      await writeMovetextFor(connection, st.libraryGameId, writeMovetext(doc));
+    }
+
+    requestPersistentStorage();
+    patch(tabId, () => ({ pendingInfo: {}, shapes: {} }));
+
+    if (Object.keys(changedFields).length) await loadGames();
+    if (hasShapes) {
+      // `loadRealGame` is load-once (`if (get(realGames).has(id)) return;`),
+      // so the stale parse has to be evicted before asking for it again --
+      // simply re-calling it would see the old entry and no-op.
+      realGames.update((m) => {
+        const next = new Map(m);
+        next.delete(st.libraryGameId);
+        return next;
+      });
+      loadRealGame(st.libraryGameId);
+    }
+
+    return true;
+  } catch (err) {
+    console.error(`Plyvio: failed to save tab ${tabId}`, err);
+    throw err;
+  }
 }
 
 /**

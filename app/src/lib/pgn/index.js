@@ -52,3 +52,9 @@ export {
   gameFieldsFromPgn,
   gameRowsFromPgnText,
 } from './importPgn.js';
+
+export {
+  shapesToArgs,
+  setShapes,
+  applyShapesToMovetext,
+} from './boardAnnotations.js';

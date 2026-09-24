@@ -386,6 +386,31 @@ export const readRecordFields = async (connection, id) =>
     site: null, round: null
   };
 
+/** The nine §1 record columns the Edit dialog can change. */
+export const HEADER_FIELD_COLUMNS = [
+  'white', 'white_elo', 'black', 'black_elo', 'result', 'event', 'site', 'date', 'round'
+];
+
+/**
+ * Write staged Game Info fields for real. `analysis-board-plan.md`'s Stage 1:
+ * before this, `saveGameInfo` (`stores/game.js`) only ever wrote these into
+ * a session-only overlay, `gameEdits` — clicking Save looked like it worked
+ * but nothing reached the database.
+ *
+ * Only the columns `fields` actually supplies are written, same allowlist
+ * discipline as `insertGame`: a caller handing this something with extra
+ * keys on it (today, `favorite`/`tags`/`collections` — GI-M's OTHER
+ * destination, `persistGameInfo` below) cannot touch a column by accident.
+ * `undefined` is skipped (not staged); `null` is written, a real "clear
+ * this field" the Edit dialog can send.
+ */
+export const updateGameFields = async (connection, gameId, fields) => {
+  const columns = HEADER_FIELD_COLUMNS.filter((c) => fields[c] !== undefined);
+  if (!columns.length) return;
+  const sql = `update games set ${columns.map((c) => `${c} = ?`).join(', ')} where id = ?`;
+  await connection.run(sql, [...columns.map((c) => fields[c] ?? null), gameId]);
+};
+
 /**
  * Count the plies of a game's main line.
  *
