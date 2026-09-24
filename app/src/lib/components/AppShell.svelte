@@ -12,7 +12,11 @@
     requestCloseActiveTab, pendingCloseTab, saveAndClose, discardAndClose, cancelClose
   } from '$lib/stores/closeGuard.js';
   import { saveTab } from '$lib/stores/game.js';
+  import {
+    openNewGame, pendingPaste, handlePaste, confirmPasteNewTab, confirmPasteReplace, cancelPaste
+  } from '$lib/stores/newGame.js';
   import ConfirmUnsavedChanges from './ConfirmUnsavedChanges.svelte';
+  import ConfirmPasteImport from './ConfirmPasteImport.svelte';
   import { enforceWindowFloor } from '$lib/windowFloor.js';
   import { watchFullscreen } from '$lib/stores/appCommands.js';
   import {
@@ -65,6 +69,27 @@
     saveTab(get(activeId));
   }
 
+  /*
+    Board paste target — `analysis-board-plan.md` Stage 3. Window-level,
+    the same reach as `onKeydown`'s mod-key shortcuts above, rather than a
+    listener on the board itself: `ChessBoard.svelte`'s root isn't
+    focusable today (§5.4.1), and a paste's real target while a Game
+    Workspace is open is "this game," not literally the board element.
+    Anything actually editable — the Add Games Paste tab's own textarea, a
+    Settings field — gets first refusal: its own paste event fires and
+    completes there and never needs to reach here, because THIS listener
+    only acts when the event's target is not an editable element at all.
+  */
+  function onPaste(e) {
+    const target = e.target;
+    const tag = target?.tagName;
+    const editable = tag === 'INPUT' || tag === 'TEXTAREA' || !!target?.isContentEditable;
+    if (editable) return;
+    const text = e.clipboardData?.getData('text/plain') ?? '';
+    if (!text) return;
+    handlePaste(text);
+  }
+
   function onNavigate(detail) {
     if (detail?.section === 'about') {
       // §2.2 — About opens or focuses the Settings tab AND jumps to the
@@ -83,13 +108,19 @@
 
     if (e.key.toLowerCase() === 'w') { e.preventDefault(); requestCloseActiveTab(); return; }
     if (e.key.toLowerCase() === 's') { e.preventDefault(); saveCurrentTab(); return; }
+    /*
+      §2.1.2's own note: "If the New Tab Button is given a new action, this
+      binding should be reconsidered alongside it." Given one 24 Sep — see
+      `features.js`'s `NEW_TAB_BUTTON`.
+    */
+    if (e.key.toLowerCase() === 't') { e.preventDefault(); openNewGame(); return; }
     if (e.key === 'Tab') { e.preventDefault(); activateByOffset(e.shiftKey ? -1 : 1); return; }
     if (/^[1-8]$/.test(e.key)) { e.preventDefault(); activateIndex(Number(e.key)); return; }
     if (e.key === '9') { e.preventDefault(); activateLast(); return; }
   }
 </script>
 
-<svelte:window onkeydown={onKeydown} />
+<svelte:window onkeydown={onKeydown} onpaste={onPaste} />
 
 <div id="app-root">
   <TabBar onnavigate={onNavigate} />
@@ -108,5 +139,14 @@
     onsave={saveAndClose}
     ondontsave={discardAndClose}
     oncancel={cancelClose}
+  />
+{/if}
+
+{#if $pendingPaste}
+  <ConfirmPasteImport
+    kind={$pendingPaste.kind}
+    onnewtab={confirmPasteNewTab}
+    onreplace={confirmPasteReplace}
+    oncancel={cancelPaste}
   />
 {/if}

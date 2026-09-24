@@ -20,7 +20,7 @@ import {
   readMovetextFor, writeMovetextFor, updateGameFields, readRecordFields, readPositionStats,
   findOrCreateTag, addTagToGame, removeTagFromGame,
   findOrCreateCollection, addGameToCollection, removeGameFromCollection,
-  setFavorite
+  setFavorite, insertGame
 } from '$lib/data/games.js';
 import { explorerConnection, requestPersistentStorage } from '$lib/data/session.js';
 import { readMovetext, resolveMovetext, writeMovetext, applyShapesToMovetext } from '$lib/pgn/index.js';
@@ -37,6 +37,25 @@ import { readMovetext, resolveMovetext, writeMovetext, applyShapesToMovetext } f
 export const gameStates = writable({});
 
 /**
+ * A DRAFT — a tab's own content, held only in this session until `saveTab`
+ * gives it a real row (`analysis-board-plan.md`'s Stage 3, "New Game", and
+ * a board paste that doesn't land on an existing saved game). Keyed by a
+ * fabricated id (`draft:<n>`, never a `games.id`), so a draft counts as
+ * `isRealGameId()` below — its plies live in `realGames`, read the same way
+ * a real game's are, computed once up front rather than fetched, since a
+ * draft's whole content is already known the moment it exists.
+ *
+ * `draftSeeds` is not a Svelte store: nothing needs to react to it directly.
+ * `gameForLibraryId`/`gameById` read it for the record fields (white/black/
+ * event/…) a mock row would otherwise supply; `realGames` (below) holds the
+ * plies/engine/site/round the same way a real game's fetch would.
+ */
+const isDraftId = (id) => typeof id === 'string' && id.startsWith('draft:');
+let draftCounter = 0;
+const draftSeeds = new Map();
+const draftRecordFor = (draftId) => ({ id: draftId, ...(draftSeeds.get(draftId)?.fields ?? {}) });
+
+/**
  * The prototype has four real games; a mock/sandbox library id is mapped
  * onto one by hash. A real `games.id` (a `number`, `isRealGameId()` below)
  * never reaches this function — `ensureGameState()` only calls it once it
@@ -44,9 +63,11 @@ export const gameStates = writable({});
  * goes back to a plain string hash, its shape before the 21 Sep PWA
  * stopgap (removed 22 Sep — see `isRealGameId()`'s own comment) briefly
  * needed a numeric-id branch to stop the stopgap's own real-looking ids
- * from hashing wrong.
+ * from hashing wrong. A draft id (above) is the one other exception,
+ * checked first rather than hashed like a mock id would be.
  */
 function gameForLibraryId(libraryId) {
+  if (isDraftId(libraryId)) return draftRecordFor(libraryId);
   if (!libraryId) return GAMES[0];
   let h = 0;
   for (let i = 0; i < libraryId.length; i++) h = (h * 31 + libraryId.charCodeAt(i)) | 0;
@@ -67,7 +88,7 @@ function gameForLibraryId(libraryId) {
  * longer a real-looking mock id this needs to special-case. See
  * `CLOSED.md` for the 21 Sep stopgap this replaces.
  */
-const isRealGameId = (libraryGameId) => typeof libraryGameId === 'number';
+const isRealGameId = (libraryGameId) => typeof libraryGameId === 'number' || isDraftId(libraryGameId);
 
 /**
  * Does this tab read the real database, or `sample-games.js`?
@@ -361,6 +382,73 @@ export function ensureGameState(tabId, libraryGameId = null) {
   return state;
 }
 
+/**
+ * Give a fresh draft id its content — the primitive `stores/newGame.js`'s
+ * two paths both use: a blank "New Game" board, and a board paste (a FEN or
+ * single-game PGN, `pgn/pasteDetect.js`). Synchronous and side-effect-only
+ * on `draftSeeds`/`realGames`; the caller still does `tabs.js`'s own
+ * `openGame` — this file does not import `tabs.js` (see `closeGuard.js`'s
+ * own comment on why the two don't import each other).
+ *
+ * @param {{movetext?: string, fen?: string|null, fields?: object}} [seed]
+ *   omitted (or `{}`) for a blank board at the standard starting position.
+ *   `fields` are `games` table column names (`white`, `black`, `event`, …
+ *   never camelCase) — a pasted PGN's own tags, or nothing for a blank one.
+ * @returns {string} the new draft id, e.g. `"draft:3"`.
+ */
+export function seedDraftGame(seed = {}) {
+  draftCounter += 1;
+  const draftId = `draft:${draftCounter}`;
+  const movetext = seed.movetext ?? '';
+  const fen = seed.fen ?? null;
+  const fields = seed.fields ?? {};
+  draftSeeds.set(draftId, { movetext, fen, fields });
+  const parsed = readGame(movetext, { fen });
+  realGames.update((m) => new Map(m).set(draftId, {
+    status: 'ready', ...parsed, site: fields.site ?? null, round: fields.round ?? null
+  }));
+  return draftId;
+}
+
+/**
+ * Paste's "Replace This Game" (`analysis-board-plan.md` Stage 3): the tab
+ * stops reading whatever it was showing and reads a brand new draft
+ * instead. The game it replaces — real, saved, or another draft — is never
+ * written to; only this tab's own state changes, the same as closing it and
+ * opening a new draft in its place would. `ply` resets to 0 since the
+ * position underneath it is a different game entirely; annotation
+ * overrides and staged Info edits are session state that belonged to the
+ * OLD game and do not carry over.
+ */
+export function replaceTabWithDraft(tabId, seed = {}) {
+  const draftId = seedDraftGame(seed);
+  patch(tabId, () => ({
+    libraryGameId: draftId, realGame: true, gameId: draftId,
+    ply: 0, shapes: {}, pendingInfo: {}
+  }));
+  refreshExplorerStats(tabId);
+  return draftId;
+}
+
+/**
+ * A draft nobody has touched yet — no seed content, no session shapes, no
+ * staged Info edits. The one case a board paste's confirm dialog skips:
+ * loading straight into a tab that would lose nothing (`stores/
+ * newGame.js`). Not the same question `isDirty` below answers — a draft is
+ * ALWAYS dirty, blank or not (Stage 3: "unsaved but with dirty flag"),
+ * because it has nowhere saved yet; this is narrower — has THIS specific
+ * draft had anything actually done to it since it was created.
+ */
+export function isPristineDraft(tabId) {
+  const st = get(gameStates)[tabId];
+  if (!st || !isDraftId(st.libraryGameId)) return false;
+  const seed = draftSeeds.get(st.libraryGameId);
+  const blank = !seed || (!seed.movetext && !seed.fen && Object.keys(seed.fields ?? {}).length === 0);
+  const untouched = Object.keys(st.shapes ?? {}).length === 0
+    && Object.keys(st.pendingInfo ?? {}).length === 0;
+  return blank && untouched;
+}
+
 function patch(tabId, fn) {
   gameStates.update((s) => {
     const cur = s[tabId];
@@ -369,7 +457,7 @@ function patch(tabId, fn) {
   });
 }
 
-export const gameById = (id) => GAMES.find((g) => g.id === id) || GAMES[0];
+export const gameById = (id) => (isDraftId(id) ? draftRecordFor(id) : GAMES.find((g) => g.id === id) || GAMES[0]);
 
 /**
  * The base `activeGame`'s `record` and `isDirty` both mean by "the game" —
@@ -530,7 +618,7 @@ export const activeGame = derived(
      card and a reopened dialog show the same, current, unsaved value. */
   const infoBase = row ?? game;
   const record = { ...infoBase, ...(st.pendingInfo ?? {}) };
-  const dirty = computeDirty(st, infoBase, plies);
+  const dirty = isDraftId(st.libraryGameId) ? true : computeDirty(st, infoBase, plies);
   const info = {
     white: known(record.white),
     black: known(record.black),
@@ -949,6 +1037,7 @@ function computeDirty(st, base, plies) {
 export function isDirty(tabId) {
   const st = get(gameStates)[tabId];
   if (!st) return false;
+  if (isDraftId(st.libraryGameId)) return true;
   return computeDirty(st, baseRecordFor(st), pliesForState(st));
 }
 
@@ -964,6 +1053,7 @@ export const dirtyTabs = derived(
   ([$states, $libraryGames, $realGames]) => {
   const ids = new Set();
   for (const [tabId, st] of Object.entries($states)) {
+    if (isDraftId(st.libraryGameId)) { ids.add(tabId); continue; }
     const game = gameById(st.gameId);
     const row = st.libraryGameId != null
       ? ($libraryGames ?? []).find((r) => r.id === st.libraryGameId) ?? null
@@ -978,30 +1068,34 @@ export const dirtyTabs = derived(
 /**
  * Write everything staged in this tab for real, then clear its dirty
  * state — the "what Save actually writes" half of `analysis-board-plan.md`'s
- * Stage 1. Two writers, same as the plan lays out, both reached from here:
+ * Stage 1. Two writers for an already-saved tab, same as the plan lays out:
  * `updateGameFields` for the nine header fields staged in `pendingInfo`,
  * `writeMovetextFor` for board annotations, folded into the resolved
  * movetext tree by `applyShapesToMovetext` before being serialized back by
  * `writeMovetext`. Neither runs unless it has something to write.
  *
- * Only a library-backed tab has anywhere real to save to. A tab with no
- * `libraryGameId` cannot be saved yet — Stage 3 ("New Game") is what gives
- * one somewhere to be created; nothing today opens a real tab without one.
+ * A DRAFT tab (`isDraftId`) has nowhere real yet — `createGameFromDraft`
+ * below is Stage 3's "New Game" create path, always run rather than gated
+ * on `isDirty` (a draft is unconditionally dirty; see `isDirty`'s own
+ * comment). Every other tab kind is unchanged from Stage 1/2.
  *
- * Not called from any UI yet — the save button, `Cmd/Ctrl+S`, and the
- * close-time confirmation dialog are next.
+ * Called from the save button, `Cmd/Ctrl+S`, and the close-time
+ * confirmation dialog.
  *
  * @returns {Promise<boolean>} whether anything was actually written.
  */
 export async function saveTab(tabId) {
   const st = get(gameStates)[tabId];
-  if (!st || st.libraryGameId == null || !isDirty(tabId)) return false;
+  if (!st || st.libraryGameId == null) return false;
+  if (!isDraftId(st.libraryGameId) && !isDirty(tabId)) return false;
 
   const connection = await activeLibraryConnection();
   if (!connection) {
     console.error(`Plyvio: no database connection to save tab ${tabId}`);
     return false;
   }
+
+  if (isDraftId(st.libraryGameId)) return createGameFromDraft(tabId, st, connection);
 
   const pending = st.pendingInfo ?? {};
   const base = baseRecordFor(st);
@@ -1050,6 +1144,58 @@ export async function saveTab(tabId) {
     return true;
   } catch (err) {
     console.error(`Plyvio: failed to save tab ${tabId}`, err);
+    throw err;
+  }
+}
+
+/**
+ * `saveTab`'s create branch — a draft tab has never had a row; this is what
+ * gives it one. `insertGame` requires a non-null `pgn` (§4, `data/
+ * games.js`) that a draft was never built from, so `pgn` gets a bare
+ * placeholder result token and the real content goes where §3.1 actually
+ * reads it first: `movetext`, written right after — the same
+ * `writeMovetextFor`/`applyShapesToMovetext` pair the real-game branch
+ * above already uses for its own shapes write, starting from the draft's
+ * own seed movetext instead of a database read.
+ *
+ * Converts the tab in place once the row exists: `libraryGameId` becomes
+ * the new real id, the draft's own entries in `draftSeeds`/`realGames` are
+ * dropped, and `loadGames`/`loadRealGame` bring the tab onto the exact same
+ * path an already-saved tab reads from — nothing downstream needs to know
+ * this tab used to be a draft.
+ */
+async function createGameFromDraft(tabId, st, connection) {
+  const draft = draftSeeds.get(st.libraryGameId) ?? { movetext: '', fen: null, fields: {} };
+  const doc = resolveMovetext(readMovetext(draft.movetext ?? ''), { fen: draft.fen ?? null });
+  if (Object.keys(st.shapes ?? {}).length) applyShapesToMovetext(doc, st.shapes ?? {});
+
+  const fields = {
+    ...draft.fields,
+    ...(st.pendingInfo ?? {}),
+    pgn: '*',
+    fen: draft.fen ?? null,
+    created_at: new Date().toISOString()
+  };
+
+  try {
+    const newId = await insertGame(connection, fields);
+    await writeMovetextFor(connection, newId, writeMovetext(doc));
+
+    draftSeeds.delete(st.libraryGameId);
+    realGames.update((m) => {
+      const next = new Map(m);
+      next.delete(st.libraryGameId);
+      return next;
+    });
+    patch(tabId, () => ({ libraryGameId: newId, gameId: newId, pendingInfo: {}, shapes: {} }));
+
+    requestPersistentStorage();
+    await loadGames();
+    loadRealGame(newId);
+
+    return true;
+  } catch (err) {
+    console.error(`Plyvio: failed to create game for tab ${tabId}`, err);
     throw err;
   }
 }

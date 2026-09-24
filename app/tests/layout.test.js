@@ -89,14 +89,16 @@ describe('§2.1.3 control widths', () => {
   });
 
   it('overflow state adds the scroll pair and tab list', () => {
-    // New Tab Button hidden — the default
-    expect(controlsWidth(true)).toBe(SCROLL_W + TABLIST_W + MENU_W);
-    expect(controlsWidth(true) - controlsWidth(false)).toBe(108);
+    // New Tab Button explicitly hidden — its own case, not today's default
+    // (the flag flipped true 24 Sep — see the next test).
+    expect(controlsWidth(true, false)).toBe(SCROLL_W + TABLIST_W + MENU_W);
+    expect(controlsWidth(true, false) - controlsWidth(false, false)).toBe(108);
   });
 
-  it('still reserves the New Tab Button when it is shown', () => {
+  it('still reserves the New Tab Button when it is shown — NEW_TAB_BUTTON’s own default since 24 Sep', () => {
     expect(controlsWidth(true, true)).toBe(NEWTAB_W + SCROLL_W + TABLIST_W + MENU_W);
-    expect(controlsWidth(true, true) - controlsWidth(true)).toBe(NEWTAB_W);
+    expect(controlsWidth(true)).toBe(NEWTAB_W + SCROLL_W + TABLIST_W + MENU_W); // default = shown
+    expect(controlsWidth(true, true) - controlsWidth(true, false)).toBe(NEWTAB_W);
     expect(controlsWidth(false, true)).toBe(MENU_W);   // normal state: inside the strip
   });
 
@@ -118,19 +120,19 @@ describe('§2.4 behaviour at the 800x600 minimum', () => {
   });
 
   it('three tabs overflow — the documented consequence of the 220px floor', () => {
+    // WF-09's original figures — the New Tab Button is shown by default
+    // since 24 Sep (§2.1.2, "New Game").
     const g = computeLayout(800, PINNED, 3);
     expect(g.overflow).toBe(true);
-    expect(g.stripWidth).toBe(800 - PINNED - controlsWidth(true));
-    // 520px, not WF-09's 484: hiding the New Tab Button returns its 36px to
-    // the strip. 2.36 tabs visible instead of 2.2 — the same finding, slightly
-    // less severe. WF-09 needs restating if the button stays hidden.
-    expect(g.stripWidth).toBe(520);
-    expect(g.visibleTabs).toBeCloseTo(520 / 220, 2);
+    expect(g.stripWidth).toBe(800 - PINNED - controlsWidth(true, true));
+    expect(g.stripWidth).toBe(484);
+    expect(g.visibleTabs).toBeCloseTo(484 / 220, 2);
 
-    // with the button shown, WF-09's original figures still hold
-    const shown = computeLayout(800, PINNED, 3, true);
-    expect(shown.stripWidth).toBe(484);
-    expect(shown.visibleTabs).toBeCloseTo(484 / 220, 2);
+    // hidden, the button's own 36px returns to the strip: 520px, 2.36
+    // tabs visible instead of 2.2 — the same finding, slightly less severe.
+    const hidden = computeLayout(800, PINNED, 3, false);
+    expect(hidden.stripWidth).toBe(520);
+    expect(hidden.visibleTabs).toBeCloseTo(520 / 220, 2);
   });
 });
 

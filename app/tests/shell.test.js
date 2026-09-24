@@ -76,32 +76,35 @@ describe('§2 shell structure', () => {
   tests assert the hidden behaviour, and layout.test.js still exercises both
   branches of the geometry, so restoring it does not mean rebuilding it.
 */
-describe('the New Tab Button is hidden', () => {
-  it('renders in neither position, at any width or tab count', async () => {
+describe('the New Tab Button — "New Game" (§2.1.2, shown since 24 Sep)', () => {
+  it('renders inside the strip, after the last tab, when the strip is not overflowing', async () => {
     const { container } = render(AppShell);
-    for (const n of [0, 1, 3, 6, 10]) {
-      while (get(stripTabs).length < n) openGame('Game 2');
-      for (const w of [1600, 1100, 900, 800]) {
-        await setBarWidth(container, w);
-        expect(container.querySelectorAll('[aria-label="New tab"]').length).toBe(0);
-        expect(container.querySelector('.strip .newtab-inline')).toBeNull();
-      }
-    }
+    openGame('Game 2');
+    await setBarWidth(container, 800);
+    expect(container.querySelector('.strip .newtab-inline')).not.toBeNull();
+    expect(container.querySelectorAll('[aria-label="New tab"]').length).toBe(1);
+    expect(container.querySelectorAll('.controls .ctl').length).toBe(1); // menu only
   });
 
-  it('leaves only the application menu in the normal state', async () => {
+  it('moves into the controls, first, when the strip overflows', async () => {
     const { container } = render(AppShell);
-    openGame('Game 3');
-    await setBarWidth(container, 1400);
-    expect(container.querySelectorAll('.controls .ctl').length).toBe(1);
-  });
-
-  it('control order on overflow is [left] [right] [list] [menu]', async () => {
-    const { container } = render(AppShell);
-    for (let i = 0; i < 6; i++) openGame('Game 4');
-    await setBarWidth(container, 900);
+    for (let i = 0; i < 3; i++) openGame('Game 4');
+    await setBarWidth(container, 800);
+    expect(container.querySelector('.strip .newtab-inline')).toBeNull();
     const labels = [...container.querySelectorAll('.controls .ctl')].map((b) => b.getAttribute('aria-label'));
-    expect(labels).toEqual(['Scroll tabs left', 'Scroll tabs right', 'Show all tabs', 'Application menu']);
+    expect(labels).toEqual(['New tab', 'Scroll tabs left', 'Scroll tabs right', 'Show all tabs', 'Application menu']);
+  });
+
+  it('opens a new, unsaved draft tab and activates it', async () => {
+    const { container } = render(AppShell);
+    openGame('Game 2');
+    await setBarWidth(container, 800);
+    const before = get(stripTabs).length;
+    await fireEvent.click(container.querySelector('.strip .newtab-inline'));
+    const after = get(stripTabs);
+    expect(after.length).toBe(before + 1);
+    expect(get(activeId)).toBe(after.at(-1).id);
+    expect(after.at(-1).gameId).toMatch(/^draft:/);
   });
 
   it('requirement 5 still holds where it is reachable — openGame creates and activates', () => {

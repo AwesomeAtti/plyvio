@@ -5,6 +5,7 @@ import {
   openGame, openSettings, closeTab, activate,
   activateByOffset, activateIndex, activateLast, closeActive
 } from '../src/lib/stores/tabs.js';
+import { openNewGame } from '../src/lib/stores/newGame.js';
 
 const ids = () => get(stripTabs).map((t) => t.id);
 const kinds = () => get(stripTabs).map((t) => t.kind);
@@ -40,26 +41,37 @@ describe('§2.1.2 every Game Tab holds a game', () => {
   });
 
   /*
-    The BUTTON is hidden, not removed — it and its geometry stay built and
-    tested. What is gone is the empty workspace it used to create, and the
-    placeholder title that only an empty workspace needed.
+    24 Sep — the button's action is resolved: "New Game", a draft (below),
+    never the removed empty workspace. `tab.newGame`'s old placeholder-title
+    key stays gone (a draft carries a real, translated title of its own —
+    `game.newGame` — not a fallback for an otherwise-nameless tab); the
+    button's own label (`ctl.newTab`) stays, since the control itself didn't
+    change, only what clicking it does.
   */
   it('leaves no placeholder title string behind', () => {
     const { readFileSync } = require('node:fs');
     const strings = readFileSync('src/lib/i18n/locales.js', 'utf8');
     expect(strings).not.toMatch(/tab\.newGame/);
     expect(strings).toMatch(/ctl\.newTab/);    // the button's own label stays
-    const shell = readFileSync('src/lib/components/AppShell.svelte', 'utf8');
-    expect(shell).not.toMatch(/'t'/);          // Ctrl/Cmd + T is gone
+    expect(strings).toMatch(/game\.newGame/);  // the draft tab's own title
   });
 
-  it('keeps the New Tab Button hidden, built, and refusing to guess its action', () => {
+  it('gives the New Tab Button (and Ctrl/Cmd+T) a real action: a blank draft, shown by default', () => {
     const { readFileSync } = require('node:fs');
-    expect(readFileSync('src/lib/features.js', 'utf8')).toMatch(/NEW_TAB_BUTTON = false/);
+    expect(readFileSync('src/lib/features.js', 'utf8')).toMatch(/NEW_TAB_BUTTON = true/);
     const bar = readFileSync('src/lib/components/TabBar.svelte', 'utf8');
     expect(bar).toMatch(/NEW_TAB_BUTTON/);
-    // its former action was the empty workspace, so it throws rather than no-op
-    expect(bar).toMatch(/New Tab Button action is unspecified/);
+    expect(bar).not.toMatch(/New Tab Button action is unspecified/);
+    expect(bar).toMatch(/openNewGame/);
+    const shell = readFileSync('src/lib/components/AppShell.svelte', 'utf8');
+    expect(shell).toMatch(/openNewGame/);
+  });
+
+  it('opening a new game seeds a draft — a blank board, unsaved until Save', () => {
+    const id = openNewGame();
+    const tab = get(stripTabs).find((t) => t.id === id);
+    expect(tab.gameId).toMatch(/^draft:/);
+    expect(get(activeId)).toBe(id);
   });
 });
 

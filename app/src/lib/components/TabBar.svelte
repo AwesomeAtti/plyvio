@@ -11,6 +11,7 @@
   } from '$lib/stores/tabs.js';
   import { requestCloseTab } from '$lib/stores/closeGuard.js';
   import { dirtyTabs } from '$lib/stores/game.js';
+  import { openNewGame } from '$lib/stores/newGame.js';
   import { computeLayout } from '$lib/layout.js';
   import { SIDEBAR_W } from '$lib/library/switcher.js';
   import Icon from '$lib/components/Icon.svelte';
@@ -58,13 +59,14 @@
   }
 
   /*
-    §2.1.2 — the button is hidden, and its action is unresolved: it used to
-    create an empty Game Workspace, and those were removed on 4 Sep. Throwing
-    is deliberate. A silent no-op would let the control be unhidden and look
-    broken; this makes the open question loud the moment anyone flips the flag.
+    §2.1.2 — "New Game": a blank draft at the standard starting position,
+    unsaved until Save (`analysis-board-plan.md` Stage 3, agreed 24 Sep,
+    reversing the 4 Sep "no empty Game Workspace" removal this button lost
+    its action to — see `features.js`'s own comment on the flag this
+    unhides).
   */
   function onNewTab() {
-    throw new Error('New Tab Button action is unspecified — see §2.1.2');
+    openNewGame();
   }
 
   function nudge(dir) {

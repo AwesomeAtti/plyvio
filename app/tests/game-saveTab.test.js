@@ -202,3 +202,162 @@ describe('saveTab — real write round trip', () => {
     expect(game.isDirty('t1')).toBe(true);
   });
 });
+
+describe('saveTab’s create branch — a draft tab getting its first real row (Stage 3, "New Game")', () => {
+  it('a blank New Game draft is always dirty, shows the standard start, and has no library marks', async () => {
+    const mods = await freshModules();
+    const { game, tabs } = mods;
+    await setUpRealLibrary(mods);
+    const draftId = game.seedDraftGame();
+    game.ensureGameState('t1', draftId);
+    tabs.activeId.set('t1');
+
+    expect(game.isDirty('t1')).toBe(true);
+    const active = get(game.activeGame);
+    expect(active.plies).toHaveLength(1);
+    expect(active.info.white).toBeNull(); // known(undefined) -- no player set yet
+    expect(active.info.hasRow).toBe(false);
+  });
+
+  it('saving a blank draft inserts a new row, converts the tab, and clears dirty', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData } = mods;
+    await setUpRealLibrary(mods);
+    const draftId = game.seedDraftGame();
+    game.ensureGameState('t1', draftId);
+    tabs.activeId.set('t1');
+
+    const wrote = await game.saveTab('t1');
+    expect(wrote).toBe(true);
+    expect(game.isDirty('t1')).toBe(false);
+
+    const newId = get(game.gameStates).t1.libraryGameId;
+    expect(typeof newId).toBe('number');
+
+    const connection = await library.activeLibraryConnection();
+    const row = await connection.get('select pgn, movetext, fen from games where id = ?', [newId]);
+    expect(row.pgn).not.toBeNull();
+    const { movetext } = await gamesData.readMovetextFor(connection, newId);
+    expect(movetext.trim()).toBe('');
+    expect(row.fen).toBeNull();
+
+    await vi.waitFor(() => {
+      expect(get(library.games).some((g) => g.id === newId)).toBe(true);
+    });
+  });
+
+  it('saving a draft seeded from a pasted PGN carries its moves and header fields into the new row', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData } = mods;
+    await setUpRealLibrary(mods);
+    const draftId = game.seedDraftGame({
+      movetext: '1. e4 e5 2. Nf3',
+      fen: null,
+      fields: { white: 'Pasted White', black: 'Pasted Black', event: 'A Pasted Game' }
+    });
+    game.ensureGameState('t1', draftId);
+    tabs.activeId.set('t1');
+
+    expect(get(game.activeGame).info.white).toBe('Pasted White');
+
+    await game.saveTab('t1');
+    const newId = get(game.gameStates).t1.libraryGameId;
+
+    const connection = await library.activeLibraryConnection();
+    const row = await connection.get('select white, black, event from games where id = ?', [newId]);
+    expect(row).toEqual({ white: 'Pasted White', black: 'Pasted Black', event: 'A Pasted Game' });
+    const { movetext } = await gamesData.readMovetextFor(connection, newId);
+    expect(movetext).toContain('1. e4 e5 2. Nf3');
+  });
+
+  it('saving a draft seeded from a pasted FEN carries its own starting position into the new row', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData } = mods;
+    await setUpRealLibrary(mods);
+    const customFen = '4k3/8/8/8/8/8/8/4K3 w - - 0 1';
+    const draftId = game.seedDraftGame({ fen: customFen });
+    game.ensureGameState('t1', draftId);
+    tabs.activeId.set('t1');
+    expect(get(game.activeGame).plies[0].f).toBe(customFen);
+
+    await game.saveTab('t1');
+    const newId = get(game.gameStates).t1.libraryGameId;
+
+    const connection = await library.activeLibraryConnection();
+    const row = await connection.get('select fen from games where id = ?', [newId]);
+    expect(row.fen).toBe(customFen);
+    const { movetext, fen } = await gamesData.readMovetextFor(connection, newId);
+    expect(fen).toBe(customFen);
+  });
+
+  it('board shapes drawn on a draft before its first save land in the new row’s movetext', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData } = mods;
+    await setUpRealLibrary(mods);
+    const draftId = game.seedDraftGame();
+    game.ensureGameState('t1', draftId);
+    tabs.activeId.set('t1');
+    game.setPlyShapes('t1', 0, [{ orig: 'e4', brush: 'green' }]);
+
+    await game.saveTab('t1');
+    const newId = get(game.gameStates).t1.libraryGameId;
+
+    const connection = await library.activeLibraryConnection();
+    const { movetext } = await gamesData.readMovetextFor(connection, newId);
+    expect(movetext).toContain('%csl');
+  });
+
+  it('replaceTabWithDraft detaches the tab without touching the game it replaces', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    expect(game.isDirty('t1')).toBe(false);
+
+    const connection = await library.activeLibraryConnection();
+    const before = await connection.get('select movetext, pgn from games where id = ?', [gameId]);
+
+    game.replaceTabWithDraft('t1', { movetext: '1. d4 d5' });
+    expect(game.isDirty('t1')).toBe(true);
+    expect(get(game.activeGame).plies[1].s).toBe('d4');
+
+    const after = await connection.get('select movetext, pgn from games where id = ?', [gameId]);
+    expect(after).toEqual(before);
+  });
+});
+
+describe('isPristineDraft — the one case a board paste’s confirm dialog skips', () => {
+  it('is true for a freshly seeded, untouched draft', async () => {
+    const mods = await freshModules();
+    const { game, tabs } = mods;
+    await setUpRealLibrary(mods);
+    const draftId = game.seedDraftGame();
+    game.ensureGameState('t1', draftId);
+    expect(game.isPristineDraft('t1')).toBe(true);
+  });
+
+  it('is false once the draft carries seed content, session shapes, or staged info', async () => {
+    const mods = await freshModules();
+    const { game, tabs } = mods;
+    await setUpRealLibrary(mods);
+
+    const seeded = game.seedDraftGame({ movetext: '1. e4' });
+    game.ensureGameState('t1', seeded);
+    expect(game.isPristineDraft('t1')).toBe(false);
+
+    const blank = game.seedDraftGame();
+    game.ensureGameState('t2', blank);
+    game.setPlyShapes('t2', 0, [{ orig: 'e4', brush: 'green' }]);
+    expect(game.isPristineDraft('t2')).toBe(false);
+  });
+
+  it('is false for a real, library-backed tab', async () => {
+    const mods = await freshModules();
+    const { game, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    game.ensureGameState('t1', sampleGames.GAMES[0].id);
+    expect(game.isPristineDraft('t1')).toBe(false);
+  });
+});

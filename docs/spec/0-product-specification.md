@@ -178,7 +178,7 @@ The Library Tab has no close control, has an intrinsic width determined by its l
 
 ### 2.1.2 New Tab Button
 
-The **New Tab Button** (`+`) is a Tab Bar control. **It is not currently displayed.**
+The **New Tab Button** (`+`) is a Tab Bar control.
 
 The button has one of two positions depending on Tab Strip overflow:
 
@@ -189,15 +189,19 @@ Only one New Tab Button is displayed at any time. It moves; it is not duplicated
 
 The Tab Strip's width budget is computed with the button's presence as a **parameter**, not an assumption. Hidden, the strip reclaims its 36px in the normal state, so tabs reach their preferred width sooner and overflow later (§2.1.3).
 
-**Its action is unresolved.** The button previously created an **empty Game Workspace**. Empty Game Workspaces have been removed (below), so the control has no action to perform and must be given one before it is displayed again.
+**Its action is "New Game"** (agreed and built 24 Sep): a blank Game Workspace at the standard starting position, held only in the tab itself — a **draft** — until the user explicitly saves it. This reverses the button's own earlier removal, below, on different terms: the workspace it opens is never *empty* (it always shows a position and a Game Info card, exactly like any other Game Tab), and it never lingers unsaved-and-forgotten the way the old one did, because Stage 1's save/dirty machinery (§2.3) flags it dirty the moment it exists and the close-time confirmation (§2.3) catches an attempt to discard it.
 
-#### There is no empty Game Workspace
+`Ctrl/⌘ + T` opens one the same way (§2.5) — the New Tab Button's own binding, restored alongside its action.
 
-**Every Game Tab holds a game.** A Game Workspace exists to show a game; one with nothing in it has no content, no title of its own, and nothing for its Sections to report on. The empty variant was a holdover from testing.
+#### A Game Tab holds a game, real or draft
 
-A Game Tab is created by **opening a game from the Library** (§4.4.3).
+A Game Workspace exists to show a game; the empty variant removed 4 Sep — no content, no title of its own, nothing for its Sections to report on — was a testing holdover and stays gone. A Game Tab is created one of three ways:
 
-Opening a game that is already open activates the existing tab rather than creating a second one. Two tabs on one game would carry identical titles, truncated identically at the 220px minimum, and would let the same game's analysis diverge in two places.
+- **opening a game from the Library** (§4.4.3) — opening a game that is already open activates the existing tab rather than creating a second one, since two tabs on one game would carry identical titles, truncated identically at the 220px minimum, and would let the same game's analysis diverge in two places;
+- **the New Tab Button, or `Ctrl/⌘ + T`** — a blank draft, above;
+- **pasting a FEN or a single-game PGN onto the board** (§5.4.1) — a draft seeded with the pasted content, after confirming, unless the active tab is already an untouched draft with nothing to lose.
+
+A draft is a real Game Tab throughout — it has a position, a Game Info card, and a title — the only thing distinguishing it from an opened library game is that saving it inserts a new game rather than updating an existing row.
 
 **The Settings Tab** is created from the Application Menu (§2.2), and there is only ever one (§2.1.1).
 
@@ -367,6 +371,7 @@ The shell defines the following application-level keyboard behavior. Workspaces 
 | Input | Result |
 | --- | --- |
 | `Ctrl/⌘ + W` | Close the active tab; no effect on the Library Tab |
+| `Ctrl/⌘ + T` | Open a new, blank draft Game Tab — the New Tab Button's own action (§2.1.2) |
 | `Ctrl/⌘ + Tab` | Next tab, wrapping, including the Library Tab |
 | `Ctrl/⌘ + Shift + Tab` | Previous tab, wrapping |
 | `Ctrl/⌘ + 1…8` | Activate the nth tab; `1` is always the Library Tab |
@@ -378,7 +383,7 @@ Middle-clicking a tab closes it, except the Library Tab.
 
 **Tab reordering by drag is not provided.** The ordering rules in §2.1.1 — Settings always rightmost, Game Tabs appended — would need reconciling with free reordering first.
 
-**There is no `Ctrl/⌘ + T`.** It created an empty Game Workspace, which no longer exists (§2.1.2). Games are opened from the Library. If the New Tab Button is given a new action, this binding should be reconsidered alongside it.
+`Ctrl/⌘ + T` opens a new draft Game Tab, the same as the New Tab Button (§2.1.2) — restored 24 Sep alongside the button's own new action, replacing the earlier empty-Game-Workspace binding this removed.
 
 Some of these bindings are reserved by the host in some environments. Where a binding cannot reach the application, the corresponding on-screen control remains the primary route; no function is available only by keyboard.
 
@@ -1542,6 +1547,17 @@ The application does not draw its own coordinate labels in any layout — not ov
 File letters are **lowercase** (`a`–`h`) and ranks numeric (`1`–`8`), wherever the application displays a square name.
 
 Because the Evaluation Bar sits to the board's left, coordinates render **inside** the squares. Were coordinates ever placed outside the board on the left, the bar would move to the board's right and every rule here would apply mirrored.
+
+#### Paste target
+
+Pasting (`Ctrl/⌘ + V`) while a Game Workspace tab is active and the target isn't an editable control elsewhere in the shell (a text field, the Add Games Paste tab's own textarea) is read as either a **FEN** or a **single-game PGN**. Anything else — plain text, more than one game — is ignored; a multi-game paste belongs in Add Games (§4.4.5), not on the board.
+
+A recognised paste asks for confirmation before doing anything, with two outcomes:
+
+- **Open in New Tab** (the default) — a new draft Game Tab (§2.1.2), seeded with the pasted position or game.
+- **Replace This Game** — the active tab is detached into its own new draft seeded the same way. The game it replaces, if it was a saved one, is never written to; only the tab's own display changes, exactly as opening a different game in it would.
+
+The confirmation is skipped, and the paste loads straight in, only when the active tab is already an untouched draft (opened via the New Tab Button or `Ctrl/⌘ + T` and not yet touched) — there is nothing there to lose.
 
 #### Evaluation Bar
 
@@ -3000,7 +3016,7 @@ This is a condensed record of what changed in the four source documents before t
 
 These are unresolved items carried forward from the four source documents' own appendices, plus items raised by this merge. They are recorded for the product owner to decide; no resolution is implied by their inclusion here.
 
-1. **The New Tab Button has no action.** It is built, positioned, and hidden, but the empty Game Workspace it used to create no longer exists and it has not been given a replacement action.
+1. ~~The New Tab Button has no action.~~ **Resolved 24 Sep** — see §2.1.2/§2.5: "New Game," a blank unsaved draft, restoring `Ctrl/⌘ + T` alongside it.
 2. **A shared modal/dialog primitive is not yet defined at the shell level.** The Add Games dialog (§4.4.5), the Import report, and Settings' `ConfirmRemove` each follow the same informal pattern (scrim, `role="dialog"`, `aria-modal`, `Esc`-to-dismiss) but there is no single specified shell component behind them. This merge does not attempt to design one.
 3. **An unreadable game's fate during import is unspecified** — rejected, truncated at the illegal move and kept, or imported unvalidated — which in turn leaves the Import report's exact contents open.
 4. **The import cascade guard is untested.** Continuing past an unreadable game is the stated behaviour, but the stop rule for a structural error that could turn one failure into thousands (a starting heuristic of 20 consecutive failures, or >25% of the first 100 games) is unconfirmed.
