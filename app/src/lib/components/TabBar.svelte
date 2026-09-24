@@ -10,6 +10,7 @@
     openGame, closeTab, activate
   } from '$lib/stores/tabs.js';
   import { computeLayout } from '$lib/layout.js';
+  import { SIDEBAR_W } from '$lib/library/switcher.js';
   import Icon from '$lib/components/Icon.svelte';
   import { NewTab, ScrollLeft, ScrollRight, TabList, AppMenuIcon } from '$lib/icons.js';
 
@@ -117,6 +118,7 @@
   <div class="pinned-slot" bind:clientWidth={pinnedW}>
     <Tab
       tab={libraryTab}
+      width={SIDEBAR_W}
       pinned
       active={$activeId === libraryTab.id}
       onselect={activate}

@@ -116,7 +116,7 @@ It provides navigation between open workspaces and contains application-level co
 
 The Tab Bar consists of:
 
-1. **Pinned Tab** — fixed at the left.
+1. **Pinned Tab** — fixed at the left, its width equal to the Sidebar's expanded width (220px, the shared `SIDEBAR_W` token), independent of the Sidebar's own collapsed/expanded state.
 2. **Tab Strip** — occupies the central area and contains the non-pinned tabs.
 3. **Tab Bar Controls** — fixed at the right.
 
