@@ -168,7 +168,7 @@
         title={explorer?.library?.name ?? $t('game.explorer.none')}
         onclick={() => (sourceOpen = !sourceOpen)}
       >
-        {explorer?.library?.name ?? $t('game.explorer.none')}<Icon
+        <span class="lbl">{explorer?.library?.name ?? $t('game.explorer.none')}</span><Icon
           icon={sourceOpen ? SectionCollapse : SectionExpand} size={11} />
       </button>
     {:else if section.source && section.id === 'engine'}
@@ -185,12 +185,12 @@
         title={engineView?.source?.name ?? $t('game.engine.none')}
         onclick={openSource}
       >
-        {engineView?.source?.name ?? $t('game.engine.none')}<Icon
+        <span class="lbl">{engineView?.source?.name ?? $t('game.engine.none')}</span><Icon
           icon={sourceOpen ? SectionCollapse : SectionExpand} size={11} />
       </button>
     {:else if section.source}
       <button class="src" type="button" title={$t('game.sec.sourceHint')}>
-        {$t('game.sec.source')}<Icon icon={SectionExpand} size={11} />
+        <span class="lbl">{$t('game.sec.source')}</span><Icon icon={SectionExpand} size={11} />
       </button>
     {/if}
 
@@ -487,13 +487,19 @@
   }
 
   /* Absorbs truncation on behalf of the title. Sits with the identity because
-     it is read far more often than it is operated. */
+     it is read far more often than it is operated.
+
+     The truncation itself lives on `.lbl`, not here. `text-overflow: ellipsis`
+     does nothing on a flex container's own overflowing content — the browser
+     lays the text out as an anonymous flex item alongside the icon and just
+     lets it overflow, ellipsis or not. `.lbl` is a real block-level box the
+     ellipsis algorithm can act on; `.src` only forwards it `min-width: 0` so
+     it's still free to shrink. Latent since the very first commit, only
+     surfaced 25 Sep once "Stockfish 19 lite" became the first source name
+     long enough to cross the threshold. */
   .src {
     flex: 0 1 auto;
     min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
     font: 10px/1 var(--mono);
     color: var(--muted);
     background: none;
@@ -503,6 +509,13 @@
     display: inline-flex;
     align-items: center;
     gap: 2px;
+  }
+
+  .src .lbl {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .sp { flex: 1; min-width: 8px; }
