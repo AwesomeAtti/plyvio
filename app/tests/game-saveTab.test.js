@@ -555,3 +555,176 @@ describe('moveInputs / playMove — moving a piece on the board (Stage 4, "move 
     expect(movetext.trim()).toBe('1. e4 e5');
   });
 });
+
+describe('promoteVariation / makeMainLine — promoting a variation to the mainline (Stage 6)', () => {
+  it('promotes a variation past its one sibling, one branch point at a time', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?',
+      ['1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Bc5) 3... a6', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(7));
+
+    const bc4 = [0, 0, 0, 0, 1];
+    game.goToPath('t1', bc4);
+    game.promoteVariation('t1', bc4);
+
+    const active = get(game.activeGame);
+    // The cursor followed the promoted line -- same actual position, new path.
+    expect(active.path).toEqual([0, 0, 0, 0, 0]);
+    expect(active.position.s).toBe('Bc4');
+    // The mainline itself now runs through Bc4/Bc5; Bb5/a6 became the variation.
+    expect(active.plies.slice(1).map((p) => p.s)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5']);
+    expect(game.isDirty('t1')).toBe(true);
+  });
+
+  it('promoteVariation stops after one level; makeMainLine cascades all the way to the root', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?',
+      ['1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Bc5 (3... Qe7)) 3... a6', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(7));
+
+    const qe7 = [0, 0, 0, 0, 1, 1];
+    game.goToPath('t1', qe7);
+    game.promoteVariation('t1', qe7);
+
+    // Only the deepest branch point moved: Qe7 is now Bc4's own mainline
+    // reply, but Bc4 itself is still just a variation off Bb5.
+    let active = get(game.activeGame);
+    expect(active.plies.slice(1).map((p) => p.s)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6']);
+    expect(active.path).toEqual([0, 0, 0, 0, 1, 0]);
+    expect(active.position.s).toBe('Qe7');
+
+    game.makeMainLine('t1', active.path);
+    active = get(game.activeGame);
+    expect(active.plies.slice(1).map((p) => p.s)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Qe7']);
+    expect(active.path).toEqual([0, 0, 0, 0, 0, 0]);
+  });
+
+  it('does nothing to a path that is already the mainline all the way up', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?', ['1. e4 e5 2. Nf3', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(4));
+
+    game.promoteVariation('t1', [0, 0, 0]);
+    expect(game.isDirty('t1')).toBe(false);
+    expect(get(game.gameStates).t1.pendingPromotions).toEqual([]);
+  });
+
+  it('re-keys drawn shapes, a held engine result, and a pending move\'s own branch point along with the promoted line', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?',
+      ['1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Bc5) 3... a6', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(7));
+
+    const bc4 = [0, 0, 0, 0, 1];
+    const bc5 = [0, 0, 0, 0, 1, 0];
+
+    // A brand-new move played onto the line just past the variation...
+    game.goToPath('t1', bc5);
+    game.playMove('t1', { from: 'b1', to: 'c3' });
+    // ...a held engine result for the variation's own position (on, then
+    // off, freezes it there -- navigating away, as leaving `bc5` above
+    // already did once, would otherwise drop it; nothing here navigates
+    // again before the promotion)...
+    game.goToPath('t1', bc4);
+    game.setEngineOn('t1', true);
+    game.setEngineOn('t1', false);
+    // ...and shapes drawn on that same position.
+    game.setPlyShapes('t1', bc4, [{ orig: 'e2', brush: 'green' }]);
+
+    game.promoteVariation('t1', bc4);
+
+    const st = get(game.gameStates).t1;
+    // pathKey's own dot-joined convention -- what `shapes` is actually keyed by.
+    expect(Object.keys(st.shapes)).toContain('0.0.0.0.0');
+    expect(st.shapes['0.0.0.0.0']).toEqual([{ orig: 'e2', brush: 'green' }]);
+    expect(st.engineHold.path).toEqual([0, 0, 0, 0, 0]);
+    // NOT remapped: this move was recorded before the promotion, so its
+    // own parentPath stays valid against the tree as it stood THEN --
+    // exactly what replaying it in chronological order (`seq`) needs.
+    expect(st.pendingMoves[0].parentPath).toEqual(bc5);
+
+    const active = get(game.activeGame);
+    expect(active.plies.slice(1).map((p) => p.s)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5', 'Nc3']);
+  });
+
+  it('saving a promoted variation writes the reordered line into the real movetext', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?',
+      ['1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Bc5) 3... a6', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(7));
+
+    const bc4 = [0, 0, 0, 0, 1];
+    game.goToPath('t1', bc4);
+    game.promoteVariation('t1', bc4);
+    expect(game.isDirty('t1')).toBe(true);
+
+    const wrote = await game.saveTab('t1');
+    expect(wrote).toBe(true);
+    expect(game.isDirty('t1')).toBe(false);
+    expect(get(game.gameStates).t1.pendingPromotions).toEqual([]);
+
+    const { movetext } = await gamesData.readMovetextFor(connection, gameId);
+    expect(movetext.trim()).toBe('1. e4 e5 2. Nf3 Nc6 3. Bc4 (3. Bb5 a6) 3... Bc5');
+
+    await vi.waitFor(() => {
+      const active = get(game.activeGame);
+      expect(active.plies.slice(1).map((p) => p.s)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bc4', 'Bc5']);
+    });
+  });
+
+  it('promoting a variation played this session (not yet saved) folds both into the same save', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, gamesData, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?', ['1. e4 e5 2. Nf3', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(4));
+
+    // Branch a brand-new variation off the mainline's own last move this session...
+    game.goToPly('t1', 1); // after 1. e4
+    game.playMove('t1', { from: 'c7', to: 'c5' }); // 1... c5, a new variation
+    const variationPath = get(game.activeGame).path;
+
+    // ...then immediately promote it, before ever saving.
+    game.makeMainLine('t1', variationPath);
+
+    const wrote = await game.saveTab('t1');
+    expect(wrote).toBe(true);
+
+    const { movetext } = await gamesData.readMovetextFor(connection, gameId);
+    expect(movetext.trim()).toBe('1. e4 c5 (1... e5 2. Nf3)');
+  });
+});

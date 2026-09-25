@@ -1954,6 +1954,15 @@ A variation is entered as its **own indented sub-list**, nested inside the row i
 
 **The keyboard follows the line currently on screen, not the mainline.** Stepping forward from a position inside a variation continues that variation; it does not jump back to the mainline's own next move. Chosen to match Lichess (and En Croissant); Chess.com's own behaviour here is inconsistent enough, by its own users' report, not to be worth matching.
 
+#### Promoting a variation
+
+Any move not already on the mainline all the way up to the root opens a **right-click context menu**, offering two commands, matching Lichess and En Croissant exactly (both implement the identical algorithm, read from their own source 25 Sep) rather than ChessBase's or Chess.com's single, always-cascading command:
+
+- **Promote Variation** — moves the line up exactly one branch point. Useful for reordering several variations at the same point without touching the mainline above it.
+- **Make Main Line** — cascades all the way to the root, so the clicked line becomes the game's own actual mainline in one command, whatever it was nested inside.
+
+Promoting reorders the branch point's children (the promoted line moves to the front; everything between the old front and its own old slot shifts back by one to make room) but changes no move, comment or annotation — the position on the board does not move, only its address does. The cursor, drawn shapes and a held Engine Section result all follow the promoted line to its new address, so nothing already on screen appears to jump to a different position. A promotion is staged the same way a played move is (§5.4.1) — visible and navigable immediately, written into the game's own movetext only on save.
+
 ### 5.6.2 Evaluation Timeline
 
 The evaluation across the whole game, and the control that moves through it.

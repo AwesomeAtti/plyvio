@@ -27,7 +27,7 @@
     onenginesettings,
     info = null, onfavourite, oneditinfo, onedittags, dirty = false, onsave,
     plyCount = 1, playing = false,
-    oncollapse, onhide, onselectply, onselectpath,
+    oncollapse, onhide, onselectply, onselectpath, onpromotevariation = null, onmakemainline = null,
     onfirst, onprev, onnext, onlast, onflip, onplay,
     sectionsMenu = false, onmore, ontoggleSection, displacedOut
   } = $props();
@@ -81,6 +81,8 @@
         {tree}
         {path}
         {onselectpath}
+        {onpromotevariation}
+        {onmakemainline}
         {engine}
         {orientation}
         {explorer}

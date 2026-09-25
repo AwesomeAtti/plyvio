@@ -203,6 +203,82 @@ export function appendMoveTree(doc, pendingMoves) {
   return doc;
 }
 
+/**
+ * Promote the node at `path` past one branch point — Stage 6 of
+ * `analysis-board-plan.md`. Genuinely generic over any `{children:[...]}`
+ * -shaped node tree, not just this file's own PGN doc tree
+ * (`{data, children}`): the algorithm only ever touches `.children`
+ * arrays, so it works unchanged against `game/plies.js`'s separate, UI-
+ * facing `{ply, children}` tree too — `stores/game.js` runs it against
+ * THAT tree the moment the user promotes something, and `applyPromotions`
+ * below runs it again, from scratch, against the real document at save
+ * time. This is why it lives here rather than in `game/plies.js`, which
+ * already depends on this module (`readMovetext`/`resolveMovetext`) — the
+ * reverse import would cycle.
+ *
+ * Matches Lichess's `tree.ts` `promoteAt` and En Croissant's
+ * `promoteVariation`/`promoteToMainline` (both read directly, 25 Sep, not
+ * guessed at): walk from `path`'s DEEPEST non-root index up toward the
+ * root, and at each one, move that child to the front of its parent's
+ * `children` — everything between the old front and the promoted child's
+ * old slot shifts right by one to make room, nothing else moves.
+ * `toMainline: false` (Lichess's "Promote Variation") stops after the
+ * first such swap; `true` ("Make Main Line") keeps going to the root, so a
+ * variation nested inside another variation becomes the game's own actual
+ * mainline in one call rather than needing one call per level.
+ *
+ * Mutates `root` in place. Returns the swaps actually made, deepest first,
+ * as `{depth, from}` — `from` is the promoted child's OLD index at that
+ * depth, which is exactly what every OTHER path-addressed piece of state
+ * (the cursor, drawn shapes, still-pending moves, a held engine line) needs
+ * to re-key itself against: a path sharing `path.slice(0, depth)` has its
+ * OWN segment at `depth` remapped the same way this swap just remapped the
+ * promoted line's (`stores/game.js`'s `promote`/`remapPath`) — everything
+ * shallower or deeper than `depth` is untouched by a swap AT `depth`, so
+ * the swaps can be applied to another path in any order.
+ *
+ * @param {object} root a `{children}`-shaped tree node — `doc.moves` for a
+ *   PGN doc, or a `game/plies.js` tree's own root.
+ * @param {number[]} path to the node being promoted.
+ * @param {{toMainline?: boolean}} [options]
+ * @returns {{depth: number, from: number}[]}
+ */
+export function promoteAt(root, path, { toMainline = false } = {}) {
+  const swaps = [];
+  for (let depth = (path?.length ?? 0) - 1; depth >= 0; depth--) {
+    const from = path[depth];
+    if (from === 0) continue; // already first at this depth -- nothing to promote past
+    let parent = root;
+    for (let i = 0; i < depth; i++) parent = parent?.children?.[path[i]];
+    if (!parent?.children?.[from]) break;
+    const [node] = parent.children.splice(from, 1);
+    parent.children.unshift(node);
+    swaps.push({ depth, from });
+    if (!toMainline) break;
+  }
+  return swaps;
+}
+
+/**
+ * Fold this tab's promotions into the real document at save time, in the
+ * order they happened — each entry's `path` was valid against the document
+ * as it stood right after every earlier entry (and every pending move,
+ * folded in first by `appendMoveTree`) had already been applied, so
+ * replaying them in order reproduces exactly what the tab's own live tree
+ * looked like. Mutates `doc` in place and returns it, the same convention
+ * `appendMoveTree`/`applyShapesToMovetext` use.
+ *
+ * @param {object} doc from `readMovetext`, with `pendingMoves` already
+ *   folded in via `appendMoveTree` if there were any.
+ * @param {{path: number[], toMainline: boolean}[]} pendingPromotions in
+ *   the order they were made.
+ */
+export function applyPromotions(doc, pendingPromotions) {
+  if (!pendingPromotions?.length) return doc;
+  for (const { path, toMainline } of pendingPromotions) promoteAt(doc.moves, path, { toMainline });
+  return doc;
+}
+
 /** Main-line length in plies — the value `games.ply_count` is to hold. No board needed. */
 export const plyCount = (doc) => {
   let count = 0;

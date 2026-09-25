@@ -1,8 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
   MovetextError,
+  applyPromotions,
   appendMoveTree,
   plyCount,
+  promoteAt,
   readMovetext,
   resolveMovetext,
   writeMovetext,
@@ -299,6 +301,84 @@ describe('resolving positions', () => {
  * recorded `parentPath` rather than always the mainline's last node (Stage
  * 5 generalised this from Stage 4's mainline-only version).
  */
+describe('promoteAt', () => {
+  it('does nothing when the path is already the mainline', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 Nc6');
+    const before = writeMovetext(doc, { wrap: null });
+    const swaps = promoteAt(doc.moves, [0, 0, 0, 0]);
+    expect(swaps).toEqual([]);
+    expect(writeMovetext(doc, { wrap: null })).toBe(before);
+  });
+
+  it('promotes a variation past its one sibling (Promote Variation)', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Bc5) 3... a6');
+    // e4=0 e5=0 Nf3=0 Nc6=0 Bc4=1 (sibling of Bb5, both children of Nc6)
+    const swaps = promoteAt(doc.moves, [0, 0, 0, 0, 1]);
+    expect(swaps).toEqual([{ depth: 4, from: 1 }]);
+    expect(writeMovetext(doc, { wrap: null }))
+      .toBe('1. e4 e5 2. Nf3 Nc6 3. Bc4 (3. Bb5 a6) 3... Bc5');
+  });
+
+  it('shifts every sibling between the old front and the promoted slot by one', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 (2. f4) (2. Nc3) Nc6');
+    // e4=0, then e5's children: Nf3=0 (main), f4=1, Nc3=2
+    const swaps = promoteAt(doc.moves, [0, 0, 2]);
+    expect(swaps).toEqual([{ depth: 2, from: 2 }]);
+    expect(writeMovetext(doc, { wrap: null }))
+      .toBe('1. e4 e5 2. Nc3 (2. Nf3 Nc6) (2. f4)');
+  });
+
+  it('cascades every level to the root with toMainline (Make Main Line)', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Bc5 (3... Qe7)) 3... a6');
+    // e4=0 e5=0 Nf3=0 Nc6=0, Bc4=1 (sibling of Bb5), Qe7=1 (sibling of Bc5, under Bc4)
+    const swaps = promoteAt(doc.moves, [0, 0, 0, 0, 1, 1], { toMainline: true });
+    expect(swaps).toEqual([
+      { depth: 5, from: 1 },
+      { depth: 4, from: 1 },
+    ]);
+    expect(writeMovetext(doc, { wrap: null }))
+      .toBe('1. e4 e5 2. Nf3 Nc6 3. Bc4 (3. Bb5 a6) 3... Qe7 (3... Bc5)');
+  });
+
+  it('stops after one level even when a shallower index is also non-mainline', () => {
+    // Same starting position as the cascade test, but toMainline defaults to
+    // false: only the deepest branch point (Qe7 vs. Bc5) should move.
+    const doc = readMovetext('1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Bc5 (3... Qe7)) 3... a6');
+    const swaps = promoteAt(doc.moves, [0, 0, 0, 0, 1, 1]);
+    expect(swaps).toEqual([{ depth: 5, from: 1 }]);
+    expect(writeMovetext(doc, { wrap: null }))
+      .toBe('1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Qe7 (3... Bc5)) 3... a6');
+  });
+});
+
+describe('applyPromotions', () => {
+  it('does nothing when handed no promotions', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3');
+    const before = writeMovetext(doc, { wrap: null });
+    applyPromotions(doc, []);
+    expect(writeMovetext(doc, { wrap: null })).toBe(before);
+  });
+
+  it('folds a single promotion into a real document', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Bc5) 3... a6');
+    applyPromotions(doc, [{ path: [0, 0, 0, 0, 1], toMainline: false }]);
+    expect(writeMovetext(doc, { wrap: null }))
+      .toBe('1. e4 e5 2. Nf3 Nc6 3. Bc4 (3. Bb5 a6) 3... Bc5');
+  });
+
+  it('replays several promotions in order, each against the result of the last', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 (2. f4) (2. Nc3) Nc6');
+    applyPromotions(doc, [
+      // First promote Nc3 to the front: [Nf3, f4, Nc3] -> [Nc3, Nf3, f4].
+      { path: [0, 0, 2], toMainline: false },
+      // Then, against THAT order, promote f4 (now at index 2) to the front.
+      { path: [0, 0, 2], toMainline: false },
+    ]);
+    expect(writeMovetext(doc, { wrap: null }))
+      .toBe('1. e4 e5 2. f4 (2. Nc3) (2. Nf3 Nc6)');
+  });
+});
+
 describe('appendMoveTree', () => {
   it('appends onto a blank document', () => {
     const doc = appendMoveTree(readMovetext(''), [

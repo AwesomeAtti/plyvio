@@ -34,7 +34,8 @@ import {
   gameStates, activeGame, gameById, ensureGameState, resetGameState, composition,
   goToPly, nextPly, prevPly, firstPly, lastPly, atLastPly,
   flipBoard, toggleCollapsed, toggleHidden, toggleEvalBar,
-  setEngineOn, setEngineSource, setEngineLines, setEngineDepth, engineContentHeight
+  setEngineOn, setEngineSource, setEngineLines, setEngineDepth, engineContentHeight,
+  promoteVariation, makeMainLine
 } from '../src/lib/stores/game.js';
 import { games as libraryGames } from '../src/lib/stores/library.js';
 import { activeLibraryId } from '../src/lib/stores/libraries.js';
@@ -1220,6 +1221,100 @@ describe('§5.4.2 Move List', () => {
     await tick();
     const on = container.querySelector('.ml .mv.on');
     expect(on.textContent.trim()).toBe(get(activeGame).position.s);
+  });
+
+  /* ------------------- promoting a variation (Stage 6) ------------------- */
+
+  // Not hardcoded to any particular SAN or opening: the corpus data has real
+  // variations (Stage 5's own test above already leans on that), but which
+  // moves they are is an implementation detail of the sample data, not of
+  // Stage 6 -- these tests find whichever variation move is actually there.
+  const firstVariationMove = (container) =>
+    [...container.querySelectorAll('.ml .var .mv')].find((b) => b.textContent.trim() !== '');
+  const firstMainlineMove = (container) =>
+    [...container.querySelectorAll('.ml .mv')].find((b) => !b.closest('.var') && b.textContent.trim() !== '');
+  // Mainline-only, in document order -- `.ml .mv` alone also picks up moves
+  // nested inside `.var` (interleaved with the mainline in DOM order) and
+  // the empty placeholder half of a solo row, neither of which belongs here.
+  const mainlineMoves = (container) =>
+    [...container.querySelectorAll('.ml .mv')]
+      .filter((b) => !b.closest('.var') && b.textContent.trim() !== '')
+      .map((b) => b.textContent.trim());
+  const depthOf = (btn) => btn.dataset.path.split('.').length;
+
+  it('right-clicking a variation move opens a menu with both promote commands', async () => {
+    const { container } = await openGameTab();
+    const target = firstVariationMove(container);
+    expect(target).toBeTruthy();
+
+    await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
+    await tick();
+
+    const items = [...container.querySelectorAll('.ctx [role="menuitem"]')].map((b) => b.textContent.trim());
+    expect(items).toEqual([STRINGS.en['game.moves.promoteVariation'], STRINGS.en['game.moves.makeMainLine']]);
+  });
+
+  it('does not open the menu for a move already on the mainline', async () => {
+    const { container } = await openGameTab();
+    const target = firstMainlineMove(container);
+    await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
+    await tick();
+    expect(container.querySelector('.ctx')).toBeFalsy();
+  });
+
+  it('Escape and clicking the scrim both dismiss the menu without acting', async () => {
+    const { container } = await openGameTab();
+    const target = firstVariationMove(container);
+
+    await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
+    await tick();
+    expect(container.querySelector('.ctx')).toBeTruthy();
+    await fireEvent.keyDown(window, { key: 'Escape' });
+    await tick();
+    expect(container.querySelector('.ctx')).toBeFalsy();
+    expect(get(activeGame).dirty).toBe(false);
+
+    await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
+    await tick();
+    await fireEvent.pointerDown(container.querySelector('.ctx-scrim'));
+    await tick();
+    expect(container.querySelector('.ctx')).toBeFalsy();
+    expect(get(activeGame).dirty).toBe(false);
+  });
+
+  it('"Promote Variation" moves the clicked line onto the mainline and closes the menu', async () => {
+    const { container } = await openGameTab();
+    const target = firstVariationMove(container);
+    const san = target.textContent.trim();
+    const depth = depthOf(target);
+
+    await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
+    await tick();
+    const [promote] = container.querySelectorAll('.ctx [role="menuitem"]');
+    await fireEvent.click(promote);
+    await tick();
+
+    expect(container.querySelector('.ctx')).toBeFalsy();
+    expect(get(activeGame).dirty).toBe(true);
+    // The promoted move now sits at its own depth on the actual mainline.
+    expect(mainlineMoves(container)[depth - 1]).toBe(san);
+  });
+
+  it('"Make Main Line" is available from the same menu', async () => {
+    const { container } = await openGameTab();
+    const target = firstVariationMove(container);
+    const san = target.textContent.trim();
+    const depth = depthOf(target);
+
+    await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
+    await tick();
+    const [, makeMain] = container.querySelectorAll('.ctx [role="menuitem"]');
+    await fireEvent.click(makeMain);
+    await tick();
+
+    expect(container.querySelector('.ctx')).toBeFalsy();
+    expect(get(activeGame).dirty).toBe(true);
+    expect(mainlineMoves(container)[depth - 1]).toBe(san);
   });
 });
 

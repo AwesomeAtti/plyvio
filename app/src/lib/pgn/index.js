@@ -9,6 +9,8 @@ export {
   resolveMovetext,
   plyCount,
   appendMoveTree,
+  promoteAt,
+  applyPromotions,
   MovetextError,
 } from './movetext.js';
 
