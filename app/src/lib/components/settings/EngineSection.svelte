@@ -67,7 +67,22 @@
         ><Icon icon={expanded === e.id ? SectionExpand : SubmenuArrow} size={15} /></button>
       </div>
 
-      {#if expanded === e.id}
+      {#if expanded === e.id && e.builtin}
+        <!-- The engine bundled with the app (Stage 1, engine/builtin.js): its
+             settings are fixed, so they are shown the way Version always is,
+             as values rather than controls, and it can't be removed (Q7).
+             Its switch above still works. Interim, until Stage 2. -->
+        <div class="exp">
+          <div class="er"><span class="k">{$t('field.name')}</span>
+            <span class="v">{e.name}</span></div>
+          <div class="er"><span class="k">{$t('field.version')}</span>
+            <span class="v">{e.version ?? '—'}</span></div>
+          <div class="er"><span class="k">{$t('field.threads')}</span>
+            <span class="v">{e.threads}</span></div>
+          <div class="er"><span class="k">{$t('field.hash')}</span>
+            <span class="v">{formatHash(e.hashMb)}</span></div>
+        </div>
+      {:else if expanded === e.id}
         <div class="exp">
           <div class="er">
             <span class="k"><label for="engname-{e.id}">{$t('field.name')}</label></span>

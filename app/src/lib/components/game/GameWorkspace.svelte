@@ -146,7 +146,7 @@
       sections={composition(g.state, {
         info: infoHeight(g.info),
         explorer: explorerContentHeight(g.explorer.rows),
-        engine: engineContentHeight(g.engineView.lines)
+        engine: engineContentHeight(g.engineView.lines, g.engineView)
       })}
       plies={g.plies}
       engine={g.engine}

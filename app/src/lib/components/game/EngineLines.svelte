@@ -56,6 +56,15 @@
        that ended in mate or stalemate has no move to search. Saying so beats a
        toggle reading as running over an empty body. -->
   <div class="quiet">{$t('game.engine.noMoves')}</div>
+{:else if running && !lines.length}
+  <!-- Running, and the engine hasn't reported a line for this position yet:
+       a moment on first start while it loads, a few milliseconds after each
+       move. Held steady rather than drawn: an empty body at the height of the
+       chosen line count (`engineContentHeight`), so stepping through moves
+       neither flashes the Off message under a switch reading on nor makes
+       the Section jump. Added 25 Sep with the real engine (Stage 1); not a
+       state §5.6.4 lists yet. -->
+  <div class="body" aria-busy="true"></div>
 {:else if !lines.length}
   <!-- EN-01. Off, and nothing has run here. The body says what the toggle does
        rather than sitting empty. -->

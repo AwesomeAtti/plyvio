@@ -77,10 +77,16 @@ export const engineLabel = (e) => [e?.name, e?.version].filter(Boolean).join(' '
  * The same rule the Explorer applies to libraries — `indexed && enabled`
  * there, `ready && enabled` here — so one switch in Settings governs whether an
  * object is offered to the workspace at all.
+ *
+ * The built-in engine (`engine/builtin.js`) is offered FIRST wherever it sits
+ * in the list, so a tab that has never picked an engine gets the one that
+ * really runs. A rule rather than an accident of order: desktop appends it
+ * after `config.db`'s rows. Everything else keeps Settings' order.
  */
 export const engineSources = (engines = []) =>
   (engines ?? [])
     .filter((e) => e.status === 'ready' && e.enabled)
+    .sort((a, b) => Number(!!b.builtin) - Number(!!a.builtin))
     .map((e) => ({ id: e.id, name: engineLabel(e), protocol: e.protocol ?? 'UCI' }));
 
 /**

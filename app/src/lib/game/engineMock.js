@@ -1,10 +1,12 @@
 /**
  * Mock analysis for the Engine Section.
  *
- * THE PROTOTYPE RUNS NO ENGINE. There is no UCI process here, no `go depth N`,
- * and nothing in this file talks to a binary: the Section was built against
- * mock static data by agreement, so that every state the wireframe draws is
- * reachable and testable before a real engine is wired in.
+ * FOR THE MOCK ENGINES ONLY. Since Stage 1 of the live-engine plan the
+ * built-in engine really searches (`engine/`, `stores/game.js`'s
+ * `engineAnalysis`); every other row in Settings → Engines is still
+ * simulated, and choosing one gets its lines from here. There is no UCI
+ * process here, no `go depth N`, and nothing in this file talks to a binary.
+ * It goes when Stage 3 gives desktop engines a real transport.
  *
  * IT IS SHAPED LIKE A SEARCH RESULT — one entry per principal variation, ranked
  * best first, each carrying a score, the depth reached and the line itself — so

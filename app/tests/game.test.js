@@ -16,6 +16,7 @@ import {
 import { GAMES } from '../src/lib/mock-data/sample-games.js';
 import { pliesFor, pliesOf, treeOf, readGame, engineFor } from '../src/lib/game/plies.js';
 import MoveList from '../src/lib/components/game/MoveList.svelte';
+import EngineLines from '../src/lib/components/game/EngineLines.svelte';
 import { movetextFromRow } from '../src/lib/data/games.js';
 import {
   trackX, plyAtX, boundaryY, evaluatedRuns, areaPath, regionsOf, moveNumberOf
@@ -35,8 +36,12 @@ import {
   goToPly, nextPly, prevPly, firstPly, lastPly, atLastPly,
   flipBoard, toggleCollapsed, toggleHidden, toggleEvalBar,
   setEngineOn, setEngineSource, setEngineLines, setEngineDepth, engineContentHeight,
-  promoteVariation, makeMainLine
+  promoteVariation, makeMainLine,
+  seedDraftGame, engineAnalysis, setEngineTransport, playMove
 } from '../src/lib/stores/game.js';
+import { createFakeEngine, settle } from './helpers/fakeEngine.js';
+import { setEngineEnabled } from '../src/lib/stores/settings.js';
+import { BUILTIN_ENGINE_ID } from '$lib/engine/builtin.js';
 import { games as libraryGames } from '../src/lib/stores/library.js';
 import { activeLibraryId } from '../src/lib/stores/libraries.js';
 
@@ -951,13 +956,22 @@ describe('Engine Section', () => {
   */
 
   /* `activeGame` reports the ACTIVE tab, so a store-level test has to be in
-     one rather than merely have state for one. */
+     one rather than merely have state for one.
+
+     These tests are about the Section's own behaviour, so they pick a MOCK
+     engine (`engine-1`): its lines come back at once and are deterministic.
+     The built-in engine, which really searches, is the next describe block.
+     No test here should ever reach a real Worker, so the app's engine talks
+     to a scripted one throughout. */
   const openEngineTab = (ply = 6) => {
     resetGameState();
     ensureGameState('e1', 'g1');
     activeId.set('e1');
     goToPly('e1', ply);
+    setEngineSource('e1', 'engine-1');
   };
+  beforeEach(() => { setEngineTransport(createFakeEngine().createTransport); });
+  afterEach(() => { resetGameState(); setEngineTransport(); });
 
   const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
   const MATED = '7k/5QK1/8/8/8/8/8/8 b - - 0 1';          // black is mated
@@ -1052,6 +1066,7 @@ describe('Engine Section', () => {
 
   it('Q2 \u2014 cannot run without an engine selected', () => {
     openEngineTab(0);
+    setEngineSource('e1', null);                             // follow Settings
     setEngineOn('e1', true);
     expect(get(activeGame).engineView.running).toBe(true);   // one is offered by default
 
@@ -1115,6 +1130,215 @@ describe('Engine Section', () => {
     const v = get(activeGame).engineView;
     expect(v.depth).toBe(30);                            // the limit, in the menu
     expect(v.lines.every((l) => l.depth === 30)).toBe(true);   // reached, per row
+  });
+});
+
+/* ================= the Engine Section — the built-in engine ============== */
+
+describe('Engine Section — the built-in engine (Stage 1)', () => {
+  /*
+    The bundled Stockfish WASM engine, driven through the store exactly as the
+    Section drives it. The engine itself is scripted (`helpers/fakeEngine.js`)
+    and says only what the real one said for the same position
+    (`fixtures/stockfish-uci.json`); `engine-real.test.js` runs the real one.
+  */
+  const FIXTURE = JSON.parse(readSrc('./fixtures/stockfish-uci.json'));
+  const CASE = Object.fromEntries(FIXTURE.cases.map((c) => [c.name, c]));
+  const BLACK = CASE['black-to-move-multipv2'];     // 1. e4 e5 2. Nf3, Black to move
+  const START = CASE['startpos-multipv3'];
+  const infos = (c) => c.output.filter((l) => l.startsWith('info'));
+  const bestmove = (c) => c.output.at(-1);
+
+  let fake;
+  beforeEach(() => {
+    fake = createFakeEngine();
+    setEngineTransport(fake.createTransport);
+  });
+  afterEach(() => {
+    resetGameState();                  // no tab asking for a search…
+    setEngineEnabled(BUILTIN_ENGINE_ID, true);
+    setEngineTransport();              // …before the real transport is back
+  });
+
+  /** A tab on the fixture's position, the Section set to the fixture's settings. */
+  const openAt = (c, tabId = 'w1') => {
+    ensureGameState(tabId, seedDraftGame({ fen: c.fen }));
+    activeId.set(tabId);
+    setEngineLines(tabId, c.multipv);
+    setEngineDepth(tabId, c.depth);
+  };
+  const view = () => get(activeGame).engineView;
+
+  it('is the default engine, and the first the picker offers', () => {
+    openAt(BLACK);
+    expect(view().source.id).toBe(BUILTIN_ENGINE_ID);
+    expect(view().source.name).toBe('Stockfish 19 lite');
+    expect(view().sources[0].id).toBe(BUILTIN_ENGINE_ID);
+    // The mock rows are still offered after it, unchanged.
+    expect(view().sources.map((s) => s.id)).toContain('engine-1');
+  });
+
+  it('searches the position on the board, with the tab’s settings, only once switched on', async () => {
+    openAt(BLACK);
+    await settle();
+    expect(fake.starts).toBe(0);                    // nothing loads until it is wanted
+
+    setEngineOn('w1', true);
+    await settle();
+    expect(fake.sent).toEqual([
+      'uci', 'setoption name Hash value 32', 'isready',
+      'setoption name MultiPV value 2', `position fen ${BLACK.fen}`, 'go depth 12'
+    ]);
+    // Running, and nothing to show yet: no lines are invented meanwhile.
+    expect(view().running).toBe(true);
+    expect(view().lines).toEqual([]);
+  });
+
+  it('shows the engine’s real lines, White-relative, and the Bar can read the top one', async () => {
+    openAt(BLACK);
+    setEngineOn('w1', true);
+    await settle();
+    fake.emit(infos(BLACK), bestmove(BLACK));
+    const v = view();
+    expect(v.lines.map((l) => l.rank)).toEqual([1, 2]);
+    expect(v.lines.map((l) => l.e)).toEqual([27, 34]);
+    expect(v.lines[0].pv.slice(0, 3)).toEqual(['Nf6', 'Nxe5', 'd6']);
+    expect(v.lines.every((l) => l.depth === 12)).toBe(true);
+    expect(get(engineAnalysis).w1.status).toBe('done');
+    // The Section is sized from the rows it really has.
+    expect(engineContentHeight(v.lines)).toBe(84);
+  });
+
+  it('holds steady while a search has no line yet: no Off message, no drop in height', async () => {
+    openAt(BLACK);
+    setEngineOn('w1', true);
+    await settle();
+    const v = view();
+    expect(v.running).toBe(true);
+    expect(v.lines).toEqual([]);
+    // The height of the two lines asked for, not the floor.
+    expect(engineContentHeight(v.lines, v)).toBe(84);
+    expect(engineContentHeight(v.lines)).toBe(60);            // without the view: unchanged
+
+    const { container } = render(EngineLines, {
+      props: { lines: v.lines, running: true, hasEngine: true, hasMoves: true }
+    });
+    expect(container.textContent).not.toContain('Off');
+    expect(container.querySelector('.body[aria-busy="true"]')).toBeTruthy();
+    // Off, with nothing computed, still says so.
+    cleanup();
+    const off = render(EngineLines, { props: { lines: [], running: false } });
+    expect(off.container.textContent).toContain('Off');
+  });
+
+  it('Q8 — switching off stops the engine and keeps exactly the rows on screen', async () => {
+    openAt(BLACK);
+    setEngineOn('w1', true);
+    await settle();
+    fake.emit(infos(BLACK).slice(0, 8));
+    const live = view().lines;
+    expect(live.length).toBeGreaterThan(0);
+    fake.take();
+
+    setEngineOn('w1', false);
+    expect(fake.take()).toEqual(['stop']);
+    // Anything the engine says on its way out changes nothing on screen.
+    fake.emit(infos(BLACK).slice(8), bestmove(BLACK));
+    expect(view().running).toBe(false);
+    expect(view().lines).toEqual(live);
+    // A setting changed afterwards doesn't rewrite a stopped result.
+    setEngineLines('w1', 3);
+    expect(view().lines).toEqual(live);
+  });
+
+  it('leaving the position clears the lines and searches the new one, never mixing them', async () => {
+    openAt(BLACK);
+    setEngineOn('w1', true);
+    await settle();
+    fake.emit(infos(BLACK).slice(0, 8));
+    fake.take();
+
+    playMove('w1', { from: 'g8', to: 'f6' });
+    const fen = get(activeGame).position.f;
+    expect(view().lines).toEqual([]);
+    expect(fake.take()).toEqual(['stop']);             // waits for the old bestmove
+    fake.emit(infos(BLACK).slice(8));                  // the old search, still talking
+    expect(view().lines).toEqual([]);
+    fake.emit(bestmove(BLACK));
+    expect(fake.take()).toEqual([`position fen ${fen}`, 'go depth 12']);
+  });
+
+  it('restarts the search when the line count or the depth limit changes', async () => {
+    openAt(BLACK);
+    setEngineOn('w1', true);
+    await settle();
+    fake.take();
+    setEngineLines('w1', 3);
+    expect(fake.take()).toEqual(['stop']);
+    fake.emit('bestmove g8f6');
+    expect(fake.take()).toEqual([
+      'setoption name MultiPV value 3', `position fen ${BLACK.fen}`, 'go depth 12'
+    ]);
+    setEngineDepth('w1', 20);
+    fake.emit('bestmove g8f6');                         // (the search above, ending)
+    fake.take();
+    expect(get(engineAnalysis).w1.key).toContain('|3|20');
+  });
+
+  it('only the active tab searches', async () => {
+    openAt(BLACK, 'w1');
+    setEngineOn('w1', true);
+    await settle();
+    fake.take();
+
+    openAt(START, 'w2');                                // a second tab, its Section off
+    expect(fake.take()).toEqual(['stop']);
+    setEngineOn('w2', true);
+    fake.emit('bestmove g8f6');
+    expect(fake.take()).toEqual([
+      'setoption name MultiPV value 3', `position fen ${START.fen}`, 'go depth 12'
+    ]);
+
+    activeId.set('w1');                                 // back to the first tab
+    expect(fake.take()).toEqual(['stop']);
+    fake.emit('bestmove e2e4');
+    expect(fake.take()).toEqual([
+      'setoption name MultiPV value 2', `position fen ${BLACK.fen}`, 'go depth 12'
+    ]);
+
+    activeId.set('library');                            // no game on screen: no search
+    expect(fake.take()).toEqual(['stop']);
+    fake.emit('bestmove g8f6');
+    expect(fake.take()).toEqual([]);
+  });
+
+  it('turned off in Settings, it stops and the Section falls back to the next engine', async () => {
+    openAt(BLACK);
+    setEngineOn('w1', true);
+    await settle();
+    fake.take();
+    setEngineEnabled(BUILTIN_ENGINE_ID, false);
+    expect(fake.take()).toEqual(['stop']);
+    expect(view().sources.map((s) => s.id)).not.toContain(BUILTIN_ENGINE_ID);
+    expect(view().source.id).toBe('engine-1');
+  });
+
+  it('a mock engine still gives mock lines, and never wakes the real one', async () => {
+    openAt(BLACK);
+    setEngineSource('w1', 'engine-1');
+    setEngineOn('w1', true);
+    await settle();
+    expect(fake.starts).toBe(0);
+    expect(view().lines).toEqual(analyse(BLACK.fen, { engineId: 'engine-1', lines: 2, depth: 12 }));
+  });
+
+  it('asks nothing of the engine where the game has ended', async () => {
+    ensureGameState('w3', seedDraftGame({ fen: '7k/6Q1/6K1/8/8/8/8/8 b - - 0 1' }));
+    activeId.set('w3');
+    setEngineOn('w3', true);
+    await settle();
+    expect(fake.starts).toBe(0);
+    expect(view().hasMoves).toBe(false);
   });
 });
 

@@ -13,6 +13,9 @@ import {
   ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH
 } from '$lib/game/engine.js';
 import { analyse, hasLegalMoves } from '$lib/game/engineMock.js';
+import { createEngineSession } from '$lib/engine/session.js';
+import { createWorkerTransport } from '$lib/engine/workerTransport.js';
+import { isBuiltinEngine, builtinEngineUrls } from '$lib/engine/builtin.js';
 import { objects } from './settings.js';
 import {
   games as libraryGames, tags as libraryTags, collections as libraryCollections,
@@ -623,6 +626,111 @@ function baseRecordFor(st) {
   return row ?? game;
 }
 
+/* ---------------------- the Engine Section, live (Stage 1) ---------------- */
+
+/**
+ * The engine the Section uses for a tab: the one it picked, or else the
+ * first Settings offers (`engineSources` puts the built-in engine first).
+ */
+function engineSourceFor(st, engines) {
+  const list = engineSources(engines ?? []);
+  return list.find((e) => e.id === st?.engineId) ?? list[0] ?? null;
+}
+
+/**
+ * What one search is for: the engine, the position (by PATH as well as
+ * FEN — Q8 treats a round trip back to a position as a new visit, and a
+ * transposition reached by another path as another position) and the two
+ * settings. A result carrying a different key is not about what's on the
+ * board now, and is never shown.
+ */
+const engineKeyFor = (st, sourceId, fen) =>
+  `${sourceId}|${pathKey(st.path ?? [])}|${fen}|${st.engineLines}|${st.engineDepth}`;
+
+/**
+ * The live engine's results, per TAB — the same keyed-per-tab shape as
+ * `explorerStats`: `{ key, status, rows }`, with `status` one of
+ * `searching`, `done` or `error`. Only the built-in engine writes here; a
+ * mock engine's lines are still computed on the spot by `engineMock.js`.
+ */
+export const engineAnalysis = writable({});
+
+/*
+  One engine for the app (`engine/session.js`), created the first time a
+  search is wanted. `setEngineTransport` swaps what it talks to — the tests'
+  scripted engine, or the real one under Node — and drops any session
+  already running.
+*/
+const workerTransport = (handlers) => {
+  const { script, wasm } = builtinEngineUrls();
+  return createWorkerTransport(script, wasm, handlers);
+};
+let engineTransport = workerTransport;
+let engine = null;
+const engineSession = () => (engine ??= createEngineSession({ createTransport: engineTransport }));
+
+export function setEngineTransport(createTransport = workerTransport) {
+  engine?.dispose();
+  engine = null;
+  lastEngineRequest = null;
+  engineTransport = createTransport;
+}
+
+/**
+ * The search the app wants right now, or `null` for none: the ACTIVE tab's
+ * position, when its Section is on and its engine is the built-in one, and
+ * the position has a move to search. Only the active tab searches; switching
+ * tabs asks for the new tab's position, and a tab whose Section is off, a
+ * finished game, the Library or Settings ask for nothing.
+ */
+const engineRequest = derived(
+  [gameStates, activeId, objects, realGames],
+  ([$s, $id, $objects]) => {
+    const st = $s[$id];
+    if (!st?.engineOn) return null;
+    const source = engineSourceFor(st, $objects?.engines);
+    if (!source || !isBuiltinEngine(source.id)) return null;
+    const fen = currentNode(st, mergedTreeForState(st)).ply?.f;
+    if (!fen || !hasLegalMoves(fen)) return null;
+    return {
+      tabId: $id,
+      key: engineKeyFor(st, source.id, fen),
+      fen,
+      lines: st.engineLines,
+      depth: st.engineDepth
+    };
+  }
+);
+
+/*
+  The one place the engine is told what to do. Event-driven: every change a
+  search depends on — the position, the tab, the switch, the two settings,
+  the engine picked, Settings turning an engine off — already changes one of
+  `engineRequest`'s inputs, so no caller has to remember to ask.
+*/
+let lastEngineRequest = null;
+engineRequest.subscribe((req) => {
+  const id = req ? `${req.tabId}|${req.key}` : null;
+  if (id === lastEngineRequest) return;
+  lastEngineRequest = id;
+  if (!req) {
+    engine?.stop();
+    return;
+  }
+  const { tabId, key } = req;
+  engineAnalysis.update((s) => ({ ...s, [tabId]: { key, status: 'searching', rows: [] } }));
+  engineSession().search(req, ({ status, rows }) => {
+    engineAnalysis.update((s) =>
+      s[tabId]?.key === key ? { ...s, [tabId]: { key, status, rows } } : s
+    );
+  });
+});
+
+/** The built-in engine's rows for a tab's current position, or `[]`. */
+function liveEngineRows(entry, st, sourceId, fen) {
+  return entry && fen && entry.key === engineKeyFor(st, sourceId, fen) ? entry.rows : [];
+}
+
 /**
  * The game and ply shown in the active tab.
  *
@@ -632,9 +740,9 @@ function baseRecordFor(st) {
  */
 export const activeGame = derived(
   [gameStates, activeId, objects, libraryGames, libraryTags, libraryCollections,
-    realGames, explorerStats],
+    realGames, explorerStats, engineAnalysis],
   ([$s, $id, $objects, $libraryGames, $libraryTags, $libraryCollections,
-    $realGames, $explorerStats]) => {
+    $realGames, $explorerStats, $engineAnalysis]) => {
   const st = $s[$id];
   if (!st) return null;
   /* `pgn` is never overlaid: the document as received is not editable, by
@@ -717,16 +825,22 @@ export const activeGame = derived(
   /*
     The Engine Section's live view of the position on the board.
 
-    Derived, not stored: the rows are a function of the position, the engine and
-    its two settings, so there is nothing to keep in sync. What IS stored is
-    whether the switch is on and, when it has just been turned off, the inputs
-    that produced the rows still on screen — so that changing the line count
-    afterwards does not quietly rewrite a stopped result (Q8).
+    TWO KINDS OF ENGINE, one row shape (Stage 1 of `engine-stage1-plan.md`).
+    The built-in engine really searches: `engineRequest` above starts it for
+    the active tab, and its rows arrive in `engineAnalysis`, read here only
+    when they are about the position on the board now. Every other engine in
+    the list is still mock — Settings' Installed rows are simulated until
+    Stage 3 gives desktop engines a transport — so its rows are computed on
+    the spot by `engineMock.js`'s `analyse`, as before. Nothing below this
+    block knows which kind it is looking at.
 
-    `analyse` is mock (see engineMock.js). Nothing below this line knows that.
+    What is stored besides: whether the switch is on and, once it has been
+    turned off, the ROWS that were on screen (`engineHold`, Q8). A real search
+    can't be re-run on demand to reproduce them, and a stopped result must
+    not be quietly rewritten by a setting changed afterwards.
   */
   const engineList = engineSources($objects?.engines ?? []);
-  const engineSource = engineList.find((e) => e.id === st.engineId) ?? engineList[0] ?? null;
+  const engineSource = engineSourceFor(st, $objects?.engines);
   const engineRunning = !!st.engineOn && !!engineSource;
   const hold = st.engineHold && pathKey(st.engineHold.path) === pathKey(path) ? st.engineHold : null;
   /*
@@ -736,10 +850,11 @@ export const activeGame = derived(
     configured" message, at a height allocated for rows nobody is drawing, is
     worse than dropping them.
   */
-  const engineInputs = engineRunning
-    ? { engineId: engineSource.id, lines: st.engineLines, depth: st.engineDepth }
-    : (engineSource ? hold : null);
-  const engineLines = engineInputs ? analyse(node.ply?.f, engineInputs) : [];
+  const engineLines = !engineRunning
+    ? (engineSource && hold ? hold.rows ?? [] : [])
+    : isBuiltinEngine(engineSource.id)
+      ? liveEngineRows($engineAnalysis[$id], st, engineSource.id, node.ply?.f)
+      : analyse(node.ply?.f, { engineId: engineSource.id, lines: st.engineLines, depth: st.engineDepth });
 
   /*
     GAME INFO's view — the record, plus this user's marks on it.
@@ -1044,30 +1159,44 @@ export function setExplorerLibrary(tabId, libraryId) {
  * The Engine Section is sized to content too: one to three lines, or a state
  * message at the floor. Same arrangement as the Explorer — the shell needs the
  * height before the component renders.
+ *
+ * Pass the `engineView` too, and a running search that hasn't reported a
+ * line for this position yet holds the height of the line count asked for,
+ * rather than dropping to the floor for a moment on every move (the real
+ * engine's first line arrives a few milliseconds after the search starts).
  */
-export const engineContentHeight = (lines) => engineHeight(lines.length);
+export const engineContentHeight = (lines, view = null) =>
+  engineHeight(view?.running && view?.hasMoves !== false && !lines.length ? view.lineCount : lines.length);
 
 /**
  * Q2 — the Section cannot run without an engine. Turning it ON with no engine
  * selected is not refused here so much as impossible: the switch that would
  * request it is disabled, and this is the second place that holds.
  *
- * Turning it OFF freezes the inputs behind what is on screen. Nothing is
- * cleared; the rows dim and stay (EN-06).
+ * Turning it OFF freezes the rows on screen, with the settings that
+ * produced them. Nothing is cleared; the rows dim and stay (EN-06). The
+ * search itself stops because `engineRequest` no longer asks for one.
  */
 export function setEngineOn(tabId, on) {
-  const sources = engineSources(get(objects)?.engines ?? []);
+  const engines = get(objects)?.engines;
+  const analysis = get(engineAnalysis)[tabId];
   patch(tabId, (cur) => {
-    const source = sources.find((e) => e.id === cur.engineId) ?? sources[0] ?? null;
+    const source = engineSourceFor(cur, engines);
     if (!source) return { engineOn: false, engineHold: null };
-    return on
-      ? { engineOn: true, engineHold: null }
-      : {
-          engineOn: false,
-          engineHold: {
-            path: cur.path, engineId: source.id, lines: cur.engineLines, depth: cur.engineDepth
-          }
-        };
+    if (on) return { engineOn: true, engineHold: null };
+    if (!cur.engineOn) return {};
+    /* Freeze exactly what the Section is showing: the built-in engine's
+       latest rows for this position, or the mock's. */
+    const fen = currentNode(cur, mergedTreeForState(cur)).ply?.f;
+    const rows = isBuiltinEngine(source.id)
+      ? liveEngineRows(analysis, cur, source.id, fen)
+      : analyse(fen, { engineId: source.id, lines: cur.engineLines, depth: cur.engineDepth });
+    return {
+      engineOn: false,
+      engineHold: {
+        path: cur.path, engineId: source.id, lines: cur.engineLines, depth: cur.engineDepth, rows
+      }
+    };
   });
 }
 
@@ -1694,4 +1823,5 @@ export function resetGameState() {
   gameStates.set({});
   realGames.set(new Map());
   explorerStats.set({});
+  engineAnalysis.set({});
 }

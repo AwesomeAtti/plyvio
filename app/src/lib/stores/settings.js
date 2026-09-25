@@ -2,6 +2,7 @@ import { writable, derived, get } from 'svelte/store';
 import { SECTIONS, DEFAULT_SECTION, isSection, OBJECT_TYPES } from '$lib/settings/schema.js';
 import { AVAILABLE_DATABASES, validateDraftDatabase, basename } from '$lib/settings/databases.js';
 import { AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
+import { BUILTIN_ENGINE } from '$lib/engine/builtin.js';
 import {
   configConnection, explorerConnection, getBackend, librariesDirectoryEntries,
   openNewLibraryConnection, PWA_LIBRARY_PATH, requestPersistentStorage
@@ -67,6 +68,9 @@ const nextId = (p) => `${p}-n${++seq}`;
  */
 export const objects = writable({
   engines: [
+    /* The engine bundled with the app — real, on both platforms. Interim
+       (Stage 1): see `engine/builtin.js`. The two rows after it are mock. */
+    { ...BUILTIN_ENGINE },
     { id: 'engine-1', name: 'Stockfish', version: '17.1', status: 'ready', protocol: 'UCI',
       binaryPath: '/usr/local/bin/stockfish', hashMb: 512, threads: 4, enabled: true },
     { id: 'engine-2', name: 'Torch', version: '3', status: 'ready', protocol: 'UCI',
@@ -270,10 +274,12 @@ export async function loadLibraries() {
  * is set rather than read.
  *
  * DESKTOP ONLY, DELIBERATELY — same reasoning as `loadLibraries()`. An
- * `engines` row is a UCI binary on disk; live engine analysis stays mocked
- * via `engineMock.js` in the PWA regardless (a separate, unrelated
- * decision), so persisting installed-engine rows there would be real
- * storage for a capability the PWA doesn't functionally have.
+ * `engines` row is a UCI binary on disk, which the PWA can't run; the PWA's
+ * one real engine is the bundled WASM build, which isn't a stored row on
+ * either platform (Stage 1, `engine/builtin.js`), so persisting
+ * installed-engine rows there would be real storage for a capability the
+ * PWA doesn't functionally have. The other rows are still mock on both
+ * platforms until Stage 3 gives native engines a transport.
  */
 export async function loadEngines() {
   if (getBackend() !== 'tauri') return;
@@ -282,17 +288,29 @@ export async function loadEngines() {
   const real = await readEngines(connection);
   objects.update((all) => ({
     ...all,
-    engines: real.map((e) => ({
-      id: e.id,
-      name: e.name,
-      version: e.version,
-      protocol: 'UCI',
-      binaryPath: e.binaryPath,
-      hashMb: e.hashMb,
-      threads: e.threads,
-      enabled: e.enabled
-    }))
+    engines: [
+      ...real.map((e) => ({
+        id: e.id,
+        name: e.name,
+        version: e.version,
+        protocol: 'UCI',
+        binaryPath: e.binaryPath,
+        hashMb: e.hashMb,
+        threads: e.threads,
+        enabled: e.enabled
+      })),
+      /* The built-in engine isn't a `config.db` row, so it is added back
+         after the real ones, keeping whatever its switch was set to. The
+         picker still offers it first (`engineSources`). Interim, Stage 1. */
+      withBuiltinEngine(all.engines)
+    ]
   }));
+}
+
+/** The built-in engine's row as it stands now — its switch included. */
+function withBuiltinEngine(engines = []) {
+  const cur = engines.find((e) => e.id === BUILTIN_ENGINE.id);
+  return { ...BUILTIN_ENGINE, enabled: cur ? cur.enabled !== false : BUILTIN_ENGINE.enabled };
 }
 
 /** `subscriptions.source_type` → the mark/label key `SOURCES` (settings/subscriptions.js) uses. */
