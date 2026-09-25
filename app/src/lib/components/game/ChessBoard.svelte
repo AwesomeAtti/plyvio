@@ -48,7 +48,7 @@
 
   let {
     size = 360, fen, lastMove = null, check = false, orientation = 'white',
-    shapes = [], onshapeschange = null,
+    shapes = [], onshapeschange = null, autoShapes = [],
     movable = false, dests = new Map(), turnColor = 'white', onmove = null
   } = $props();
 
@@ -120,8 +120,15 @@
        * persistence. `onChange` is chessground's own hook, firing with the
        * live shapes array on every draw/erase/Esc; the caller (GameView →
        * GameWorkspace) is the one that decides where that goes.
+       *
+       * `autoShapes` is chessground's own separate array for exactly this:
+       * drawn like `shapes`, but with no `onChange` and no persistence path
+       * at all — nothing the user does can turn one into a saved drawing,
+       * which is what makes it the right primitive for the Engine Section's
+       * hover preview (GameWorkspace derives it from the hovered line, never
+       * from user input).
        */
-      drawable: { enabled: true, shapes, onChange: (s) => onshapeschange?.(s) },
+      drawable: { enabled: true, shapes, autoShapes, onChange: (s) => onshapeschange?.(s) },
       movable: { free: false, color: undefined, showDests: true, events: { after: handleAfter } },
       draggable: { enabled: false },
       selectable: { enabled: false }
@@ -134,6 +141,8 @@
   // `drawable.shapes` rides along here too: chessground does not clear drawn
   // shapes on its own when the position changes, so without this line an
   // annotation drawn on one ply would keep showing on every ply after it.
+  // `autoShapes` rides along for the same reason — GameWorkspace already
+  // clears it on navigation, but nothing here should depend on that.
   $effect(() => {
     if (!api) return;
     // A move dragged into the promotion picker stays uncommitted, so
@@ -143,7 +152,7 @@
     const interactive = movable && !pendingPromotion;
     api.set({
       fen, orientation, turnColor: turnFromFen(fen), lastMove: lastMove ?? undefined,
-      check, drawable: { shapes },
+      check, drawable: { shapes, autoShapes },
       movable: { color: interactive ? turnColor : undefined, dests: interactive ? dests : new Map() },
       draggable: { enabled: interactive },
       selectable: { enabled: interactive }

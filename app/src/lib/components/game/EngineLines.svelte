@@ -14,11 +14,14 @@
    * thing — computing evaluations across a whole game — is a separate feature
    * with its own wireframe, and this Section's design does not assume it.
    *
-   * IT REPORTS; IT DOES NOT NAVIGATE (Q4). No row is clickable and the cursor
-   * stays the default arrow, the same rule the Explorer already follows.
-   * Clicking a line to play it onto the board means the board can show a
-   * position the game never reached, which is the interactive analysis board on
-   * the roadmap, not this.
+   * HOVER PREVIEWS, CLICK PLAYS (25 Sep, ACTIONS.md). Hovering a row asks the
+   * board to draw its next two plies as temporary annotations; clicking a row
+   * plays its first ply. Neither is decided here — this component only reports
+   * which row, through `onhover`/`onplay`; GameWorkspace owns the board and the
+   * move. This CONFLICTS with §5.6.4 (Q4, "No row is clickable") as written —
+   * the spec is left stale here on purpose -- documentation follows the code
+   * it describes, never the reverse -- and the conflict is recorded in
+   * STATUS.md/ACTIONS.md rather than fixed by editing the spec mid-build.
    *
    * FOUR STATES, all drawn: no engine configured (EN-04), off with nothing ever
    * computed (EN-01), running (EN-02), and off with the last result retained
@@ -38,10 +41,18 @@
     hasMoves = true,
     moveNumber = 1,
     blackToMove = false,
-    onsettings
+    onsettings,
+    onhover = null,
+    onplay = null
   } = $props();
 
   const pv = (line) => formatPv(line.pv, moveNumber, blackToMove);
+
+  /* The hovered row's rank, for its own highlight -- same mechanism and same
+     name as the Explorer's own `hover` state (MoveExplorer.svelte), reused
+     rather than reinvented. `null` covers "not hovering any row" and also
+     doubles as what gets reported upward on pointerleave. */
+  let hover = $state(null);
 </script>
 
 {#if !hasEngine}
@@ -72,13 +83,23 @@
 {:else}
   <div class="body" class:stale={!running} role="list" aria-live="polite">
     {#each lines as line (line.rank)}
-      <div
+      <!-- A real <button>, like the Move List's own clickable cells
+           (MoveList.svelte's `.mv`) -- native keyboard activation (Enter/
+           Space) comes for free this way, and correctly, once: a manual
+           keydown handler beside a real button's onclick would double-fire
+           on a real Enter press (the browser's own activation behaviour
+           already raises `click`). -->
+      <button
+        type="button"
         class="row"
         class:top={line.rank === 1}
-        role="listitem"
+        class:hot={hover === line.rank}
         aria-label={$t('game.engine.rowLabel', {
           rank: line.rank, score: evalScore(line), depth: line.depth, pv: pv(line)
         })}
+        onpointerenter={() => { hover = line.rank; onhover?.(line); }}
+        onpointerleave={() => { hover = null; onhover?.(null); }}
+        onclick={() => onplay?.(line)}
       >
         <span class="rk">{line.rank}</span>
         <span class="sc">{evalScore(line)}</span>
@@ -86,7 +107,7 @@
              number and lives in the options menu (Q5). -->
         <span class="dp">{formatDepth(line.depth)}</span>
         <span class="pv">{pv(line)}</span>
-      </div>
+      </button>
     {/each}
   </div>
 {/if}
@@ -152,11 +173,25 @@
   .row {
     display: flex;
     align-items: baseline;
+    width: 100%;
     height: 24px;
     padding: 0 10px;
     font: 12px/24px var(--mono);
+    /* Hover previews it on the board, click plays it -- the same affordance
+       the Explorer's rows deliberately don't have (MoveExplorer.svelte). */
+    cursor: pointer;
+    /* Reset the native <button> chrome -- border, background, centered
+       text -- back to the plain row it replaced. */
+    border: 0;
+    background: none;
+    text-align: left;
+    color: inherit;
+    appearance: none;
   }
   .row + .row { border-top: 1px solid var(--rule); }
+  /* Same token, same mechanism as the Explorer's `.row.hot`. */
+  .row.hot { background: var(--chrome); }
+  .row:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 
   /* Rank is context, like the Explorer's move number: present, not competing. */
   .rk {

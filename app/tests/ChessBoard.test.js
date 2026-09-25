@@ -94,3 +94,26 @@ describe('ChessBoard — turnColor reaches chessground itself, not just movable.
     expect(capturedApi.state.check).toBe('e8');
   });
 });
+
+describe('ChessBoard — autoShapes (Engine Section hover preview, 25 Sep)', () => {
+  it('reaches chessground\'s own drawable.autoShapes, separate from user-drawn shapes', () => {
+    capturedApi = null;
+    const fen = START_FEN;
+    const autoShapes = [
+      { orig: 'e2', dest: 'e4', brush: 'green' },
+      { orig: 'e7', dest: 'e5', brush: 'red' }
+    ];
+    render(ChessBoard, { props: { fen, shapes: [{ orig: 'a1', brush: 'blue' }], autoShapes } });
+
+    expect(capturedApi.state.drawable.autoShapes).toEqual(autoShapes);
+    // The two arrays are independent -- a user drawing is never mixed into
+    // the hover preview, or the reverse.
+    expect(capturedApi.state.drawable.shapes).toEqual([{ orig: 'a1', brush: 'blue' }]);
+  });
+
+  it('an empty autoShapes (nothing hovered) draws nothing extra', () => {
+    capturedApi = null;
+    render(ChessBoard, { props: { fen: START_FEN } });
+    expect(capturedApi.state.drawable.autoShapes).toEqual([]);
+  });
+});

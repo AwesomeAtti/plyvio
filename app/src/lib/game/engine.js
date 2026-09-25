@@ -13,6 +13,8 @@
  * arrangement the Explorer uses.
  */
 
+import { pvMoves } from './moves.js';
+
 /* --------------------------------- the row ------------------------------ */
 
 /*
@@ -124,3 +126,25 @@ export function formatPv(sans = [], moveNumber = 1, blackToMove = false) {
 
 /** The reached depth, as the row prints it beside the score. */
 export const formatDepth = (d) => (d == null ? '' : `d${d}`);
+
+/* --------------------------- hover preview ------------------------------ */
+
+/**
+ * ACTIONS.md, 25 Sep — hovering a line draws its next two plies on the
+ * board: first ply green, second red. Chessground's own built-in brushes
+ * (`DrawBrushes` ships both), so nothing new is registered.
+ */
+const HOVER_BRUSHES = ['green', 'red'];
+
+/**
+ * The board's `autoShapes` for a hovered engine line — `null` (nothing
+ * hovered, or no position to draw against) means nothing to draw. Squares
+ * come from `pvMoves`, which already resolves castling to the king's
+ * landing square and stops at the first ply it can't read; this only maps
+ * whatever it returns onto chessground's own shape format, one brush per ply.
+ */
+export function engineHoverAutoShapes(fen, line) {
+  if (!fen || !line) return [];
+  return pvMoves(fen, line.pv, HOVER_BRUSHES.length)
+    .map((m, i) => ({ orig: m.from, dest: m.to, brush: HOVER_BRUSHES[i] }));
+}

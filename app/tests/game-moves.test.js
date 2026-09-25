@@ -5,7 +5,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { destsForFen, turnFromFen, isPromotionMove, playMove } from '../src/lib/game/moves.js';
+import { destsForFen, turnFromFen, isPromotionMove, playMove, pvMoves } from '../src/lib/game/moves.js';
 
 const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
 
@@ -104,5 +104,51 @@ describe('playMove', () => {
   it('under-promotes when asked', () => {
     const result = playMove('7k/4P3/8/8/8/8/8/4K3 w - - 0 1', { from: 'e7', to: 'e8', promotion: 'knight' });
     expect(result.san).toBe('e8=N');
+  });
+});
+
+describe('pvMoves', () => {
+  it('replays the first two plies of a PV as UI squares, default n', () => {
+    expect(pvMoves(START, ['e4', 'e5', 'Nf3'])).toEqual([
+      { from: 'e2', to: 'e4', promotion: null },
+      { from: 'e7', to: 'e5', promotion: null }
+    ]);
+  });
+
+  it('takes fewer plies when asked, or when the PV runs out', () => {
+    expect(pvMoves(START, ['e4', 'e5', 'Nf3'], 1)).toEqual([
+      { from: 'e2', to: 'e4', promotion: null }
+    ]);
+    expect(pvMoves(START, ['e4'])).toEqual([{ from: 'e2', to: 'e4', promotion: null }]);
+    expect(pvMoves(START, [])).toEqual([]);
+  });
+
+  it('remaps kingside castling to the king’s own landing square (g1), not chessops’ rook-square form', () => {
+    const fen = 'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1';
+    expect(pvMoves(fen, ['O-O'], 1)).toEqual([{ from: 'e1', to: 'g1', promotion: null }]);
+  });
+
+  it('remaps queenside castling to c1/c8 the same way, on both sides', () => {
+    const fen = 'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1';
+    expect(pvMoves(fen, ['O-O-O'], 1)).toEqual([{ from: 'e1', to: 'c1', promotion: null }]);
+
+    const fenBlackToMove = 'r3k2r/8/8/8/8/8/8/R3K2R b KQkq - 0 1';
+    expect(pvMoves(fenBlackToMove, ['O-O-O'], 1)).toEqual([{ from: 'e8', to: 'c8', promotion: null }]);
+    expect(pvMoves(fenBlackToMove, ['O-O'], 1)).toEqual([{ from: 'e8', to: 'g8', promotion: null }]);
+  });
+
+  it('carries the promotion piece as a chessops role name', () => {
+    const fen = '7k/4P3/8/8/8/8/8/4K3 w - - 0 1';
+    expect(pvMoves(fen, ['e8=Q+'], 1)).toEqual([{ from: 'e7', to: 'e8', promotion: 'queen' }]);
+  });
+
+  it('stops at the first SAN that does not parse, rather than guessing past it', () => {
+    expect(pvMoves(START, ['e4', 'not a move', 'Nf3'])).toEqual([
+      { from: 'e2', to: 'e4', promotion: null }
+    ]);
+  });
+
+  it('an unreadable FEN returns no moves rather than throwing', () => {
+    expect(pvMoves('not a fen', ['e4'])).toEqual([]);
   });
 });

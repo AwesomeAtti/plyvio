@@ -14,8 +14,8 @@
 
 import { parseFen, makeFen } from 'chessops/fen';
 import { setupPosition } from 'chessops/variant';
-import { makeSan } from 'chessops/san';
-import { parseSquare } from 'chessops/util';
+import { makeSan, parseSan } from 'chessops/san';
+import { parseSquare, makeSquare } from 'chessops/util';
 import { chessgroundDests } from 'chessops/compat';
 
 const positionFromFen = (fen) => setupPosition('chess', parseFen(fen).unwrap()).unwrap();
@@ -88,3 +88,48 @@ export function playMove(fen, { from, to, promotion } = {}) {
   pos.play(move);
   return { san, fenAfter: makeFen(pos.toSetup()), check: pos.isCheck(), from, to };
 }
+
+/**
+ * The next `n` plies of a PV (SAN strings, the shape engine rows already
+ * carry — `game/engine.js`'s `formatPv`, `engine/uci.js`'s `pvToSan`),
+ * replayed on `fen` with chessops, as UI squares: `{from, to, promotion}`,
+ * the same shape `playMove` above takes and the board draws shapes in.
+ *
+ * Castling is remapped from chessops' `parseSan` (which returns the king's
+ * own square as `from` and the ROOK's square as `to` — its internal
+ * castling representation) to the king's actual landing square (g1/c1/g8/
+ * c8), read off the SAN text itself (`O-O`/`O-O-O`) rather than inferred
+ * from the move, since that is unambiguous and needs no board inspection.
+ * `playMove` above documents why the landing square is the form everything
+ * downstream (chessground's own drawing, `stores/game.js`'s `playMove`)
+ * expects.
+ *
+ * Stops at the first SAN that doesn't parse or isn't legal here — a short
+ * result is honest, a wrong one is not, the same rule `pvToSan` follows for
+ * engine output. An unreadable `fen` (should not happen — every caller
+ * reads it off the position on screen) returns no moves rather than
+ * throwing, the same contract `destsForFen` above keeps.
+ */
+export function pvMoves(fen, pv = [], n = 2) {
+  let pos;
+  try {
+    pos = positionFromFen(fen);
+  } catch {
+    return [];
+  }
+  const out = [];
+  for (let i = 0; i < Math.min(n, pv.length); i++) {
+    const san = pv[i];
+    const move = parseSan(pos, san);
+    if (!move || !pos.isLegal(move)) break;
+    const color = pos.turn;
+    let to;
+    if (/^O-O-O/.test(san)) to = color === 'white' ? 'c1' : 'c8';
+    else if (/^O-O/.test(san)) to = color === 'white' ? 'g1' : 'g8';
+    else to = makeSquare(move.to);
+    out.push({ from: makeSquare(move.from), to, promotion: move.promotion ?? null });
+    pos.play(move);
+  }
+  return out;
+}
+

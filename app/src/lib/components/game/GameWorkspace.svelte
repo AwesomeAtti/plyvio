@@ -20,6 +20,8 @@
   engineContentHeight, setEngineOn, setEngineSource, setEngineLines, setEngineDepth,
   infoHeight, toggleFavourite, saveGameInfo, saveTab
 } from '$lib/stores/game.js';
+  import { pvMoves } from '$lib/game/moves.js';
+  import { engineHoverAutoShapes } from '$lib/game/engine.js';
   import { openSettings } from '$lib/stores/tabs.js';
   import { selectSection } from '$lib/stores/settings.js';
   import GameView from './GameView.svelte';
@@ -72,6 +74,46 @@
   function openEngineSettings() {
     selectSection('engines');
     openSettings();
+  }
+
+  /**
+   * Engine Section — hover a line to preview it, click to play its first
+   * move (ACTIONS.md, 25 Sep). Ephemeral UI state, the same category as
+   * `editing`/`playing` above: nothing here is saved, and none of it
+   * belongs in the tab's own state in `stores/game.js`.
+   *
+   * The hovered LINE, not just its rank, because `EngineLines.svelte`
+   * reports the row it has -- keeping the object rather than re-deriving it
+   * from `g.engineView.lines` avoids a mismatch if the lines array reflows
+   * (a new search result) while the pointer is still over the row.
+   */
+  let hoveredEngineLine = $state(null);
+
+  // A stale line drawn over a position it no longer describes would be
+  // wrong, not just untidy -- clear the moment the board moves, by any
+  // means (navigation, a played move, opening a different tab).
+  $effect(() => { g?.path; hoveredEngineLine = null; });
+
+  /**
+   * The board's `autoShapes` for the hover preview -- `game/engine.js`'s
+   * `engineHoverAutoShapes` does the actual work (pure, tested on its own);
+   * this just feeds it the position actually on screen and the hovered line.
+   */
+  const engineHoverShapes = $derived(
+    g ? engineHoverAutoShapes(g.position.f, hoveredEngineLine) : []
+  );
+
+  function onEngineHover(line) {
+    hoveredEngineLine = line;
+  }
+
+  /** Plays the line's first ply exactly as a board drag would -- through the
+      same tab-scoped `playMove`, which walks into an existing move or
+      branches a new variation. */
+  function onEngineLineClick(line) {
+    if (!g) return;
+    const move = pvMoves(g.position.f, line.pv, 1)[0];
+    if (move) playMove(tabId, move);
   }
 
   /** The Explorer's source menu footer: Settings, at the Databases section,
@@ -137,6 +179,7 @@
       evalVisible={g.state.evalVisible}
       shapes={g.shapes}
       onshapeschange={(s) => setPlyShapes(tabId, g.path, s)}
+      autoShapes={engineHoverShapes}
       movable={moves.movable}
       dests={moves.dests}
       turnColor={moves.turnColor}
@@ -163,6 +206,8 @@
       onenginelines={(n) => setEngineLines(tabId, n)}
       onenginedepth={(n) => setEngineDepth(tabId, n)}
       onenginesettings={openEngineSettings}
+      onenginehover={onEngineHover}
+      onengineplay={onEngineLineClick}
       plyCount={g.plies.length}
       onselectply={(n) => { stop(); goToPly(tabId, n); }}
       onselectpath={(p) => { stop(); goToPath(tabId, p); }}

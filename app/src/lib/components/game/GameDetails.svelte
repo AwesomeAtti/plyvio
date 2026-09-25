@@ -24,7 +24,7 @@
     sections = [], plies = [], ply = 0, tree = null, path = [], engine = null, orientation = 'white',
     explorer = null, onselectlibrary, onexplorersettings,
     engineView = null, onengine, onselectengine, onenginelines, onenginedepth,
-    onenginesettings,
+    onenginesettings, onenginehover = null, onengineplay = null,
     info = null, onfavourite, oneditinfo, onedittags, dirty = false, onsave,
     plyCount = 1, playing = false,
     oncollapse, onhide, onselectply, onselectpath, onvariationedit = null,
@@ -93,6 +93,8 @@
         {onenginelines}
         {onenginedepth}
         {onenginesettings}
+        {onenginehover}
+        {onengineplay}
         {info}
         {onfavourite}
         {oneditinfo}

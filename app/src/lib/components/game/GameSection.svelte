@@ -35,7 +35,7 @@
     tree = null, path = [], onselectpath, onvariationedit = null,
     explorer = null, onselectlibrary, onexplorersettings,
     engineView = null, onengine, onselectengine, onenginelines, onenginedepth,
-    onenginesettings,
+    onenginesettings, onenginehover = null, onengineplay = null,
     info = null, onfavourite, oneditinfo, onedittags, dirty = false, onsave
   } = $props();
 
@@ -416,6 +416,8 @@
           moveNumber={engineView?.moveNumber ?? 1}
           blackToMove={engineView?.blackToMove ?? false}
           onsettings={() => onenginesettings?.()}
+          onhover={(line) => onenginehover?.(line)}
+          onplay={(line) => onengineplay?.(line)}
         />
       </div>
     {:else if section.id === 'info'}

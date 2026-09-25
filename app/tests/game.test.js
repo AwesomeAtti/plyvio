@@ -27,7 +27,8 @@ import {
 } from '$lib/game/explorer.js';
 import {
   engineHeight, engineSources, engineLabel, formatPv, formatDepth,
-  clampLines, clampDepth, ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH
+  clampLines, clampDepth, ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH,
+  engineHoverAutoShapes
 } from '$lib/game/engine.js';
 import { analyse, hasLegalMoves } from '$lib/game/engineMock.js';
 import { SECTIONS } from '../src/lib/game/sections.js';
@@ -1368,6 +1369,124 @@ describe('Engine Section — the built-in engine (Stage 1)', () => {
     await settle();
     expect(fake.starts).toBe(0);
     expect(view().hasMoves).toBe(false);
+  });
+});
+
+describe('Engine Section — hover preview, click to play (ACTIONS.md, 25 Sep)', () => {
+  const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+
+  /* `openGame('title')` alone opens a MOCK-only tab (`libraryGameId` null),
+     which `playMove` refuses (`readsRealGame`) -- exactly right for the
+     plain navigation tests elsewhere in this file, wrong for anything that
+     plays a move. A fresh draft (`seedDraftGame`, the same "New Game" path
+     §2.1.2/§2.5 use) is real from the moment it opens, same as a library
+     game, and needs no board interaction of its own to have legal moves. */
+  const openDraftTab = () => openGame('Engine hover/click test', seedDraftGame());
+
+  it('the component itself calls onhover/onplay on the row it has, isolated from any store', async () => {
+    const lines = [
+      { rank: 1, e: 20, x: null, depth: 12, pv: ['e4', 'e5'] },
+      { rank: 2, e: 10, x: null, depth: 12, pv: ['d4', 'd5'] }
+    ];
+    const onhover = vi.fn();
+    const onplay = vi.fn();
+    const { container } = render(EngineLines, {
+      props: { lines, running: true, onhover, onplay }
+    });
+
+    const rows = container.querySelectorAll('.row');
+    expect(rows.length).toBe(2);
+
+    await fireEvent.pointerEnter(rows[1]);
+    expect(onhover).toHaveBeenCalledWith(lines[1]);
+
+    await fireEvent.pointerLeave(rows[1]);
+    expect(onhover).toHaveBeenLastCalledWith(null);
+
+    await fireEvent.click(rows[0]);
+    expect(onplay).toHaveBeenCalledWith(lines[0]);
+
+    // A real <button> (not a div with a manual key handler): Enter/Space
+    // activation is the browser's own job, not this component's.
+    expect(rows[0].tagName).toBe('BUTTON');
+  });
+
+  it('engineHoverAutoShapes draws the next two plies, green then red', () => {
+    const line = { rank: 1, e: 20, x: null, depth: 12, pv: ['e4', 'e5', 'Nf3'] };
+    expect(engineHoverAutoShapes(START, line)).toEqual([
+      { orig: 'e2', dest: 'e4', brush: 'green' },
+      { orig: 'e7', dest: 'e5', brush: 'red' }
+    ]);
+  });
+
+  it('draws nothing with no hovered line, or no position to draw against', () => {
+    const line = { rank: 1, e: 20, x: null, depth: 12, pv: ['e4'] };
+    expect(engineHoverAutoShapes(START, null)).toEqual([]);
+    expect(engineHoverAutoShapes(null, line)).toEqual([]);
+  });
+
+  it('a row reports hover, and clears it on pointer leave, in the real Section', async () => {
+    const { container } = render(AppShell);
+    const id = openDraftTab();
+    await tick();
+    setEngineSource(id, 'engine-1');
+    setEngineOn(id, true);
+    await tick();
+
+    const row = container.querySelector('#sec-engine-body .row');
+    expect(row).toBeTruthy();
+
+    await fireEvent.pointerEnter(row);
+    expect(row.className).toMatch(/\bhot\b/);
+
+    await fireEvent.pointerLeave(row);
+    expect(row.className).not.toMatch(/\bhot\b/);
+  });
+
+  it('clicking a row plays its first ply through the same playMove a board drag uses', async () => {
+    const { container } = render(AppShell);
+    const id = openDraftTab();
+    await tick();
+    setEngineSource(id, 'engine-1');
+    setEngineOn(id, true);
+    await tick();
+
+    const before = get(activeGame);
+    const line = before.engineView.lines[0];
+    expect(line).toBeTruthy();
+
+    const row = container.querySelector('#sec-engine-body .row');
+    await fireEvent.click(row);
+
+    const after = get(activeGame);
+    // The path grew by exactly the line's own first move -- the same thing
+    // a board drag would have produced, through the same `playMove`.
+    expect(after.path.length).toBe(before.path.length + 1);
+    expect(after.plies.at(-1).s).toBe(line.pv[0]);
+  });
+
+  it('a retained (switched off, dimmed) row is just as clickable (Q8)', async () => {
+    const { container } = render(AppShell);
+    const id = openDraftTab();
+    await tick();
+    setEngineSource(id, 'engine-1');
+    setEngineOn(id, true);
+    await tick();
+    const line = get(activeGame).engineView.lines[0];
+
+    setEngineOn(id, false);          // Q8 -- stopped, not cleared
+    await tick();
+    expect(get(activeGame).engineView.running).toBe(false);
+    expect(get(activeGame).engineView.lines.length).toBeGreaterThan(0);
+    expect(container.querySelector('#sec-engine-body .body').className).toMatch(/\bstale\b/);
+
+    const before = get(activeGame);
+    const row = container.querySelector('#sec-engine-body .row');
+    await fireEvent.click(row);
+
+    const after = get(activeGame);
+    expect(after.path.length).toBe(before.path.length + 1);
+    expect(after.plies.at(-1).s).toBe(line.pv[0]);
   });
 });
 
