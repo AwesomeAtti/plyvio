@@ -60,7 +60,7 @@
   <!-- Running, and the engine hasn't reported a line for this position yet:
        a moment on first start while it loads, a few milliseconds after each
        move. Held steady rather than drawn: an empty body at the height of the
-       chosen line count (`engineContentHeight`), so stepping through moves
+       lines the search will show (`engineContentHeight`), so stepping through moves
        neither flashes the Off message under a switch reading on nor makes
        the Section jump. Added 25 Sep with the real engine (Stage 1); not a
        state §5.6.4 lists yet. -->

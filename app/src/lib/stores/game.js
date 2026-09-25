@@ -12,7 +12,7 @@ import {
   engineSources, engineHeight, clampLines, clampDepth,
   ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH
 } from '$lib/game/engine.js';
-import { analyse, hasLegalMoves } from '$lib/game/engineMock.js';
+import { analyse, hasLegalMoves, legalMoveCount } from '$lib/game/engineMock.js';
 import { createEngineSession } from '$lib/engine/session.js';
 import { createWorkerTransport } from '$lib/engine/workerTransport.js';
 import { isBuiltinEngine, builtinEngineUrls } from '$lib/engine/builtin.js';
@@ -947,6 +947,9 @@ export const activeGame = derived(
       running: engineRunning,
       lines: engineLines,
       hasMoves: hasLegalMoves(node.ply?.f),
+      /* The lines a running search will show once it has reported them all:
+         the count asked for, or fewer where the position has fewer moves. */
+      expectedLines: Math.min(st.engineLines, legalMoveCount(node.ply?.f)),
       lineCount: st.engineLines,
       depth: st.engineDepth,
       moveNumber: Math.floor(ply / 2) + 1,
@@ -1160,13 +1163,19 @@ export function setExplorerLibrary(tabId, libraryId) {
  * message at the floor. Same arrangement as the Explorer — the shell needs the
  * height before the component renders.
  *
- * Pass the `engineView` too, and a running search that hasn't reported a
- * line for this position yet holds the height of the line count asked for,
- * rather than dropping to the floor for a moment on every move (the real
- * engine's first line arrives a few milliseconds after the search starts).
+ * Pass the `engineView` too, and a running search holds the height of the
+ * lines it will show — the count asked for, or fewer where the position has
+ * fewer moves — from the moment it starts. A real engine reports its lines
+ * one at a time: nothing for a few milliseconds after each move, then line
+ * 1, then line 2. Sized by the rows it has so far, the Section dropped to
+ * its floor and climbed back on every move.
  */
 export const engineContentHeight = (lines, view = null) =>
-  engineHeight(view?.running && view?.hasMoves !== false && !lines.length ? view.lineCount : lines.length);
+  engineHeight(
+    view?.running && view?.hasMoves !== false
+      ? Math.max(lines.length, view.expectedLines ?? view.lineCount)
+      : lines.length
+  );
 
 /**
  * Q2 — the Section cannot run without an engine. Turning it ON with no engine

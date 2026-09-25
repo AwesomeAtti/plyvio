@@ -1231,6 +1231,35 @@ describe('Engine Section — the built-in engine (Stage 1)', () => {
     expect(off.container.textContent).toContain('Off');
   });
 
+  it('holds its height while the lines arrive one at a time', async () => {
+    openAt(BLACK);
+    setEngineOn('w1', true);
+    await settle();
+    // Real output: line 1 of depth 1 comes before line 2 of depth 1.
+    const [first, second] = infos(BLACK).filter((l) => l.startsWith('info depth'));
+    expect(first).toContain(' multipv 1 ');
+    expect(second).toContain(' multipv 2 ');
+    fake.emit(first);
+    let v = view();
+    expect(v.lines).toHaveLength(1);
+    expect(engineContentHeight(v.lines, v)).toBe(84);        // two lines' height, not one
+    fake.emit(second);
+    v = view();
+    expect(engineContentHeight(v.lines, v)).toBe(84);
+  });
+
+  it('holds no more height than the position has moves', async () => {
+    const ONE_MOVE = CASE['black-to-move-is-mated'];       // Black's only move is Kb8
+    ensureGameState('w4', seedDraftGame({ fen: ONE_MOVE.fen }));
+    activeId.set('w4');
+    setEngineLines('w4', 3);
+    setEngineOn('w4', true);
+    await settle();
+    const v = view();
+    expect(v.expectedLines).toBe(1);
+    expect(engineContentHeight(v.lines, v)).toBe(60);
+  });
+
   it('Q8 — switching off stops the engine and keeps exactly the rows on screen', async () => {
     openAt(BLACK);
     setEngineOn('w1', true);

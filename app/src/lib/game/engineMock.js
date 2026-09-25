@@ -139,8 +139,17 @@ function walk(pos, first, key) {
  * finished game is another, and the prototype's games all end in one.
  */
 export function hasLegalMoves(fen) {
+  return legalMoveCount(fen) > 0;
+}
+
+/**
+ * How many legal moves the position has — the most principal variations an
+ * engine can report for it, whatever MultiPV asks for. Real, not mock: the
+ * store uses it for the built-in engine too (`engineView.expectedLines`).
+ */
+export function legalMoveCount(fen) {
   const pos = positionFrom(fen);
-  return !!pos && legalMoves(pos).length > 0;
+  return pos ? legalMoves(pos).length : 0;
 }
 
 /**
