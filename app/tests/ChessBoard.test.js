@@ -1,19 +1,14 @@
 /**
- * Chess Board -- §5.4.1's own `turnColor` regression, filed 25 Sep as
- * "unable to add a variation for ply 1 / for any Black move", with dragging
- * showing grey dots on illegal squares. Root cause: `ChessBoard.svelte`
- * threaded `turnColor` into chessground's `movable.color` but never set
- * chessground's own top-level `turnColor` config -- a SEPARATE field
- * chessground's `board.selectSquare` uses to decide an ordinary move from a
- * PREMOVE (`isPremovable`: `movable.color === piece.color && state.turnColor
- * !== piece.color`). Left unset, chessground's `state.turnColor` never
- * leaves its own default, `'white'` -- so every Black-to-move position
- * satisfied that mismatch and was handled as a premove instead: grey,
- * un-legality-checked destinations, and no `movable.events.after` ever
- * firing (see `ChessBoard.svelte`'s own header comment for the full
- * mechanism). This test drives chessground's REAL `selectSquare` (not a
- * mock of it) against the component's actual mounted instance, for both
- * colors, and would have failed against the pre-fix component.
+ * Chess Board -- chessground's own `turnColor` must follow the position.
+ *
+ * `ChessBoard.svelte` hands chessground `movable.color`, but chessground
+ * also keeps a separate `turnColor`, which it uses to tell an ordinary move
+ * from a premove (`isPremovable`: `movable.color === piece.color &&
+ * state.turnColor !== piece.color`) and to pick the king `check: true`
+ * highlights. If it drifts from the position, a drag by the side to move is
+ * handled as a premove: unfiltered destinations and no
+ * `movable.events.after`. These tests drive chessground's real
+ * `selectSquare` against the component's actually mounted instance.
  */
 import { describe, it, expect, vi } from 'vitest';
 import { render } from '@testing-library/svelte';
@@ -86,5 +81,16 @@ describe('ChessBoard — turnColor reaches chessground itself, not just movable.
 
     selectSquare(capturedApi.state, 'e7');
     expect(capturedApi.state.selected).toBeUndefined();
+  });
+
+  it('a non-interactive board still highlights the king of the side to move', () => {
+    capturedApi = null;
+    // 1. e4 f5 2. Qh5+ -- Black is in check. No `turnColor` prop is passed,
+    // exactly as on a board nothing can be moved on.
+    const fen = 'rnbqkbnr/ppppp1pp/8/5p1Q/4P3/8/PPPP1PPP/RNB1KBNR b KQkq - 1 2';
+    render(ChessBoard, { props: { fen, movable: false, check: true } });
+
+    expect(capturedApi.state.turnColor).toBe('black');
+    expect(capturedApi.state.check).toBe('e8');
   });
 });

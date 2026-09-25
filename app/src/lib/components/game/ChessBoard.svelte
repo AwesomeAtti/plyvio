@@ -14,13 +14,12 @@
    * `@lichess-org/chessground`. The unscoped `chessground` package stopped at
    * 9.2.1 and does not have this version.
    *
-   * §5.3 makes ply navigation the workspace's only navigation while the
-   * board sits anywhere but the mainline's own last ply — everywhere else it
-   * is exactly as inert as it always was. AT the last ply, Stage 4 of
-   * `analysis-board-plan.md` turns pieces on: the `movable`/`dests` prop pair
-   * comes from `stores/game.js`'s `moveInputs`, which is the one place that
-   * decides whether THIS tab, THIS ply, is a legal place to move a piece at
-   * all — this component plays whatever it's handed and nothing more.
+   * Pieces move from any position; a move played before the end of a line
+   * starts a variation (§5.4.1, "Playing moves"). The `movable`/`dests`
+   * prop pair comes from `stores/game.js`'s `moveInputs`, which is the one
+   * place that decides whether THIS tab, THIS position, is a legal place to
+   * move a piece at all — this component plays whatever it's handed and
+   * nothing more.
    *
    * Promotion is the one piece of interaction this component owns outright
    * rather than reporting upward: chessground's own `movable.events.after`
@@ -28,28 +27,19 @@
    * choice, so the picker (`PromotionPicker.svelte`) has to sit here, between
    * that event and `onmove`, holding the move back until a piece is chosen.
    *
-   * BUG FIX, 25 Sep: `turnColor` has to be pushed to chessground as its OWN
-   * top-level config key, in both the mount call and the reactive `api.set`
-   * below -- not only folded into `movable.color`, which is a different
-   * field (`movable.color` says WHICH SIDE'S pieces may move at all;
-   * chessground's own internal `state.turnColor` is a second, separate
-   * field it uses to tell an ordinary move from a PREMOVE). Left unset,
-   * chessground's `state.turnColor` never moves off its own default,
-   * `'white'` (confirmed from `state.ts`) -- and its `isPremovable` check
-   * is `movable.color === piece.color && state.turnColor !== piece.color`.
-   * With `state.turnColor` stuck at `'white'`, that condition is met for
-   * every Black-to-move position (root's own first move looked fine only
-   * because White-to-move positions coincidentally match the stuck
-   * default), so dragging a Black piece anywhere fell into chessground's
-   * PREMOVE path instead of an ordinary move: naive, un-legality-checked
-   * destinations (`premove()`, not `dests`) shown in its own grey premove
-   * styling, and no `movable.events.after` firing at all -- reported as
-   * "can't add a variation for ply 1 / for any Black move", with "grey
-   * dots" including illegal squares, both exactly premove's own signature.
+   * Chessground keeps its own `turnColor`, separate from `movable.color`:
+   * `movable.color` says which side's pieces may move at all, `turnColor`
+   * says whose turn it is. It uses the second to tell an ordinary move from
+   * a premove, and to pick which king `check: true` highlights. Chessground
+   * flips it after every drop, but nothing resets it when the position
+   * changes by navigation, so it is read from the FEN on every push below —
+   * on every board, movable or not. Left stale, a drag by the side to move
+   * is handled as a premove: grey, unfiltered destinations, and no
+   * `movable.events.after`.
    */
   import { onMount } from 'svelte';
   import { Chessground } from '@lichess-org/chessground';
-  import { isPromotionMove } from '$lib/game/moves.js';
+  import { isPromotionMove, turnFromFen } from '$lib/game/moves.js';
   import PromotionPicker from './PromotionPicker.svelte';
 
   import '@lichess-org/chessground/assets/chessground.base.css';
@@ -97,7 +87,7 @@
     api = Chessground(el, {
       fen,
       orientation,
-      turnColor,
+      turnColor: turnFromFen(fen),
       lastMove: lastMove ?? undefined,
       check,
       /*
@@ -152,7 +142,8 @@
     // moment that happens, same as any other prop change below.
     const interactive = movable && !pendingPromotion;
     api.set({
-      fen, orientation, turnColor, lastMove: lastMove ?? undefined, check, drawable: { shapes },
+      fen, orientation, turnColor: turnFromFen(fen), lastMove: lastMove ?? undefined,
+      check, drawable: { shapes },
       movable: { color: interactive ? turnColor : undefined, dests: interactive ? dests : new Map() },
       draggable: { enabled: interactive },
       selectable: { enabled: interactive }
