@@ -1,8 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
   MovetextError,
-  applyPromotions,
+  applyTreeEdits,
   appendMoveTree,
+  deleteAt,
+  moveChildAt,
+  remapPathThroughChange,
+  variationEditsAt,
   plyCount,
   promoteAt,
   readMovetext,
@@ -351,31 +355,164 @@ describe('promoteAt', () => {
   });
 });
 
-describe('applyPromotions', () => {
-  it('does nothing when handed no promotions', () => {
+describe('moveChildAt', () => {
+  it('moves a line up one step at its branch point', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 (2. f4) (2. Nc3) Nc6');
+    // e5's children: Nf3=0 (main), f4=1, Nc3=2
+    expect(moveChildAt(doc.moves, [0, 0], 2, 1))
+      .toEqual({ op: 'move-child', parentPath: [0, 0], from: 2, to: 1 });
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. Nf3 (2. Nc3) (2. f4) 2... Nc6');
+  });
+
+  it('moving line 2 up one step makes it the main continuation there', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 (2. f4) (2. Nc3) Nc6');
+    moveChildAt(doc.moves, [0, 0], 1, 0);
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. f4 (2. Nf3 Nc6) (2. Nc3)');
+  });
+
+  it('returns null and changes nothing for an out-of-range or same index', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 (2. f4)');
+    const before = writeMovetext(doc, { wrap: null });
+    expect(moveChildAt(doc.moves, [0, 0], 1, 2)).toBeNull();
+    expect(moveChildAt(doc.moves, [0, 0], 0, 0)).toBeNull();
+    expect(moveChildAt(doc.moves, [0, 0], 0, -1)).toBeNull();
+    expect(writeMovetext(doc, { wrap: null })).toBe(before);
+  });
+});
+
+describe('deleteAt', () => {
+  it('deletes a main-line move and everything after it', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 Nc6 3. Bb5 a6');
+    expect(deleteAt(doc.moves, [0, 0, 0, 0, 0])).toEqual({ op: 'delete', path: [0, 0, 0, 0, 0] });
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. Nf3 Nc6');
+  });
+
+  it('deleting a main-line move with an alternative makes the alternative main', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 (2. f4 exf4) (2. Nc3) Nc6');
+    deleteAt(doc.moves, [0, 0, 0]);
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. f4 (2. Nc3) 2... exf4');
+  });
+
+  it('deleting inside a variation keeps the variation up to that move', () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 (2. f4 exf4 3. Nf3) Nc6');
+    deleteAt(doc.moves, [0, 0, 1, 0]);
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. Nf3 (2. f4) 2... Nc6');
+  });
+
+  it("deleting a variation's first move removes the variation, siblings untouched", () => {
+    const doc = readMovetext('1. e4 e5 2. Nf3 (2. f4 exf4) (2. Nc3) Nc6');
+    deleteAt(doc.moves, [0, 0, 1]);
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. Nf3 (2. Nc3) 2... Nc6');
+  });
+
+  it('returns null for the root or a missing path', () => {
+    const doc = readMovetext('1. e4 e5');
+    expect(deleteAt(doc.moves, [])).toBeNull();
+    expect(deleteAt(doc.moves, [0, 3])).toBeNull();
+  });
+});
+
+describe('variationEditsAt', () => {
+  // e5's children: Nf3=0 (main), Bc4=1, f4=2.
+  const PGN = '1. e4 e5 2. Nf3 (2. Bc4 Nf6 3. d3 (3. Nc3)) (2. f4 exf4) Nc6 3. Bb5 a6';
+
+  it('a main-line move with no alternative: only Delete from Here applies', () => {
+    const doc = readMovetext(PGN);
+    expect(variationEditsAt(doc.moves, [0, 0, 0, 0, 0])).toEqual({
+      promote: null,
+      demote: null,
+      mainline: null,
+      deleteFromHere: { op: 'delete', path: [0, 0, 0, 0, 0] },
+      deleteVariation: null,
+    });
+  });
+
+  it("a main-line move with alternatives can be demoted at its own point", () => {
+    const doc = readMovetext(PGN);
+    expect(variationEditsAt(doc.moves, [0, 0, 0]).demote)
+      .toEqual({ op: 'move-child', parentPath: [0, 0], from: 0, to: 1 });
+  });
+
+  it('a move deep in a variation acts on the line from its first move', () => {
+    const doc = readMovetext(PGN);
+    // 3. d3 inside the Bc4 line: [0, 0, 1, 0, 0]; the line starts at depth 2.
+    expect(variationEditsAt(doc.moves, [0, 0, 1, 0, 0])).toEqual({
+      promote: { op: 'move-child', parentPath: [0, 0], from: 1, to: 0 },
+      demote: { op: 'move-child', parentPath: [0, 0], from: 1, to: 2 },
+      mainline: { op: 'mainline', path: [0, 0, 1, 0, 0] },
+      deleteFromHere: { op: 'delete', path: [0, 0, 1, 0, 0] },
+      deleteVariation: { op: 'delete', path: [0, 0, 1] },
+    });
+  });
+
+  it('the last line at a branch point cannot be demoted', () => {
+    const doc = readMovetext(PGN);
+    expect(variationEditsAt(doc.moves, [0, 0, 2, 0]).demote).toBeNull();
+  });
+
+  it('a nested variation acts at its own, deeper branch point', () => {
+    const doc = readMovetext(PGN);
+    // 3. Nc3, the alternative to 3. d3 inside the Bc4 line.
+    const edits = variationEditsAt(doc.moves, [0, 0, 1, 0, 1]);
+    expect(edits.promote).toEqual({ op: 'move-child', parentPath: [0, 0, 1, 0], from: 1, to: 0 });
+    expect(edits.deleteVariation).toEqual({ op: 'delete', path: [0, 0, 1, 0, 1] });
+  });
+
+  it('nothing applies to the root or a missing path', () => {
+    const doc = readMovetext(PGN);
+    expect(Object.values(variationEditsAt(doc.moves, [])).every((v) => v === null)).toBe(true);
+    expect(Object.values(variationEditsAt(doc.moves, [0, 7])).every((v) => v === null)).toBe(true);
+  });
+});
+
+describe('remapPathThroughChange', () => {
+  const up = { op: 'move-child', parentPath: [0, 0], from: 2, to: 0 };
+  const down = { op: 'move-child', parentPath: [0, 0], from: 0, to: 2 };
+  const del = { op: 'delete', path: [0, 0, 1] };
+
+  it('follows the moved child and shifts the ones it passed', () => {
+    expect(remapPathThroughChange([0, 0, 2, 0], up)).toEqual([0, 0, 0, 0]);
+    expect(remapPathThroughChange([0, 0, 0], up)).toEqual([0, 0, 1]);
+    expect(remapPathThroughChange([0, 0, 1, 3], up)).toEqual([0, 0, 2, 3]);
+    expect(remapPathThroughChange([0, 0, 0], down)).toEqual([0, 0, 2]);
+    expect(remapPathThroughChange([0, 0, 2], down)).toEqual([0, 0, 1]);
+  });
+
+  it('leaves paths under another parent, or above it, alone', () => {
+    const other = [0, 1, 2];
+    expect(remapPathThroughChange(other, up)).toBe(other);
+    const shallow = [0];
+    expect(remapPathThroughChange(shallow, up)).toBe(shallow);
+  });
+
+  it('drops paths inside a deleted subtree and shifts later siblings down', () => {
+    expect(remapPathThroughChange([0, 0, 1], del)).toBeNull();
+    expect(remapPathThroughChange([0, 0, 1, 0, 0], del)).toBeNull();
+    expect(remapPathThroughChange([0, 0, 2, 0], del)).toEqual([0, 0, 1, 0]);
+    const before = [0, 0, 0, 0];
+    expect(remapPathThroughChange(before, del)).toBe(before);
+  });
+});
+
+describe('applyTreeEdits', () => {
+  it('does nothing when handed no edits', () => {
     const doc = readMovetext('1. e4 e5 2. Nf3');
     const before = writeMovetext(doc, { wrap: null });
-    applyPromotions(doc, []);
+    applyTreeEdits(doc, []);
     expect(writeMovetext(doc, { wrap: null })).toBe(before);
   });
 
-  it('folds a single promotion into a real document', () => {
-    const doc = readMovetext('1. e4 e5 2. Nf3 Nc6 3. Bb5 (3. Bc4 Bc5) 3... a6');
-    applyPromotions(doc, [{ path: [0, 0, 0, 0, 1], toMainline: false }]);
-    expect(writeMovetext(doc, { wrap: null }))
-      .toBe('1. e4 e5 2. Nf3 Nc6 3. Bc4 (3. Bb5 a6) 3... Bc5');
-  });
-
-  it('replays several promotions in order, each against the result of the last', () => {
+  it('replays edits in order, each against the result of the last', () => {
     const doc = readMovetext('1. e4 e5 2. Nf3 (2. f4) (2. Nc3) Nc6');
-    applyPromotions(doc, [
-      // First promote Nc3 to the front: [Nf3, f4, Nc3] -> [Nc3, Nf3, f4].
-      { path: [0, 0, 2], toMainline: false },
-      // Then, against THAT order, promote f4 (now at index 2) to the front.
-      { path: [0, 0, 2], toMainline: false },
+    applyTreeEdits(doc, [
+      // Nc3 up one step: [Nf3, f4, Nc3] -> [Nf3, Nc3, f4].
+      { op: 'move-child', parentPath: [0, 0], from: 2, to: 1 },
+      // Then delete what is now line 3, f4.
+      { op: 'delete', path: [0, 0, 2] },
+      // Then make Nc3 the main line.
+      { op: 'mainline', path: [0, 0, 1] },
     ]);
-    expect(writeMovetext(doc, { wrap: null }))
-      .toBe('1. e4 e5 2. f4 (2. Nc3) (2. Nf3 Nc6)');
+    expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. Nc3 (2. Nf3 Nc6)');
   });
 });
 

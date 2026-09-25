@@ -101,51 +101,63 @@
    * and behaves exactly like the mainline that contains it, only indented one step
    * further per level.
    *
-   * PROMOTING A VARIATION — Stage 6, agreed 25 Sep after reading Lichess's and En
-   * Croissant's own source (both use the identical algorithm) and checking ChessBase's
-   * and Chess.com's actual behaviour. Right-click any move NOT already on the mainline
-   * (a context menu, new to this application) for two commands: "Promote Variation"
-   * moves it up exactly one branch point; "Make Main Line" cascades all the way to the
-   * root. Both are `stores/game.js` calls (`promoteVariation`/`makeMainLine`) — this
-   * Section only opens the menu and reports which path was clicked; the reordering,
-   * and re-keying everything else that addresses a path (the cursor, drawn shapes, a
-   * held engine result), happens there.
+   * EDITING VARIATIONS. Right-click any move for a context menu of five commands:
+   * Promote Variation and Demote Variation (one step up or down at the line's branch
+   * point), Make Main Line (all the way to the root), Delete from Here and Delete
+   * Variation. The menu always shows all five in the same order; a command that does
+   * not apply to the clicked move is disabled, never hidden, so the feature stays
+   * discoverable. `pgn/movetext.js`'s `variationEditsAt` decides which apply and what
+   * each does; `stores/game.js`'s `editVariation` carries it out. This Section only
+   * opens the menu and reports the command and the path clicked; the edit, and
+   * re-keying everything else that addresses a path (the cursor, drawn shapes, a held
+   * engine result), happens there.
    */
   import { t, locale } from '$lib/stores/i18n.js';
   import Icon from '$lib/components/Icon.svelte';
   import { CommentIcon, SectionCollapse, SectionExpand, BestMoveMark, VariationMark } from '$lib/icons.js';
   import { pathKey } from '$lib/game/plies.js';
+  import { variationEditsAt } from '$lib/pgn/movetext.js';
   import CommentBanner from './CommentBanner.svelte';
 
   let {
     tree = null, path = [], engine = null, onselect,
-    onpromotevariation = null, onmakemainline = null
+    onvariationedit = null
   } = $props();
 
   let listEl = $state(null);
 
   /**
-   * The right-click "Promote Variation" / "Make Main Line" menu — Stage 6.
-   * `{ path, x, y }` of the move that was right-clicked, or `null` when
-   * closed; `x`/`y` are the click's own viewport coordinates (the menu is
-   * `position: fixed`), clamped so it never opens off the right or bottom
-   * edge. Restricted to a move NOT already on the mainline all the way up
-   * (`isMainline` below) -- there is nothing to promote a mainline move
-   * past, so its own right-click falls through to the browser's default
-   * menu instead of pre-empting it for nothing.
+   * The right-click variation menu. `{ path, x, y, available }` for the move that was
+   * right-clicked, or `null` when closed; `x`/`y` are the click's own viewport
+   * coordinates (the menu is `position: fixed`), clamped so it never opens off the
+   * right or bottom edge. `available` says which of the five commands apply to that
+   * move, read once when the menu opens.
    */
   let menu = $state(null);
-  const isMainline = (p) => p.every((seg) => seg === 0);
   const closeMenu = () => { menu = null; };
 
+  /* Fixed order and grouping: reordering commands, then deleting ones. */
+  const MENU_GROUPS = [
+    [['promote', 'game.moves.promoteVariation'], ['demote', 'game.moves.demoteVariation'],
+      ['mainline', 'game.moves.makeMainLine']],
+    [['deleteFromHere', 'game.moves.deleteFromHere'], ['deleteVariation', 'game.moves.deleteVariation']]
+  ];
+
   function openMenu(e, movePath) {
-    if (isMainline(movePath)) return;
     e.preventDefault();
+    const edits = variationEditsAt(tree, movePath);
     menu = {
       path: movePath,
+      available: Object.fromEntries(Object.entries(edits).map(([k, v]) => [k, !!v])),
       x: Math.min(e.clientX, window.innerWidth - 190),
-      y: Math.min(e.clientY, window.innerHeight - 90)
+      y: Math.min(e.clientY, window.innerHeight - 170)
     };
+  }
+
+  function choose(command) {
+    if (!menu?.available[command]) return;
+    onvariationedit?.(command, menu.path);
+    closeMenu();
   }
 
   function onMenuKeydown(e) {
@@ -410,18 +422,19 @@
        pattern `PromotionPicker.svelte` uses for its own scrim. -->
   <div class="ctx-scrim" onpointerdown={closeMenu} role="presentation"></div>
   <div class="ctx" style="left:{menu.x}px;top:{menu.y}px" role="menu" aria-label={$t('game.moves.variationMenu')}>
-    <button
-      type="button"
-      role="menuitem"
-      class="ctx-item"
-      onclick={() => { onpromotevariation?.(menu.path); closeMenu(); }}
-    >{$t('game.moves.promoteVariation')}</button>
-    <button
-      type="button"
-      role="menuitem"
-      class="ctx-item"
-      onclick={() => { onmakemainline?.(menu.path); closeMenu(); }}
-    >{$t('game.moves.makeMainLine')}</button>
+    {#each MENU_GROUPS as group, g}
+      {#if g > 0}<div class="ctx-sep" role="separator"></div>{/if}
+      {#each group as [command, label]}
+        <button
+          type="button"
+          role="menuitem"
+          class="ctx-item"
+          data-command={command}
+          disabled={!menu.available[command]}
+          onclick={() => choose(command)}
+        >{$t(label)}</button>
+      {/each}
+    {/each}
   </div>
 {/if}
 
@@ -586,7 +599,7 @@
   }
 
   /*
-    The "Promote Variation" / "Make Main Line" context menu — Stage 6. Same
+    The variation context menu. Same
     scrim-plus-positioned-panel pattern `PromotionPicker.svelte` uses for its
     own dismiss (click anywhere off it, or Escape); same menu-row look
     `GameControls.svelte`'s own "…" menu already established (`.mi` there),
@@ -625,6 +638,8 @@
     text-align: left;
     cursor: default;
   }
-  .ctx-item:hover { background: var(--chrome); }
+  .ctx-item:hover:not(:disabled) { background: var(--chrome); }
+  .ctx-item:disabled { color: var(--muted); }
+  .ctx-sep { height: 1px; margin: 4px 0; background: var(--rule); }
   .ctx-item:focus-visible { outline: 2px solid var(--focus); outline-offset: -2px; }
 </style>

@@ -1223,7 +1223,7 @@ describe('§5.4.2 Move List', () => {
     expect(on.textContent.trim()).toBe(get(activeGame).position.s);
   });
 
-  /* ------------------- promoting a variation (Stage 6) ------------------- */
+  /* -------------------- editing variations (context menu) ------------------- */
 
   // Not hardcoded to any particular SAN or opening: the corpus data has real
   // variations (Stage 5's own test above already leans on that), but which
@@ -1242,7 +1242,14 @@ describe('§5.4.2 Move List', () => {
       .map((b) => b.textContent.trim());
   const depthOf = (btn) => btn.dataset.path.split('.').length;
 
-  it('right-clicking a variation move opens a menu with both promote commands', async () => {
+  const MENU_LABELS = [
+    'game.moves.promoteVariation', 'game.moves.demoteVariation', 'game.moves.makeMainLine',
+    'game.moves.deleteFromHere', 'game.moves.deleteVariation'
+  ].map((k) => STRINGS.en[k]);
+  const menuItem = (container, command) =>
+    container.querySelector(`.ctx [role="menuitem"][data-command="${command}"]`);
+
+  it('right-clicking a variation move opens the five-item menu, all in the same order', async () => {
     const { container } = await openGameTab();
     const target = firstVariationMove(container);
     expect(target).toBeTruthy();
@@ -1251,15 +1258,46 @@ describe('§5.4.2 Move List', () => {
     await tick();
 
     const items = [...container.querySelectorAll('.ctx [role="menuitem"]')].map((b) => b.textContent.trim());
-    expect(items).toEqual([STRINGS.en['game.moves.promoteVariation'], STRINGS.en['game.moves.makeMainLine']]);
+    expect(items).toEqual(MENU_LABELS);
+    expect(menuItem(container, 'promote').disabled).toBe(false);
+    expect(menuItem(container, 'mainline').disabled).toBe(false);
+    expect(menuItem(container, 'deleteVariation').disabled).toBe(false);
   });
 
-  it('does not open the menu for a move already on the mainline', async () => {
+  it('a main-line move gets the same menu, with the variation-only commands disabled', async () => {
     const { container } = await openGameTab();
     const target = firstMainlineMove(container);
     await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
     await tick();
+
+    const items = [...container.querySelectorAll('.ctx [role="menuitem"]')].map((b) => b.textContent.trim());
+    expect(items).toEqual(MENU_LABELS);
+    expect(menuItem(container, 'promote').disabled).toBe(true);
+    expect(menuItem(container, 'mainline').disabled).toBe(true);
+    expect(menuItem(container, 'deleteVariation').disabled).toBe(true);
+    expect(menuItem(container, 'deleteFromHere').disabled).toBe(false);
+
+    // A disabled command does nothing and leaves the menu open.
+    await fireEvent.click(menuItem(container, 'promote'));
+    await tick();
+    expect(container.querySelector('.ctx')).toBeTruthy();
+    expect(get(activeGame).dirty).toBe(false);
+  });
+
+  it('"Delete from Here" on a main-line move truncates the main line there', async () => {
+    const { container } = await openGameTab();
+    const before = mainlineMoves(container);
+    const target = [...container.querySelectorAll('.ml .mv')]
+      .filter((b) => !b.closest('.var') && b.textContent.trim() !== '')[2];
+    await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
+    await tick();
+    await fireEvent.click(menuItem(container, 'deleteFromHere'));
+    await tick();
+
     expect(container.querySelector('.ctx')).toBeFalsy();
+    expect(get(activeGame).dirty).toBe(true);
+    expect(mainlineMoves(container).length).toBeLessThan(before.length);
+    expect(mainlineMoves(container).slice(0, 2)).toEqual(before.slice(0, 2));
   });
 
   it('Escape and clicking the scrim both dismiss the menu without acting', async () => {
@@ -1290,8 +1328,7 @@ describe('§5.4.2 Move List', () => {
 
     await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
     await tick();
-    const [promote] = container.querySelectorAll('.ctx [role="menuitem"]');
-    await fireEvent.click(promote);
+    await fireEvent.click(menuItem(container, 'promote'));
     await tick();
 
     expect(container.querySelector('.ctx')).toBeFalsy();
@@ -1308,8 +1345,7 @@ describe('§5.4.2 Move List', () => {
 
     await fireEvent.contextMenu(target, { clientX: 40, clientY: 60 });
     await tick();
-    const [, makeMain] = container.querySelectorAll('.ctx [role="menuitem"]');
-    await fireEvent.click(makeMain);
+    await fireEvent.click(menuItem(container, 'mainline'));
     await tick();
 
     expect(container.querySelector('.ctx')).toBeFalsy();

@@ -14,7 +14,7 @@
   import {
     activeGame, composition, ensureGameState,
     firstPly, prevPly, nextPly, lastPly, goToPly, goToPath, atLastPly,
-    moveInputs, playMove, promoteVariation, makeMainLine,
+    moveInputs, playMove, editVariation,
     flipBoard, toggleCollapsed, toggleHidden, setPlyShapes,
   explorerContentHeight, setExplorerLibrary,
   engineContentHeight, setEngineOn, setEngineSource, setEngineLines, setEngineDepth,
@@ -166,8 +166,7 @@
       plyCount={g.plies.length}
       onselectply={(n) => { stop(); goToPly(tabId, n); }}
       onselectpath={(p) => { stop(); goToPath(tabId, p); }}
-      onpromotevariation={(p) => { stop(); promoteVariation(tabId, p); }}
-      onmakemainline={(p) => { stop(); makeMainLine(tabId, p); }}
+      onvariationedit={(command, p) => { stop(); editVariation(tabId, command, p); }}
       {playing}
       info={g.info}
       onfavourite={() => toggleFavourite(tabId)}

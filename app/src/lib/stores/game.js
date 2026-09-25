@@ -28,7 +28,7 @@ import {
 import { explorerConnection, requestPersistentStorage } from '$lib/data/session.js';
 import {
   readMovetext, resolveMovetext, writeMovetext, applyShapesToMovetext, appendMoveTree,
-  promoteAt, applyPromotions
+  applyTreeEdit, applyTreeEdits, variationEditsAt, remapPathThroughChange
 } from '$lib/pgn/index.js';
 import { destsForFen, turnFromFen, playMove as computeMove } from '$lib/game/moves.js';
 
@@ -227,31 +227,31 @@ function cloneNode(node) {
  * different pending moves of their own.
  */
 /**
- * Every move played and every promotion made this session, as ONE
- * chronological sequence -- Stage 6 needs this, Stage 4/5's own
- * `pendingMoves` alone never did. Each entry keeps its own `seq` (set once,
- * at the moment it was recorded -- `playMove`/`promote` below both use
- * `pendingMoves.length + pendingPromotions.length` at push time, a cheap
- * count that is exactly a running total since neither array ever shrinks
- * except together, on save/discard).
+ * Every move played and every tree edit made this session (promote,
+ * demote, Make Main Line, delete), as ONE chronological sequence. Each
+ * entry keeps its own `seq` (set once, at the moment it was recorded --
+ * `playMove`/`editVariation` below both use `nextSeq`, a running total
+ * since neither array ever shrinks except together, on save/discard).
  *
  * WHY this matters, and can't just be "fold every move, then replay every
- * promotion" (what this used to do): a move's own `parentPath` is recorded
- * against the tree AS IT STOOD the moment it was played -- which, if a
- * promotion happened first, already reflects that promotion. Folding
- * moves as a block before any promotion replays would apply that
- * post-promotion path to a tree that hasn't been promoted yet, landing
- * nowhere (silently dropped by `nodeAtPath` finding nothing there).
- * Replaying strictly in `seq` order is what keeps every entry meaning
- * exactly what it meant when it was made, whatever order moves and
- * promotions actually happened in.
+ * tree edit": a move's own `parentPath` is recorded against the tree AS IT
+ * STOOD the moment it was played -- which, if an edit happened first,
+ * already reflects that edit. Folding moves as a block before any edit
+ * replays would apply that post-edit path to a tree that hasn't been
+ * edited yet, landing nowhere (silently dropped by `nodeAtPath` finding
+ * nothing there). Replaying strictly in `seq` order is what keeps every
+ * entry meaning exactly what it meant when it was made, whatever order
+ * moves and edits actually happened in.
  */
 function pendingEditsInOrder(st) {
   return [
     ...(st.pendingMoves ?? []).map((m) => ({ kind: 'move', ...m })),
-    ...(st.pendingPromotions ?? []).map((p) => ({ kind: 'promote', ...p }))
+    ...(st.pendingTreeEdits ?? []).map((e) => ({ kind: 'tree', seq: e.seq, edit: e }))
   ].sort((a, b) => a.seq - b.seq);
 }
+
+/** The `seq` the next recorded move or tree edit gets. */
+const nextSeq = (st) => (st.pendingMoves ?? []).length + (st.pendingTreeEdits ?? []).length;
 
 function mergedTreeForState(st) {
   const root = cloneNode(baseTreeForState(st));
@@ -260,7 +260,7 @@ function mergedTreeForState(st) {
       const parent = nodeAtPath(root, edit.parentPath);
       if (parent) parent.children.push({ ply: edit.ply, children: [] });
     } else {
-      promoteAt(root, edit.path, { toMainline: edit.toMainline });
+      applyTreeEdit(root, edit.edit);
     }
   }
   return root;
@@ -270,16 +270,15 @@ function mergedTreeForState(st) {
  * `pendingEditsInOrder`'s replay against the REAL document at save time
  * (`saveTab`/`createGameFromDraft`) -- the doc-tree counterpart of
  * `mergedTreeForState` above, using the real `appendMoveTree`/
- * `applyPromotions` (each called with a single-entry list, so a run of
- * moves or promotions folds in one call same as either always has, but the
- * two interleave in the exact order they actually happened). Mutates `doc`
+ * `applyTreeEdits` (each called with a single-entry list, so moves and
+ * tree edits interleave in the exact order they actually happened). Mutates `doc`
  * in place and returns it, same convention every other `pgn/movetext.js`
  * writer here uses.
  */
 function applyPendingEdits(doc, st) {
   for (const edit of pendingEditsInOrder(st)) {
     if (edit.kind === 'move') appendMoveTree(doc, [{ parentPath: edit.parentPath, ply: edit.ply }]);
-    else applyPromotions(doc, [{ path: edit.path, toMainline: edit.toMainline }]);
+    else applyTreeEdits(doc, [edit.edit]);
   }
   return doc;
 }
@@ -464,18 +463,20 @@ export function ensureGameState(tabId, libraryGameId = null) {
     */
     pendingMoves: [],
     /*
-      Promotions ("Promote Variation"/"Make Main Line") made THIS SESSION,
-      not yet saved -- Stage 6 of `analysis-board-plan.md`. Each entry is
-      `{ path, toMainline }`, in the order they were made (`promote()`
-      below); replayed the same way and order by `mergedTreeForState`
-      (against this tab's own merged tree, so a promotion sticks for the
-      rest of the session) and by `saveTab`/`createGameFromDraft`'s own
-      `applyPromotions` call (against the real document, after
-      `appendMoveTree` -- a promotion can target a path that only exists
-      once this session's pending moves are folded in). Cleared on save or
-      when the tab closes with it discarded, same as `pendingMoves`.
+      Tree edits made THIS SESSION, not yet saved: Promote/Demote
+      Variation, Make Main Line, Delete from Here, Delete Variation. Each
+      entry is one `pgn/movetext.js` edit (`{ op: 'move-child' |
+      'mainline' | 'delete', ... }`, from `variationEditsAt`) plus its
+      `seq`, in the order they were made (`editVariation()` below);
+      replayed the same way and order by `mergedTreeForState` (against
+      this tab's own merged tree, so an edit sticks for the rest of the
+      session) and by `saveTab`/`createGameFromDraft`'s own
+      `applyTreeEdits` call (against the real document, after
+      `appendMoveTree` -- an edit can target a path that only exists once
+      this session's pending moves are folded in). Cleared on save or when
+      the tab closes with it discarded, same as `pendingMoves`.
     */
-    pendingPromotions: [],
+    pendingTreeEdits: [],
     /*
       Staged Game Info edits — white/white_elo/black/black_elo/result/
       event/site/date/round — made in the Edit dialog but not yet saved.
@@ -593,7 +594,7 @@ export function isPristineDraft(tabId) {
   const untouched = Object.keys(st.shapes ?? {}).length === 0
     && Object.keys(st.pendingInfo ?? {}).length === 0
     && (st.pendingMoves?.length ?? 0) === 0
-    && (st.pendingPromotions?.length ?? 0) === 0;
+    && (st.pendingTreeEdits?.length ?? 0) === 0;
   return blank && untouched;
 }
 
@@ -1264,7 +1265,7 @@ export function playMove(tabId, { from, to, promotion } = {}) {
   patch(tabId, (cur) => ({
     pendingMoves: [
       ...(cur.pendingMoves ?? []),
-      { parentPath: path, ply, seq: (cur.pendingMoves ?? []).length + (cur.pendingPromotions ?? []).length }
+      { parentPath: path, ply, seq: nextSeq(cur) }
     ],
     path: [...path, childIndex],
     ply: path.length + 1,
@@ -1276,107 +1277,82 @@ export function playMove(tabId, { from, to, promotion } = {}) {
 
 /* ------------------------------ variations -------------------------------- */
 
-/**
- * Re-key ONE other path-addressed value after a single swap `promoteAt`
- * made at `depth` (moving the child that was at index `from` there to the
- * front of its parent's `children`) -- see `promoteAt`'s own doc comment
- * in `pgn/movetext.js` for the swap itself and why every OTHER path
- * sharing that parent needs this. `path` and `promotedPath` are compared
- * up to (not including) `depth` to confirm they actually share that
- * parent -- a swap at `depth` only ever reorders ONE parent's children, so
- * a path naming anything else (a different parent entirely, or nothing at
- * `depth` at all) is returned untouched.
- */
-function remapPath(path, promotedPath, { depth, from }) {
-  if (!path || path.length <= depth) return path;
-  for (let i = 0; i < depth; i++) if (path[i] !== promotedPath[i]) return path;
-  const seg = path[depth];
-  const next = seg === from ? 0 : (seg < from ? seg + 1 : seg);
-  if (next === seg) return path;
-  const out = path.slice();
-  out[depth] = next;
-  return out;
-}
-
-/** Fold every swap a `promoteAt` call made -- deepest first, exactly the
- *  order it returns them in -- over one other path. Safe to apply in any
- *  order in practice (each swap only ever touches its own `depth`), but
- *  this keeps the sequence visibly the same one `promoteAt` itself walked. */
-function remapPathThroughSwaps(path, promotedPath, swaps) {
-  return swaps.reduce((p, swap) => remapPath(p, promotedPath, swap), path);
+/** Fold every change one edit made, in order, over one other path.
+ *  `null` once the path falls inside a deleted subtree. */
+function remapThroughChanges(path, changes) {
+  return changes.reduce((p, change) => (p ? remapPathThroughChange(p, change) : p), path);
 }
 
 /**
- * Promote the node at `path` -- Stage 6 of `analysis-board-plan.md`.
- * `toMainline: false` is Lichess/En Croissant's own "Promote Variation"
- * (one branch point); `true` is their "Make Main Line" (cascades to the
- * root). See `promoteAt`'s own doc comment in `pgn/movetext.js` for the
- * algorithm and where it was verified from.
- *
- * The swaps are computed against a SCRATCH merged tree
- * (`mergedTreeForState` already replays every earlier promotion this
- * session, so `path` is read against exactly what the Moves Section is
- * showing right now) -- never against a tree anything else is reading, so
- * this never mutates what `activeGame` has already handed a component
- * this tick. Those swaps then re-key every OTHER piece of this tab's own
- * state that addresses the CURRENT tree and could have just moved along
- * with the promoted line: the cursor, drawn shapes (keyed by path), and a
- * held engine result -- so nothing is left silently pointing at the wrong
- * position once the tree itself reflects the promotion. `pendingMoves` is
- * deliberately left alone -- see `pendingEditsInOrder`'s own doc comment
- * for why re-keying it here would be wrong, not just redundant. `path` is
- * then appended to `pendingPromotions`, tagged with this edit's own `seq`,
- * exactly as given: it is valid against the tab's live tree right now,
- * which is exactly what `pendingEditsInOrder`'s replay reads it against
- * later, both in `mergedTreeForState` (immediately) and in `saveTab`/
- * `createGameFromDraft`'s own save-time fold (see `applyPendingEdits`).
- *
- * A path already on the mainline all the way up (or the root itself) has
- * nothing to promote -- `promoteAt` returns no swaps, and this no-ops
- * rather than recording an empty, dirtying promotion.
+ * Which variation commands apply to the move at `path` right now, as the
+ * Moves Section's context menu needs them: `{ promote, demote, mainline,
+ * deleteFromHere, deleteVariation }`, each `true` or `false`. The menu
+ * always shows all five and disables the ones that are `false`.
  */
-function promote(tabId, path, toMainline) {
+export function variationCommands(tabId, path) {
+  const st = get(gameStates)[tabId];
+  const edits = st ? variationEditsAt(mergedTreeForState(st), path) : variationEditsAt(null, path);
+  return Object.fromEntries(Object.entries(edits).map(([k, v]) => [k, !!v]));
+}
+
+/**
+ * Run one variation command on the move at `path`: `'promote'`,
+ * `'demote'`, `'mainline'`, `'deleteFromHere'` or `'deleteVariation'`
+ * (the keys of `variationEditsAt` in `pgn/movetext.js`, which decides what
+ * each one does and when it applies). A command that does not apply to
+ * that move is a no-op, rather than recording an empty, dirtying edit.
+ *
+ * The edit is applied to a SCRATCH merged tree (never one anything else is
+ * reading) to learn exactly which children moved or were removed. Those
+ * changes then re-key every OTHER piece of this tab's state that addresses
+ * the current tree: the cursor, drawn shapes (keyed by path) and a held
+ * engine result. Anything inside a deleted subtree is dropped, and a
+ * cursor inside one moves to the deleted move's parent position.
+ * `pendingMoves` is deliberately not re-keyed: each entry is only ever
+ * replayed against the tree as it stood at its own `seq` (see
+ * `pendingEditsInOrder`). The edit itself is appended to
+ * `pendingTreeEdits` exactly as given -- valid against the live tree right
+ * now, which is what the replay reads it against later.
+ */
+export function editVariation(tabId, command, path) {
   const st = get(gameStates)[tabId];
   if (!st) return;
   const scratch = mergedTreeForState(st);
-  const swaps = promoteAt(scratch, path, { toMainline });
-  if (!swaps.length) return;
+  const edit = variationEditsAt(scratch, path)[command];
+  if (!edit) return;
+  const changes = applyTreeEdit(scratch, edit);
+  if (!changes.length) return;
+
+  const remapped = remapThroughChanges(st.path ?? [], changes);
+  const moved = !remapped;
+  const cursor = remapped ?? changes.find((c) => c.op === 'delete').path.slice(0, -1);
+  const shapes = {};
+  for (const [key, value] of Object.entries(st.shapes ?? {})) {
+    const next = remapThroughChanges(parsePathKey(key), changes);
+    if (next) shapes[pathKey(next)] = value;
+  }
+  const holdPath = st.engineHold ? remapThroughChanges(st.engineHold.path, changes) : null;
+
   patch(tabId, (cur) => ({
-    // The cursor, drawn shapes and a held engine result are all addresses
-    // into the CURRENT tree, so all three have to move with the position
-    // they were pointing at. `pendingMoves` is deliberately NOT touched
-    // here: each entry's own `parentPath` is only ever replayed (by
-    // `pendingEditsInOrder`, in `mergedTreeForState` and at save time)
-    // against the tree as it stood at THAT entry's own `seq` -- which, for
-    // any move recorded before this promotion, is a tree this promotion
-    // hasn't happened to yet. Remapping it here would make it valid against
-    // the wrong tree.
-    path: remapPathThroughSwaps(cur.path ?? [], path, swaps),
-    shapes: Object.fromEntries(
-      Object.entries(cur.shapes ?? {}).map(([key, value]) =>
-        [pathKey(remapPathThroughSwaps(parsePathKey(key), path, swaps)), value])
-    ),
-    engineHold: cur.engineHold
-      ? { ...cur.engineHold, path: remapPathThroughSwaps(cur.engineHold.path, path, swaps) }
-      : null,
-    pendingPromotions: [
-      ...(cur.pendingPromotions ?? []),
-      { path, toMainline, seq: (cur.pendingMoves ?? []).length + (cur.pendingPromotions ?? []).length }
-    ]
+    path: cursor,
+    ply: cursor.length,
+    shapes,
+    engineHold: holdPath ? { ...cur.engineHold, path: holdPath } : null,
+    pendingTreeEdits: [...(cur.pendingTreeEdits ?? []), { ...edit, seq: nextSeq(cur) }]
   }));
+  if (moved) refreshExplorerStats(tabId);
 }
 
-/** Move a variation up past whatever's next to it at exactly ONE branch
- *  point. A no-op on a path that's already the mainline all the way up. */
-export function promoteVariation(tabId, path) {
-  promote(tabId, path, false);
-}
-
-/** Make this line the game's own actual mainline, cascading all the way to
- *  the root. A no-op on a path that's already the mainline all the way up. */
-export function makeMainLine(tabId, path) {
-  promote(tabId, path, true);
-}
+/** Move a variation up one step at its own branch point. */
+export const promoteVariation = (tabId, path) => editVariation(tabId, 'promote', path);
+/** Move a line down one step at its branch point (a main-line move's own). */
+export const demoteVariation = (tabId, path) => editVariation(tabId, 'demote', path);
+/** Make this line the game's main line, cascading all the way to the root. */
+export const makeMainLine = (tabId, path) => editVariation(tabId, 'mainline', path);
+/** Delete this move and everything after it. */
+export const deleteFromHere = (tabId, path) => editVariation(tabId, 'deleteFromHere', path);
+/** Delete the whole line this move belongs to, from its first move. */
+export const deleteVariation = (tabId, path) => editVariation(tabId, 'deleteVariation', path);
 
 /* --------------------------------- board -------------------------------- */
 
@@ -1442,8 +1418,8 @@ function shapesDiffer(a, b) {
  * True once anything in this tab differs from what a save would currently
  * write over it. Three categories today, more as later stages land:
  *
- *   - moves played, or promotions made, this session (`pendingMoves`/
- *     `pendingPromotions`) — unconditionally dirty the moment either is
+ *   - moves played, or tree edits made, this session (`pendingMoves`/
+ *     `pendingTreeEdits`) — unconditionally dirty the moment either is
  *     non-empty, checked before either of the other two below ever runs;
  *   - board annotations — only a position this session has actually drawn
  *     on (`st.shapes` holds a session override for it, keyed by PATH since
@@ -1453,7 +1429,7 @@ function shapesDiffer(a, b) {
  *     session is never dirty just because it happens to carry a
  *     previously-saved arrow — reopening a game that already has
  *     annotations is not itself an edit. A path this session's OWN pending
- *     moves OR a promotion created or moved has no base node at that
+ *     moves OR a tree edit created or moved has no base node at that
  *     address at all (`nodeAtPath` on `tree` finds nothing there, or the
  *     wrong thing) — harmless: the bullet above already returns true
  *     before this loop ever runs, on any tab where that could occur;
@@ -1477,7 +1453,7 @@ function shapesDiffer(a, b) {
  */
 function computeDirty(st, base, tree) {
   if ((st.pendingMoves?.length ?? 0) > 0) return true;
-  if ((st.pendingPromotions?.length ?? 0) > 0) return true;
+  if ((st.pendingTreeEdits?.length ?? 0) > 0) return true;
   const overrides = st.shapes ?? {};
   for (const key of Object.keys(overrides)) {
     const node = nodeAtPath(tree, parsePathKey(key));
@@ -1567,35 +1543,35 @@ export async function saveTab(tabId) {
   */
   const hasShapes = Object.keys(st.shapes ?? {}).length > 0;
   const hasMoves = (st.pendingMoves ?? []).length > 0;
-  const hasPromotions = (st.pendingPromotions ?? []).length > 0;
+  const hasTreeEdits = (st.pendingTreeEdits ?? []).length > 0;
 
   try {
     if (Object.keys(changedFields).length) {
       await updateGameFields(connection, st.libraryGameId, changedFields);
     }
 
-    if (hasShapes || hasMoves || hasPromotions) {
+    if (hasShapes || hasMoves || hasTreeEdits) {
       const { movetext } = await readMovetextFor(connection, st.libraryGameId);
       const doc = resolveMovetext(readMovetext(movetext ?? ''));
-      // Moves and promotions (Stage 4/5/6) are folded in FIRST, interleaved
-      // in the exact order they happened (`applyPendingEdits` /
-      // `pendingEditsInOrder` -- a promotion can target a path that only
+      // Moves and tree edits are folded in FIRST, interleaved in the
+      // exact order they happened (`applyPendingEdits` /
+      // `pendingEditsInOrder` -- an edit can target a path that only
       // exists once an earlier move is folded in, and a move's own
       // `parentPath` is only valid against the doc as it stood before a
-      // LATER promotion). Shapes run last, since `st.shapes` is already
-      // keyed by the POST-promotion paths (`promote()` re-keys it the
-      // moment a promotion happens) that the doc's tree needs to already
-      // match before shapes are applied by path.
-      if (hasMoves || hasPromotions) applyPendingEdits(doc, st);
+      // LATER edit). Shapes run last, since `st.shapes` is already keyed
+      // by the POST-edit paths (`editVariation()` re-keys it the moment an
+      // edit happens) that the doc's tree needs to already match before
+      // shapes are applied by path.
+      if (hasMoves || hasTreeEdits) applyPendingEdits(doc, st);
       if (hasShapes) applyShapesToMovetext(doc, st.shapes ?? {});
       await writeMovetextFor(connection, st.libraryGameId, writeMovetext(doc));
     }
 
     requestPersistentStorage();
-    patch(tabId, () => ({ pendingInfo: {}, shapes: {}, pendingMoves: [], pendingPromotions: [] }));
+    patch(tabId, () => ({ pendingInfo: {}, shapes: {}, pendingMoves: [], pendingTreeEdits: [] }));
 
     if (Object.keys(changedFields).length) await loadGames();
-    if (hasShapes || hasMoves || hasPromotions) {
+    if (hasShapes || hasMoves || hasTreeEdits) {
       // `loadRealGame` is load-once (`if (get(realGames).has(id)) return;`),
       // so the stale parse has to be evicted before asking for it again --
       // simply re-calling it would see the old entry and no-op.
@@ -1633,12 +1609,12 @@ export async function saveTab(tabId) {
 async function createGameFromDraft(tabId, st, connection) {
   const draft = draftSeeds.get(st.libraryGameId) ?? { movetext: '', fen: null, fields: {} };
   const doc = resolveMovetext(readMovetext(draft.movetext ?? ''), { fen: draft.fen ?? null });
-  // Moves/promotions interleaved, then shapes -- see the real-game branch
+  // Moves/tree edits interleaved, then shapes -- see the real-game branch
   // (`saveTab`) for why: a shape on a position this draft's own pending
   // moves just created needs that position to already exist in `doc`, and
-  // `applyPendingEdits` is what keeps a move and a later promotion each
+  // `applyPendingEdits` is what keeps a move and a later edit each
   // valid against the doc as it stood at their own moment.
-  if ((st.pendingMoves ?? []).length || (st.pendingPromotions ?? []).length) applyPendingEdits(doc, st);
+  if ((st.pendingMoves ?? []).length || (st.pendingTreeEdits ?? []).length) applyPendingEdits(doc, st);
   if (Object.keys(st.shapes ?? {}).length) applyShapesToMovetext(doc, st.shapes ?? {});
 
   const fields = {
@@ -1661,7 +1637,7 @@ async function createGameFromDraft(tabId, st, connection) {
     });
     patch(tabId, () => ({
       libraryGameId: newId, gameId: newId,
-      pendingInfo: {}, shapes: {}, pendingMoves: [], pendingPromotions: []
+      pendingInfo: {}, shapes: {}, pendingMoves: [], pendingTreeEdits: []
     }));
 
     requestPersistentStorage();

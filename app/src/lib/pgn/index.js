@@ -10,7 +10,14 @@ export {
   plyCount,
   appendMoveTree,
   promoteAt,
-  applyPromotions,
+  moveChildAt,
+  deleteAt,
+  isMainlinePath,
+  lineBranchDepth,
+  variationEditsAt,
+  applyTreeEdit,
+  applyTreeEdits,
+  remapPathThroughChange,
   MovetextError,
 } from './movetext.js';
 

@@ -210,7 +210,7 @@ export function appendMoveTree(doc, pendingMoves) {
  * (`{data, children}`): the algorithm only ever touches `.children`
  * arrays, so it works unchanged against `game/plies.js`'s separate, UI-
  * facing `{ply, children}` tree too — `stores/game.js` runs it against
- * THAT tree the moment the user promotes something, and `applyPromotions`
+ * THAT tree the moment the user promotes something, and `applyTreeEdits`
  * below runs it again, from scratch, against the real document at save
  * time. This is why it lives here rather than in `game/plies.js`, which
  * already depends on this module (`readMovetext`/`resolveMovetext`) — the
@@ -225,7 +225,9 @@ export function appendMoveTree(doc, pendingMoves) {
  * `toMainline: false` (Lichess's "Promote Variation") stops after the
  * first such swap; `true` ("Make Main Line") keeps going to the root, so a
  * variation nested inside another variation becomes the game's own actual
- * mainline in one call rather than needing one call per level.
+ * mainline in one call rather than needing one call per level. Plyvio's
+ * own Promote Variation moves a line up ONE step instead (`moveChildAt`,
+ * via `variationEditsAt` below); only Make Main Line uses this.
  *
  * Mutates `root` in place. Returns the swaps actually made, deepest first,
  * as `{depth, from}` — `from` is the promoted child's OLD index at that
@@ -259,23 +261,170 @@ export function promoteAt(root, path, { toMainline = false } = {}) {
   return swaps;
 }
 
-/**
- * Fold this tab's promotions into the real document at save time, in the
- * order they happened — each entry's `path` was valid against the document
- * as it stood right after every earlier entry (and every pending move,
- * folded in first by `appendMoveTree`) had already been applied, so
- * replaying them in order reproduces exactly what the tab's own live tree
- * looked like. Mutates `doc` in place and returns it, the same convention
- * `appendMoveTree`/`applyShapesToMovetext` use.
+/*
+ * Variation editing: reorder and delete. Like `promoteAt` above, every
+ * function here is generic over any `{children:[...]}`-shaped tree, so the
+ * same code edits the live `game/plies.js` tree the moment a command is
+ * chosen and the real PGN document again at save time.
  *
- * @param {object} doc from `readMovetext`, with `pendingMoves` already
- *   folded in via `appendMoveTree` if there were any.
- * @param {{path: number[], toMainline: boolean}[]} pendingPromotions in
- *   the order they were made.
+ * Every edit reports what it did as a list of primitive CHANGES, each one
+ * touching the children of exactly one parent:
+ *
+ *   { op: 'move-child', parentPath, from, to }  one child moved from index
+ *                                               `from` to index `to`;
+ *   { op: 'delete', path }                      one child and its whole
+ *                                               subtree removed.
+ *
+ * `remapPathThroughChange` turns a change into the matching update for any
+ * OTHER path that addressed the same tree (the cursor, drawn shapes, a held
+ * engine result), so nothing is left pointing at the wrong position.
  */
-export function applyPromotions(doc, pendingPromotions) {
-  if (!pendingPromotions?.length) return doc;
-  for (const { path, toMainline } of pendingPromotions) promoteAt(doc.moves, path, { toMainline });
+
+const parentAt = (root, parentPath) => {
+  let node = root;
+  for (const index of parentPath ?? []) node = node?.children?.[index];
+  return node ?? null;
+};
+
+/** True when every segment is 0 — the path runs down the main line. */
+export const isMainlinePath = (path) => (path ?? []).every((seg) => seg === 0);
+
+/**
+ * Depth of the branch point that starts the line `path` belongs to: the
+ * deepest non-zero segment. -1 on the main line, which has no branch point
+ * of its own.
+ */
+export function lineBranchDepth(path) {
+  for (let d = (path?.length ?? 0) - 1; d >= 0; d--) if (path[d] !== 0) return d;
+  return -1;
+}
+
+/**
+ * Move one child of the node at `parentPath` from index `from` to index
+ * `to`; everything in between shifts by one. Mutates `root`. Returns the
+ * change made, or `null` when either index is out of range or they match.
+ */
+export function moveChildAt(root, parentPath, from, to) {
+  const parent = parentAt(root, parentPath);
+  const kids = parent?.children;
+  if (!kids || from === to || !kids[from] || to < 0 || to >= kids.length) return null;
+  const [node] = kids.splice(from, 1);
+  kids.splice(to, 0, node);
+  return { op: 'move-child', parentPath: [...(parentPath ?? [])], from, to };
+}
+
+/**
+ * Remove the node at `path` and everything after it. Its later siblings
+ * shift down by one, so deleting a main-line move that had alternatives
+ * makes the first alternative the main continuation. Mutates `root`.
+ * Returns the change made, or `null` if nothing is at `path` (the root
+ * itself cannot be deleted).
+ */
+export function deleteAt(root, path) {
+  if (!path?.length) return null;
+  const parentPath = path.slice(0, -1);
+  const index = path[path.length - 1];
+  const parent = parentAt(root, parentPath);
+  if (!parent?.children?.[index]) return null;
+  parent.children.splice(index, 1);
+  return { op: 'delete', path: [...path] };
+}
+
+/**
+ * What each variation command would do from the move at `path`, against
+ * `root` as it stands: an edit object for `applyTreeEdit`, or `null` when
+ * the command does not apply to that move (the menu shows it disabled).
+ *
+ *   promote          one step up at the line's own branch point;
+ *   demote           one step down there. On a main-line move, the move's
+ *                    own point: disabled when it has no alternative;
+ *   mainline         Make Main Line, cascading to the root;
+ *   deleteFromHere   this move and everything after it;
+ *   deleteVariation  the whole line the move belongs to, from its first
+ *                    move. Sibling lines are untouched.
+ */
+export function variationEditsAt(root, path) {
+  const none = { promote: null, demote: null, mainline: null, deleteFromHere: null, deleteVariation: null };
+  if (!path?.length || !parentAt(root, path)) return none;
+  const d = lineBranchDepth(path);
+  const onMain = d === -1;
+  const at = onMain ? path.length - 1 : d;
+  const parentPath = path.slice(0, at);
+  const from = path[at];
+  const siblings = parentAt(root, parentPath).children.length;
+  return {
+    promote: !onMain ? { op: 'move-child', parentPath, from, to: from - 1 } : null,
+    demote: from + 1 < siblings ? { op: 'move-child', parentPath, from, to: from + 1 } : null,
+    mainline: !onMain ? { op: 'mainline', path: [...path] } : null,
+    deleteFromHere: { op: 'delete', path: [...path] },
+    deleteVariation: !onMain ? { op: 'delete', path: path.slice(0, d + 1) } : null,
+  };
+}
+
+/**
+ * Apply one edit (from `variationEditsAt`, or a recorded one being
+ * replayed) to `root`. Mutates `root`. Returns the primitive changes made,
+ * in order — empty when the edit had nothing to do.
+ */
+export function applyTreeEdit(root, edit) {
+  if (edit?.op === 'mainline') {
+    return promoteAt(root, edit.path, { toMainline: true }).map(({ depth, from }) => (
+      { op: 'move-child', parentPath: edit.path.slice(0, depth), from, to: 0 }
+    ));
+  }
+  if (edit?.op === 'move-child') {
+    const change = moveChildAt(root, edit.parentPath, edit.from, edit.to);
+    return change ? [change] : [];
+  }
+  if (edit?.op === 'delete') {
+    const change = deleteAt(root, edit.path);
+    return change ? [change] : [];
+  }
+  return [];
+}
+
+/**
+ * Re-key one other path after one change. Returns the new path, the same
+ * array when nothing about it moved, or `null` when it pointed inside a
+ * deleted subtree.
+ */
+export function remapPathThroughChange(path, change) {
+  if (!path) return path;
+  const parentPath = change.op === 'delete' ? change.path.slice(0, -1) : change.parentPath;
+  const depth = parentPath.length;
+  if (path.length <= depth) return path;
+  for (let i = 0; i < depth; i++) if (path[i] !== parentPath[i]) return path;
+  const seg = path[depth];
+  let next = seg;
+  if (change.op === 'delete') {
+    const removed = change.path[depth];
+    if (seg === removed) return null;
+    if (seg > removed) next = seg - 1;
+  } else {
+    const { from, to } = change;
+    if (seg === from) next = to;
+    else if (from < to && seg > from && seg <= to) next = seg - 1;
+    else if (to < from && seg >= to && seg < from) next = seg + 1;
+  }
+  if (next === seg) return path;
+  const out = path.slice();
+  out[depth] = next;
+  return out;
+}
+
+/**
+ * Fold this tab's recorded tree edits into the real document at save
+ * time, in the order they were made. Each edit's paths were valid against
+ * the tree as it stood when it was made, so replaying in order reproduces
+ * what the tab showed. Mutates `doc` in place and returns it, the same
+ * convention `appendMoveTree`/`applyShapesToMovetext` use.
+ *
+ * @param {object} doc from `readMovetext`, with any earlier pending moves
+ *   already folded in via `appendMoveTree`.
+ * @param {object[]} edits in the order they were made.
+ */
+export function applyTreeEdits(doc, edits) {
+  for (const edit of edits ?? []) applyTreeEdit(doc.moves, edit);
   return doc;
 }
 

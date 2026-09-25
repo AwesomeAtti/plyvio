@@ -556,7 +556,7 @@ describe('moveInputs / playMove — moving a piece on the board (Stage 4, "move 
   });
 });
 
-describe('promoteVariation / makeMainLine — promoting a variation to the mainline (Stage 6)', () => {
+describe('promoteVariation / makeMainLine — promoting a variation', () => {
   it('promotes a variation past its one sibling, one branch point at a time', async () => {
     const mods = await freshModules();
     const { game, library, tabs, sampleGames } = mods;
@@ -624,7 +624,7 @@ describe('promoteVariation / makeMainLine — promoting a variation to the mainl
 
     game.promoteVariation('t1', [0, 0, 0]);
     expect(game.isDirty('t1')).toBe(false);
-    expect(get(game.gameStates).t1.pendingPromotions).toEqual([]);
+    expect(get(game.gameStates).t1.pendingTreeEdits).toEqual([]);
   });
 
   it('re-keys drawn shapes, a held engine result, and a pending move\'s own branch point along with the promoted line', async () => {
@@ -691,7 +691,7 @@ describe('promoteVariation / makeMainLine — promoting a variation to the mainl
     const wrote = await game.saveTab('t1');
     expect(wrote).toBe(true);
     expect(game.isDirty('t1')).toBe(false);
-    expect(get(game.gameStates).t1.pendingPromotions).toEqual([]);
+    expect(get(game.gameStates).t1.pendingTreeEdits).toEqual([]);
 
     const { movetext } = await gamesData.readMovetextFor(connection, gameId);
     expect(movetext.trim()).toBe('1. e4 e5 2. Nf3 Nc6 3. Bc4 (3. Bb5 a6) 3... Bc5');
@@ -728,3 +728,124 @@ describe('promoteVariation / makeMainLine — promoting a variation to the mainl
     expect(movetext.trim()).toBe('1. e4 c5 (1... e5 2. Nf3)');
   });
 });
+
+/**
+ * Variation editing: one-step Promote, Demote, Delete from Here and Delete
+ * Variation.
+ */
+describe('variation editing — one-step promote, demote, delete', () => {
+  // e5's children: Nf3=0 (main), Bc4=1, f4=2.
+  const PGN = '1. e4 e5 2. Nf3 (2. Bc4 Nf6 3. d3) (2. f4 exf4) 2... Nc6 3. Bb5 a6';
+
+  async function openGame(movetext = PGN, plies = 7) {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?', [movetext, gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(plies));
+    return { ...mods, gameId, connection };
+  }
+
+  const mainline = (game) => get(game.activeGame).plies.slice(1).map((p) => p.s);
+
+  it('promoting line 3 moves it up one step, not to the main line', async () => {
+    const { game, gamesData, connection, gameId } = await openGame();
+    game.promoteVariation('t1', [0, 0, 2]);
+    expect(mainline(game)).toEqual(['e4', 'e5', 'Nf3', 'Nc6', 'Bb5', 'a6']);
+    await game.saveTab('t1');
+    const { movetext } = await gamesData.readMovetextFor(connection, gameId);
+    expect(movetext.trim()).toBe('1. e4 e5 2. Nf3 (2. f4 exf4) (2. Bc4 Nf6 3. d3) 2... Nc6 3. Bb5 a6');
+  });
+
+  it('demoting a main-line move with alternatives swaps it with line 2 at that point', async () => {
+    const { game } = await openGame();
+    game.goToPath('t1', [0, 0, 0, 0, 0]); // 3. Bb5
+    game.demoteVariation('t1', [0, 0, 0]); // 2. Nf3
+    expect(mainline(game)).toEqual(['e4', 'e5', 'Bc4', 'Nf6', 'd3']);
+    // The cursor followed Bb5 into what is now line 2.
+    const active = get(game.activeGame);
+    expect(active.path).toEqual([0, 0, 1, 0, 0]);
+    expect(active.position.s).toBe('Bb5');
+  });
+
+  it('demote does nothing on a main-line move with no alternative', async () => {
+    const { game } = await openGame();
+    expect(game.variationCommands('t1', [0, 0, 0, 0, 0])).toEqual({
+      promote: false, demote: false, mainline: false, deleteFromHere: true, deleteVariation: false
+    });
+    game.demoteVariation('t1', [0, 0, 0, 0, 0]);
+    expect(game.isDirty('t1')).toBe(false);
+    expect(get(game.gameStates).t1.pendingTreeEdits).toEqual([]);
+  });
+
+  it('delete from here truncates the line; a cursor inside moves to the parent', async () => {
+    const { game } = await openGame();
+    game.goToPath('t1', [0, 0, 0, 0, 0, 0]); // a6
+    game.setPlyShapes('t1', [0, 0, 0, 0, 0], [{ orig: 'b5', brush: 'green' }]);
+    game.setPlyShapes('t1', [0, 0, 0, 0], [{ orig: 'c6', brush: 'red' }]);
+    game.deleteFromHere('t1', [0, 0, 0, 0, 0]); // 3. Bb5
+    const st = get(game.gameStates).t1;
+    expect(mainline(game)).toEqual(['e4', 'e5', 'Nf3', 'Nc6']);
+    expect(st.path).toEqual([0, 0, 0, 0]);
+    expect(st.ply).toBe(4);
+    expect(Object.keys(st.shapes)).toEqual(['0.0.0.0']);
+    expect(game.isDirty('t1')).toBe(true);
+  });
+
+  it('delete from here on a main-line move with alternatives promotes the first one', async () => {
+    const { game } = await openGame();
+    game.deleteFromHere('t1', [0, 0, 0]); // 2. Nf3
+    expect(mainline(game)).toEqual(['e4', 'e5', 'Bc4', 'Nf6', 'd3']);
+  });
+
+  it('delete from here inside a variation keeps the variation up to that move', async () => {
+    const { game } = await openGame();
+    game.deleteFromHere('t1', [0, 0, 1, 0]); // 2... Nf6 in the Bc4 line
+    const tree = get(game.activeGame).tree;
+    expect(tree.children[0].children[0].children[1].ply.s).toBe('Bc4');
+    expect(tree.children[0].children[0].children[1].children).toEqual([]);
+  });
+
+  it('delete variation removes the whole line from anywhere in it; later lines shift up', async () => {
+    const { game, gamesData, connection, gameId } = await openGame();
+    game.goToPath('t1', [0, 0, 2, 0]); // exf4, in line 3
+    game.setPlyShapes('t1', [0, 0, 2, 0], [{ orig: 'f4', brush: 'green' }]);
+    game.deleteVariation('t1', [0, 0, 1, 0, 0]); // 3. d3, in line 2
+    const st = get(game.gameStates).t1;
+    // The f4 line is now line 2; the cursor and its shapes followed it.
+    expect(st.path).toEqual([0, 0, 1, 0]);
+    expect(st.shapes['0.0.1.0']).toEqual([{ orig: 'f4', brush: 'green' }]);
+    await game.saveTab('t1');
+    const { movetext } = await gamesData.readMovetextFor(connection, gameId);
+    // The shape drawn on exf4 is saved on exf4, at its new path.
+    expect(movetext.trim()).toBe('1. e4 e5 2. Nf3 (2. f4 exf4 {[%csl Gf4]}) 2... Nc6 3. Bb5 a6');
+  });
+
+  it('a held engine result inside a deleted line is dropped', async () => {
+    const { game } = await openGame();
+    game.goToPath('t1', [0, 0, 1]);
+    game.setEngineOn('t1', true);
+    game.setEngineOn('t1', false);
+    game.deleteVariation('t1', [0, 0, 1]);
+    expect(get(game.gameStates).t1.engineHold).toBeNull();
+  });
+
+  it('moves and deletes made this session replay in order at save', async () => {
+    const { game, gamesData, connection, gameId } = await openGame('1. e4 e5 2. Nf3', 4);
+    game.goToPly('t1', 1); // after 1. e4
+    game.playMove('t1', { from: 'c7', to: 'c5' }); // 1... c5, new line 2
+    game.deleteFromHere('t1', [0, 0, 0]); // 2. Nf3 (saved)
+    game.goToPath('t1', [0, 1]);
+    game.playMove('t1', { from: 'g1', to: 'f3' }); // 2. Nf3 in the c5 line
+    game.deleteVariation('t1', [0, 1, 0]); // the c5 line, played this session
+    expect(mainline(game)).toEqual(['e4', 'e5']);
+    await game.saveTab('t1');
+    const { movetext } = await gamesData.readMovetextFor(connection, gameId);
+    expect(movetext.trim()).toBe('1. e4 e5');
+  });
+});
+
