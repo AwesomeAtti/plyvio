@@ -1954,14 +1954,25 @@ A variation is entered as its **own indented sub-list**, nested inside the row i
 
 **The keyboard follows the line currently on screen, not the mainline.** Stepping forward from a position inside a variation continues that variation; it does not jump back to the mainline's own next move. Chosen to match Lichess (and En Croissant); Chess.com's own behaviour here is inconsistent enough, by its own users' report, not to be worth matching.
 
-#### Promoting a variation
+#### Editing variations
 
-Any move not already on the mainline all the way up to the root opens a **right-click context menu**, offering two commands, matching Lichess and En Croissant exactly (both implement the identical algorithm, read from their own source 25 Sep) rather than ChessBase's or Chess.com's single, always-cascading command:
+Right-clicking **any move** opens a context menu of five commands, always the same five in the same order, grouped in two:
 
-- **Promote Variation** — moves the line up exactly one branch point. Useful for reordering several variations at the same point without touching the mainline above it.
-- **Make Main Line** — cascades all the way to the root, so the clicked line becomes the game's own actual mainline in one command, whatever it was nested inside.
+| Command | What it does | Available when |
+| --- | --- | --- |
+| **Promote Variation** | Moves the line up one step at its branch point: line 3 becomes line 2; line 2 becomes the main continuation from that point. | The move is not on the mainline |
+| **Demote Variation** | Moves the line down one step at its branch point, the mirror of Promote. On a mainline move it acts at that move's own position: the mainline from there becomes line 2, and line 2 the main continuation. | A line exists below it at that branch point. A mainline move with no alternative at its own position has nothing to swap with; a variation has to be created first |
+| **Make Main Line** | Cascades to the root, so the clicked line becomes the game's own mainline in one command, whatever it was nested inside. | The move is not on the mainline |
+| **Delete from Here** | Removes the move and everything after it in that line, including any variations branching from those moves. The line itself stays, unless the move is its first, in which case the line is gone. On a mainline move that has alternatives, the first alternative becomes the main continuation. | Always |
+| **Delete Variation** | Removes the whole line the move belongs to, from its first move, wherever in the line the click was. Other lines at the same branch point are untouched; a variation nested inside the deleted line goes with it. | The move is not on the mainline |
 
-Promoting reorders the branch point's children (the promoted line moves to the front; everything between the old front and its own old slot shifts back by one to make room) but changes no move, comment or annotation — the position on the board does not move, only its address does. The cursor, drawn shapes and a held Engine Section result all follow the promoted line to its new address, so nothing already on screen appears to jump to a different position. A promotion is staged the same way a played move is (§5.4.1) — visible and navigable immediately, written into the game's own movetext only on save.
+**A command that does not apply is shown disabled, never hidden**, so the menu has the same shape on every move and the commands stay discoverable. No command asks for confirmation.
+
+The five commands are measured against Lichess, Chess.com, ChessBase and En Croissant (25 Sep). Lichess's Promote Variation moves a line straight to the front of its branch point, so for most variations it does the same as Make Main Line; Plyvio's moves one step. Neither Lichess nor Chess.com has a Demote; Lichess's nearest, Force Variation, only changes how a mainline move is displayed.
+
+Promote, Demote and Make Main Line reorder a branch point's children but change no move, comment or annotation. The position on the board does not move, only its address does: the cursor, drawn shapes and a held Engine Section result all follow the line to its new address. Deleting removes moves together with their comments, NAGs and board annotations. A cursor inside the deleted part moves to the position just before it, and drawn shapes and a held Engine Section result inside it are dropped.
+
+Every edit is staged the same way a played move is (§5.4.1): visible and navigable immediately, and written into the game's own movetext only on save, in the order the moves and edits were made. Closing the tab without saving discards them. There is no undo yet (§11.2).
 
 ### 5.6.2 Evaluation Timeline
 
@@ -3075,4 +3086,4 @@ These are unresolved items carried forward from the four source documents' own a
 23. **Game Info's `Hideable: No`** [A] **is provisional**, per its own marked assumption: locking it protects the game's identity, but every other reporting Section can be hidden and a reader who knows the game may not need it either.
 24. **The Game View's 16px padding on all sides** [A] **is written to reconcile the 427px floor but was not confirmed against a source design document.** Every board-sizing figure in §5.4.1 derives from it.
 25. **Whether Object rows' free-text Name field should remain typed input, or move to a reported/structured pattern like General's Library location (§6.1, §6.6), is unreviewed.** General avoids free text specifically because auto-apply removes any save step at which a bad value could be caught; Object rows (and a Subscription's identifying value, item 13) are currently the sole exception to that avoidance, and it is worth determining whether the exception is necessary or simply unexamined.
-26. **Move deletion/undo of a played-but-unsaved move is undesigned.** Stage 5 lifted the restriction this item originally described — a move can now be played from any position, starting a variation when it isn't already there (§5.4.1's "Playing moves"; §5.6.1's "Variations") — but there is still no way to remove a move once played; closing the tab without saving is currently the only way back.
+26. **Undo of a move played or an edit made is undesigned.** Moves can be played from any position (§5.4.1, "Playing moves") and removed again with Delete from Here or Delete Variation (§5.6.1, "Editing variations"), but no step can be undone; closing the tab without saving is the only way back.
