@@ -1550,11 +1550,16 @@ Because the Evaluation Bar sits to the board's left, coordinates render **inside
 
 #### Playing moves
 
-At the mainline's own last ply, the board accepts moves: dragging or clicking a piece to a legal destination plays it. Everywhere earlier in the game the board stays exactly as inert as ply navigation alone leaves it — a move played away from the last ply would start a variation, which the Game Workspace does not yet support (§11.2, item 26).
+The board accepts moves from **any position**, not only the mainline's own last ply: dragging or clicking a piece to a legal destination plays it wherever the cursor currently is.
+
+Two outcomes follow, depending on what the position already holds:
+
+- **The move already exists there** — on the mainline, or in a variation already begun this session — nothing new is created. The cursor simply steps onto it, the same as clicking that move in the Moves Section (§5.6.1) would.
+- **It doesn't** — a new **variation** starts at that position, entered exactly as deep as the position it was played from. Nesting is not capped: a variation can itself hold a variation (§5.6.1, "Variations").
 
 A pawn reaching the last rank asks which piece it becomes before anything is recorded: a small picker appears over the destination square, and dismissing it without a choice returns the board to the position it was in before the drop.
 
-A move played this way is unsaved, exactly like a header edit or a drawn annotation (§2.1.2) — it exists only in the tab until the tab is saved, and is discarded with it if the tab is closed without saving.
+A move played this way is unsaved, exactly like a header edit or a drawn annotation (§2.1.2) — it exists only in the tab until the tab is saved, and is discarded with it if the tab is closed without saving. There is no way to remove a played-but-unsaved move short of that (§11.2, item 26).
 
 #### Paste target
 
@@ -1936,6 +1941,18 @@ A comment is **a banner and a remainder**. Commands the application understands 
 **Ply 0 marks nothing.** The starting position was produced by no move, so no move can be current there. Marking move 1 would be a claim the position does not support.
 
 **Scrolling follows the current ply by the shortest distance that reveals it, never by re-centring.** Re-centring moves the whole list under the reader on every arrow key. Scrolling by hand does not navigate: reading ahead is normal, and the next key press returns to wherever the game actually is.
+
+#### Variations
+
+A position is addressed by **path** — which child, at every branch, was taken to reach it — not by a flat ply count. A mainline position and a variation position can share a depth without being confused for each other; this is what makes a variation possible to represent at all.
+
+**Nesting is arbitrary.** A variation can itself hold a variation, to any depth; nothing in this Section caps it. This, and the path-addressed position it depends on, follow Lichess's own model — chosen after reviewing how Chess.com, Lichess, ChessBase and En Croissant each handle it (25 Sep).
+
+A variation is entered as its **own indented sub-list**, nested inside the row it branches from: its own number gutter, its own two move columns, its own comment handling — everything above in this section applies inside a variation exactly as it does on the mainline, one indent step per level of nesting. A small header (a branch glyph and the word "variation") marks where each one starts. The rail marking a variation is the same colour at every depth; depth is read from the indentation, not the colour.
+
+**Playing a move away from wherever it already goes starts a variation there** (§5.4.1's "Playing moves"), so this Section is also how a variation, once started, stays visible and navigable rather than existing only as an entry in `pendingMoves` until save.
+
+**The keyboard follows the line currently on screen, not the mainline.** Stepping forward from a position inside a variation continues that variation; it does not jump back to the mainline's own next move. Chosen to match Lichess (and En Croissant); Chess.com's own behaviour here is inconsistent enough, by its own users' report, not to be worth matching.
 
 ### 5.6.2 Evaluation Timeline
 
@@ -3049,4 +3066,4 @@ These are unresolved items carried forward from the four source documents' own a
 23. **Game Info's `Hideable: No`** [A] **is provisional**, per its own marked assumption: locking it protects the game's identity, but every other reporting Section can be hidden and a reader who knows the game may not need it either.
 24. **The Game View's 16px padding on all sides** [A] **is written to reconcile the 427px floor but was not confirmed against a source design document.** Every board-sizing figure in §5.4.1 derives from it.
 25. **Whether Object rows' free-text Name field should remain typed input, or move to a reported/structured pattern like General's Library location (§6.1, §6.6), is unreviewed.** General avoids free text specifically because auto-apply removes any save step at which a bad value could be caught; Object rows (and a Subscription's identifying value, item 13) are currently the sole exception to that avoidance, and it is worth determining whether the exception is necessary or simply unexamined.
-26. **A move played away from the mainline's own last ply is not supported.** §5.4.1's "Playing moves" restricts the board to extending the mainline because nothing in the Game Workspace yet reads, shows or steps into a variation — playing one elsewhere in the game would have nowhere to go. Move deletion/undo of a played-but-unsaved move is similarly undesigned; closing the tab without saving is currently the only way back.
+26. **Move deletion/undo of a played-but-unsaved move is undesigned.** Stage 5 lifted the restriction this item originally described — a move can now be played from any position, starting a variation when it isn't already there (§5.4.1's "Playing moves"; §5.6.1's "Variations") — but there is still no way to remove a move once played; closing the tab without saving is currently the only way back.

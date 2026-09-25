@@ -43,20 +43,20 @@ describe('isDirty — board annotations', () => {
 
   it('becomes true once a shape is drawn on any ply', () => {
     ensureGameState('t1', 'g1');
-    setPlyShapes('t1', 3, [{ orig: 'e2', dest: 'e4', brush: 'green' }]);
+    setPlyShapes('t1', [0, 0, 0], [{ orig: 'e2', dest: 'e4', brush: 'green' }]);
     expect(isDirty('t1')).toBe(true);
   });
 
   it('an empty shapes array for a ply is not itself dirty', () => {
     ensureGameState('t1', 'g1');
-    setPlyShapes('t1', 3, []);
+    setPlyShapes('t1', [0, 0, 0], []);
     expect(isDirty('t1')).toBe(false);
   });
 
   it('does not leak into an unrelated tab', () => {
     ensureGameState('t1', 'g1');
     ensureGameState('t2', 'g1');
-    setPlyShapes('t1', 0, [{ orig: 'e2', dest: 'e4', brush: 'green' }]);
+    setPlyShapes('t1', [], [{ orig: 'e2', dest: 'e4', brush: 'green' }]);
     expect(isDirty('t1')).toBe(true);
     expect(isDirty('t2')).toBe(false);
   });

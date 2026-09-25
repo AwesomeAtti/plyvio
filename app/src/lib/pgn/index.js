@@ -8,7 +8,7 @@ export {
   writeMovetext,
   resolveMovetext,
   plyCount,
-  appendMoves,
+  appendMoveTree,
   MovetextError,
 } from './movetext.js';
 

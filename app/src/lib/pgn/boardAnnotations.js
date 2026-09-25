@@ -76,59 +76,73 @@ export function setShapes(annotations, shapes) {
 }
 
 /**
- * Write every ply's drawn shapes into a RESOLVED movetext doc (from
+ * Write every position's drawn shapes into a RESOLVED movetext doc (from
  * `resolveMovetext`), mutating it in place and returning it ready for
- * `writeMovetext`. Walks the main line exactly the way `game/plies.js`'s
- * `readGame` does, so "ply N" here means the same position it means on the
- * board and in the move list: ply 0 is the position before the first move,
- * ply N>0 is the position after the Nth move (that move's own `ann`).
+ * `writeMovetext`. Walks the WHOLE tree — every variation, not only the
+ * mainline — since Stage 5 of `analysis-board-plan.md` (`game/plies.js`)
+ * made every position reachable, including ones a session's own played
+ * moves only just created; keyed by PATH (`game/plies.js`'s own
+ * `pathKey`/`parsePathKey` convention: `''` is the position before the
+ * first move, `'3.1.0'` is "4th mainline ply's 2nd variation's 1st move"),
+ * the same address `stores/game.js`'s cursor and `MoveList.svelte` use, so
+ * a key here means the same position it means on the board and in the move
+ * list.
  *
- * Ply 0 ALWAYS goes into `doc.comments`, whether the game has moves or
- * not — not the first move's `startingAnn`, which this wrote to until 24
- * Sep, and which turns out to be structurally unreachable for the main
- * line: chessops' own parser (`pgn.js`'s `handleComment`) only ever fills a
- * node's `startingComments` for a comment at the start of a VARIATION,
- * right after its opening paren. A comment before the game's own first
- * move is read while the parser's root frame is still `root: true`, which
- * routes it to the document's own `comments` instead. Writing to
- * `startingAnn` therefore produced text (`{...} 1. e4`) that read back into
- * a different place than it was written from — the bug behind "I draw an
- * arrow before the first move and save... no comment is displayed," found
- * 24 Sep. `game/plies.js`'s ply-0 read matches this same correction.
+ * The root path (`''`) ALWAYS goes into `doc.comments`, whether the game
+ * has moves or not — not the first move's `startingAnn`, which this wrote
+ * to until 24 Sep, and which turns out to be structurally unreachable for
+ * the main line: chessops' own parser (`pgn.js`'s `handleComment`) only
+ * ever fills a node's `startingComments` for a comment at the start of a
+ * VARIATION, right after its opening paren. A comment before the game's
+ * own first move is read while the parser's root frame is still
+ * `root: true`, which routes it to the document's own `comments` instead.
+ * Writing to `startingAnn` therefore produced text (`{...} 1. e4`) that
+ * read back into a different place than it was written from — the bug
+ * behind "I draw an arrow before the first move and save... no comment is
+ * displayed," found 24 Sep. `game/plies.js`'s ply-0 read matches this same
+ * correction.
  *
- * `shapesByPly` is `gameStates`'s own `{ [ply]: DrawShape[] }` — a session
- * OVERRIDE per ply, not the whole of what's persisted (`game/plies.js`'s
- * `sh` overlays it onto whatever's already there for display; see that
- * field's own comment). A ply absent from `shapesByPly` is left entirely
- * untouched — nobody drew on it this session. A ply PRESENT but holding an
- * empty array means "drawn on, and cleared" — the user erased a
- * previously-saved arrow without redrawing anything else there — and is
- * written only if the ply's CURRENT annotation actually has `%csl`/`%cal`
- * to remove; otherwise `setShapes` would still run (`removeCommand`
- * unconditionally marks its annotation dirty) and leave a spurious empty
- * `{}` behind on a ply that never had one, from drawing and immediately
- * erasing an arrow in the same session on a ply nothing was ever saved to.
+ * `shapesByPath` is `gameStates`'s own `{ [pathKey]: DrawShape[] }` — a
+ * session OVERRIDE per position, not the whole of what's persisted
+ * (`game/plies.js`'s `sh` overlays it onto whatever's already there for
+ * display; see that field's own comment). A position absent from
+ * `shapesByPath` is left entirely untouched — nobody drew on it this
+ * session. A key PRESENT but holding an empty array means "drawn on, and
+ * cleared" — the user erased a previously-saved arrow without redrawing
+ * anything else there — and is written only if that position's CURRENT
+ * annotation actually has `%csl`/`%cal` to remove; otherwise `setShapes`
+ * would still run (`removeCommand` unconditionally marks its annotation
+ * dirty) and leave a spurious empty `{}` behind on a position that never
+ * had one, from drawing and immediately erasing an arrow in the same
+ * session on a position nothing was ever saved to.
+ *
+ * Called AFTER `appendMoveTree` at save time (`stores/game.js`'s
+ * `saveTab`/`createGameFromDraft`), deliberately: a shape drawn on a
+ * position this same session only just played is a path that does not
+ * exist in `doc` yet at the start of a save, and only does once the
+ * pending moves ahead of it have already been attached.
  */
 function annotationsHaveShapes(annotations) {
   return (annotations ?? []).some((a) => (a.shapes ?? []).length > 0);
 }
 
-export function applyShapesToMovetext(doc, shapesByPly) {
-  const touches = (ply) => Object.prototype.hasOwnProperty.call(shapesByPly ?? {}, ply);
-  const shouldWrite = (ply, existing) =>
-    touches(ply) && ((shapesByPly[ply]?.length ?? 0) > 0 || annotationsHaveShapes(existing));
+export function applyShapesToMovetext(doc, shapesByPath) {
+  const map = shapesByPath ?? {};
+  const touches = (key) => Object.prototype.hasOwnProperty.call(map, key);
+  const shouldWrite = (key, existing) =>
+    touches(key) && ((map[key]?.length ?? 0) > 0 || annotationsHaveShapes(existing));
 
-  if (shouldWrite(0, doc.comments)) doc.comments = setShapes(doc.comments, shapesByPly[0] ?? []);
-  if (!doc.moves.children.length) return doc;
+  if (shouldWrite('', doc.comments)) doc.comments = setShapes(doc.comments, map[''] ?? []);
 
-  let node = doc.moves;
-  let ply = 0;
-  while (node.children.length) {
-    const next = node.children[0];
-    ply += 1;
-    if (shouldWrite(ply, next.data.ann)) next.data.ann = setShapes(next.data.ann, shapesByPly[ply] ?? []);
-    node = next;
-  }
+  const walk = (node, path) => {
+    node.children.forEach((child, index) => {
+      const childPath = [...path, index];
+      const key = childPath.join('.');
+      if (shouldWrite(key, child.data.ann)) child.data.ann = setShapes(child.data.ann, map[key] ?? []);
+      walk(child, childPath);
+    });
+  };
+  walk(doc.moves, []);
   return doc;
 }
 

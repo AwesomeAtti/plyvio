@@ -80,48 +80,99 @@
    * and leave three moves on screen. Collapsed, the cost is a glyph at the row's
    * trailing edge and the list stays a move list.
    *
-   * PLY 0 MARKS NOTHING. The starting position was produced by no move, so no move can
-   * be current there. Marking move 1 would be a claim the position does not support.
+   * PLY 0 (an empty path) MARKS NOTHING. The starting position was produced by no move,
+   * so no move can be current there. Marking move 1 would be a claim the position does
+   * not support.
    *
    * SCROLLING. The current ply is kept in view by scrolling the shortest distance that
    * reveals it, never by re-centring — re-centring makes every arrow key move the whole
    * list under the reader. Scrolling by hand does not navigate: reading ahead is normal,
    * and the next key press snaps back to wherever the game actually is.
+   *
+   * VARIATIONS — Stage 5, following Lichess's own model (agreed 24 Sep). A position is a
+   * `path` (child-indices from the game root), not a flat ply index: a mainline position
+   * and a variation position can share a depth without colliding. Nesting is arbitrary —
+   * a variation can itself hold a variation — so this Section renders a `tree`, not a
+   * `plies` array. `treeSteps` walks a position's own `children[0]` chain into the same
+   * row/comment shape this Section already drew, and attaches each position's OTHER
+   * children (`children.slice(1)`) as that step's variations. A variation is entered as
+   * its own indented sub-list (Option A), built by feeding its own line back through the
+   * same row-pairing and rendered through the same snippet — so a nested variation looks
+   * and behaves exactly like the mainline that contains it, only indented one step
+   * further per level.
    */
   import { t, locale } from '$lib/stores/i18n.js';
   import Icon from '$lib/components/Icon.svelte';
-  import { CommentIcon, SectionCollapse, SectionExpand, BestMoveMark } from '$lib/icons.js';
+  import { CommentIcon, SectionCollapse, SectionExpand, BestMoveMark, VariationMark } from '$lib/icons.js';
+  import { pathKey } from '$lib/game/plies.js';
   import CommentBanner from './CommentBanner.svelte';
 
-  let { plies = [], ply = 0, engine = null, onselect } = $props();
+  let { tree = null, path = [], engine = null, onselect } = $props();
 
   let listEl = $state(null);
 
   /**
-   * Which rows are open, keyed by the row's move number. Collapsed is the default, so
-   * this starts empty; it is replaced rather than mutated on every toggle, because the
-   * assignment is what the reactivity tracks.
+   * Which rows are open, keyed by the row's own path (the white ply's path, or the
+   * black ply's when a row carries only Black). Collapsed is the default, so this
+   * starts empty; it is replaced rather than mutated on every toggle, because the
+   * assignment is what the reactivity tracks. Keying by path rather than move number
+   * is what lets a mainline row and a variation row at the same move number open
+   * independently.
    */
   let open = $state(new Set());
 
-  const toggle = (no) => {
+  const toggle = (key) => {
     const next = new Set(open);
-    if (next.has(no)) next.delete(no);
-    else next.add(no);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
     open = next;
   };
 
+  const curKey = $derived(pathKey(path));
+
+  /* An HTML id can't hold `pathKey`'s dots literally (a `#cmt-0.0` selector doesn't parse
+     as one), so ids get their own, dash-joined spelling. */
+  const idKey = (path) => (path ?? []).join('-');
+
   /**
-   * A ply's annotation, split the way it is drawn: a banner for the commands this
+   * Walks a position's own `children[0]` chain into a flat line of steps, the same
+   * shape this Section always paired into rows. Each step also carries `variations`:
+   * that POSITION's other children (`children.slice(1)`), i.e. the alternatives to the
+   * move this step just played, each holding its own first ply plus the rest of its own
+   * line (computed the same way, recursively). A position's siblings are only ever
+   * collected once, from the call that owns it as its `children[0]` step — a nested
+   * variation's own recursive call only ever looks at ITS node's children, never back up
+   * at the branch point that spawned it, so nothing is ever listed twice.
+   */
+  function treeSteps(node, base) {
+    const steps = [];
+    let current = node;
+    let curPath = base;
+    while (current?.children?.length) {
+      const mainPath = [...curPath, 0];
+      const mainChild = current.children[0];
+      const variations = current.children.slice(1).map((alt, i) => {
+        const altPath = [...curPath, i + 1];
+        return { node: alt, path: altPath, rest: treeSteps(alt, altPath) };
+      });
+      steps.push({ node: mainChild, path: mainPath, variations });
+      current = mainChild;
+      curPath = mainPath;
+    }
+    return steps;
+  }
+
+  /**
+   * A step's annotation, split the way it is drawn: a banner for the commands this
    * application understands, and whatever text is left for everything else. Either may
    * be absent, and a ply with neither has no control and no rows of its own.
    */
-  const side = (i) => {
-    const p = plies[i];
-    if (!p) return null;
+  const side = (item) => {
+    if (!item) return null;
+    const p = item.node.ply;
     const banner = p.e !== null || p.x !== null || p.b !== null;
     return {
-      san: p.s, ply: i, comment: p.c, banner, e: p.e, x: p.x, best: p.b,
+      san: p.s, path: item.path, comment: p.c, banner, e: p.e, x: p.x, best: p.b,
       annotated: banner || !!p.c,
       /* The engine would have played what was played. The banner says so too; on the row
          it is the one mark that survives the comment being collapsed. */
@@ -129,43 +180,71 @@
     };
   };
 
-  const blocks = $derived.by(() => {
-    const out = [];
-    for (let i = 1; i < plies.length; i += 2) {
-      const no = (i + 1) / 2;
-      const white = side(i);
-      const black = side(i + 1);
-      const has = !!(white?.annotated || black?.annotated);
-      const isOpen = has && open.has(no);
+  /* One pair of plies (or a single Black ply, for a row that starts a line mid-move) —
+     turned into a row, or into an open move's row-plus-comment group, followed by
+     whichever variations either ply carries. */
+  function pushPair(out, no, cont, white, black, whiteVariations, blackVariations) {
+    const has = !!(white?.annotated || black?.annotated);
+    const rowKey = pathKey(white ? white.path : black.path);
+    const isOpen = has && open.has(rowKey);
+    const controls = [white, black]
+      .filter((s) => s?.annotated)
+      .map((s) => `cmt-${idKey(s.path)}`)
+      .join(' ');
 
-      /* A move may have two comments, so the control names both of the blocks it opens. */
-      const controls = [white, black]
-        .filter((s) => s?.annotated)
-        .map((s) => `cmt-p${s.ply}`)
-        .join(' ');
-
-      if (!isOpen) {
-        out.push({ kind: 'row', key: `p${i}`, no, white, black, control: has, open: false, controls });
-        continue;
-      }
-
+    if (!isOpen) {
+      out.push({ kind: 'row', key: `r-${rowKey}`, no, cont, white, black, control: has, open: false, controls, rowKey });
+    } else {
       const items = [];
       if (white?.annotated) {
         /* The move breaks: White, its annotation, then Black on a row of its own. */
-        items.push({ t: 'row', key: `w${i}`, no, white, black: null, control: true, open: true, controls });
-        items.push({ t: 'cmt', key: `cw${i}`, move: white });
+        items.push({ t: 'row', key: `w-${rowKey}`, no, cont, white, black: null, control: true, open: true, controls, rowKey });
+        items.push({ t: 'cmt', key: `cw-${rowKey}`, move: white });
         /* Black's ply continues the move, so it is numbered `1…` rather than `1.`. */
-        if (black) items.push({ t: 'row', key: `b${i}`, no, cont: true, white: null, black, control: false });
-        if (black?.annotated) items.push({ t: 'cmt', key: `cb${i}`, move: black });
+        if (black) items.push({ t: 'row', key: `b-${rowKey}`, no, cont: true, white: null, black, control: false, rowKey: pathKey(black.path) });
+        if (black?.annotated) items.push({ t: 'cmt', key: `cb-${rowKey}`, move: black });
       } else {
         /* Only Black is annotated, so nothing has to move aside for it. */
-        items.push({ t: 'row', key: `p${i}`, no, white, black, control: true, open: true, controls });
-        if (black?.annotated) items.push({ t: 'cmt', key: `cb${i}`, move: black });
+        items.push({ t: 'row', key: `p-${rowKey}`, no, cont, white, black, control: true, open: true, controls, rowKey });
+        if (black?.annotated) items.push({ t: 'cmt', key: `cb-${rowKey}`, move: black });
       }
-      out.push({ kind: 'group', key: `g${i}`, items });
+      out.push({ kind: 'group', key: `g-${rowKey}`, items });
     }
+
+    for (const v of whiteVariations ?? []) out.push({ kind: 'var', key: `v-${pathKey(v.path)}`, variation: v });
+    for (const v of blackVariations ?? []) out.push({ kind: 'var', key: `v-${pathKey(v.path)}`, variation: v });
+  }
+
+  /* A line of steps (the mainline, or any variation's own line) into rows, comment
+     groups and the nested variations that branch off it — the same shape for every
+     depth, which is what lets one snippet render all of them. */
+  function blocksFor(steps) {
+    const out = [];
+    let i = 0;
+
+    /* A variation can start on Black's own move — it is still an alternative at the
+       same ply as whatever it replaces — so the very first step may need a solo,
+       ellipsis-numbered row rather than a white/black pair. */
+    if (steps.length && steps[0].path.length % 2 === 0) {
+      const s = steps[0];
+      pushPair(out, s.path.length / 2, true, null, side(s), [], s.variations);
+      i = 1;
+    }
+
+    for (; i < steps.length; i += 2) {
+      const w = steps[i];
+      const b = steps[i + 1];
+      pushPair(out, (w.path.length + 1) / 2, false, side(w), side(b), w.variations, b ? b.variations : []);
+    }
+
     return out;
-  });
+  }
+
+  const mainBlocks = $derived.by(() => (tree ? blocksFor(treeSteps(tree, [])) : []));
+
+  /* A variation's own line: its first ply (already known from the branch point) plus
+     the rest of its line, fed back through the same pairing as any other line. */
+  const variationBlocks = (v) => blocksFor([{ node: v.node, path: v.path, variations: [] }, ...v.rest]);
 
   /**
    * The document's own date, in the reader's locale.
@@ -183,9 +262,10 @@
 
   /* Scroll the shortest distance that brings the current move into view. */
   $effect(() => {
-    const target = ply;
-    if (!listEl || target < 1) return;
-    listEl.querySelector(`[data-ply="${target}"]`)?.scrollIntoView({ block: 'nearest' });
+    const targetKey = curKey;
+    const depth = path.length;
+    if (!listEl || depth < 1) return;
+    listEl.querySelector(`[data-path="${targetKey}"]`)?.scrollIntoView({ block: 'nearest' });
   });
 </script>
 
@@ -203,17 +283,17 @@
 
   {#snippet moveRow(row)}
     <div class="row" role="listitem">
-      <span class="no">{row.no}{row.cont ? '\u2026' : '.'}</span>
+      <span class="no">{row.no}{row.cont ? '…' : '.'}</span>
 
       {#each [row.white, row.black] as move, col (col)}
         {#if move}
           <button
             class="mv"
-            class:on={ply === move.ply}
+            class:on={pathKey(move.path) === curKey}
             type="button"
-            data-ply={move.ply}
-            aria-current={ply === move.ply ? 'true' : undefined}
-            onclick={() => onselect?.(move.ply)}
+            data-path={pathKey(move.path)}
+            aria-current={pathKey(move.path) === curKey ? 'true' : undefined}
+            onclick={() => onselect?.(move.path)}
           >{move.san}{#if move.wasBest}<span class="wb" aria-hidden="true"><Icon icon={BestMoveMark} size={10} /></span>{/if}</button>
         {:else}
           <!-- The other ply is on its own row. The columns say which side this is. -->
@@ -229,7 +309,7 @@
             aria-expanded={row.open}
             aria-controls={row.controls}
             aria-label={row.open ? $t('game.moves.hideComment') : $t('game.moves.showComment')}
-            onclick={() => toggle(row.no)}
+            onclick={() => toggle(row.rowKey)}
           >
             <Icon icon={CommentIcon} size={12} />
             <Icon icon={row.open ? SectionCollapse : SectionExpand} size={11} />
@@ -239,30 +319,46 @@
     </div>
   {/snippet}
 
-  {#each blocks as block (block.key)}
-    {#if block.kind === 'row'}
-      {@render moveRow(block)}
-    {:else}
-      <!-- One move, expanded: its rows and its comments inside a single box. -->
-      <div class="blk">
-        {#each block.items as item (item.key)}
-          {#if item.t === 'row'}
-            {@render moveRow(item)}
-          {:else}
-            <div class="ann" id="cmt-p{item.move.ply}">
-              {#if item.move.banner}
-                <!-- Values only: the engine that produced them is stated once, at the top. -->
-                <CommentBanner e={item.move.e} x={item.move.x} best={item.move.best} />
-              {/if}
-              {#if item.move.comment}
-                <p class="cmt">{item.move.comment}</p>
-              {/if}
-            </div>
-          {/if}
-        {/each}
+  {#snippet renderBlocks(blocks)}
+    {#each blocks as block (block.key)}
+      {#if block.kind === 'row'}
+        {@render moveRow(block)}
+      {:else if block.kind === 'group'}
+        <!-- One move, expanded: its rows and its comments inside a single box. -->
+        <div class="blk">
+          {#each block.items as item (item.key)}
+            {#if item.t === 'row'}
+              {@render moveRow(item)}
+            {:else}
+              <div class="ann" id="cmt-{idKey(item.move.path)}">
+                {#if item.move.banner}
+                  <!-- Values only: the engine that produced them is stated once, at the top. -->
+                  <CommentBanner e={item.move.e} x={item.move.x} best={item.move.best} />
+                {/if}
+                {#if item.move.comment}
+                  <p class="cmt">{item.move.comment}</p>
+                {/if}
+              </div>
+            {/if}
+          {/each}
+        </div>
+      {:else if block.kind === 'var'}
+        {@render variationBlock(block.variation)}
+      {/if}
+    {/each}
+  {/snippet}
+
+  {#snippet variationBlock(v)}
+    <div class="var">
+      <div class="var-hdr">
+        <Icon icon={VariationMark} size={10} />
+        {$t('game.moves.variation')}
       </div>
-    {/if}
-  {/each}
+      {@render renderBlocks(variationBlocks(v))}
+    </div>
+  {/snippet}
+
+  {@render renderBlocks(mainBlocks)}
 </div>
 
 <style>
@@ -403,4 +499,25 @@
     color: var(--muted);
   }
   .mv.on .wb { color: var(--chrome); }
+
+  /*
+    A variation — full arbitrary nesting, Lichess's own model (agreed 24 Sep). Entered as
+    its own indented sub-list (Option A), one rail per level, the same colour at every
+    depth: depth is legible from the indentation alone, and nothing caps how deep a
+    variation can nest, so the rail can't run out of colours to switch between.
+  */
+  .var {
+    margin: 2px 0 2px 30px;
+    padding-left: 6px;
+    border-left: 2px solid var(--rule-strong);
+  }
+
+  .var-hdr {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 3px 8px 3px 4px;
+    color: var(--muted);
+    font: 10px var(--mono);
+  }
 </style>

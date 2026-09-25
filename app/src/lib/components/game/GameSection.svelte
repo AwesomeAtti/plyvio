@@ -32,6 +32,7 @@
   let {
     section, height, collapsed = false, oncollapse, onhide,
     plies = [], ply = 0, engine = null, orientation = 'white', onselectply,
+    tree = null, path = [], onselectpath,
     explorer = null, onselectlibrary, onexplorersettings,
     engineView = null, onengine, onselectengine, onenginelines, onenginedepth,
     onenginesettings,
@@ -426,7 +427,7 @@
       <!-- The one Section that is built. The rest stay placeholders until each is
            drawn and agreed in its own turn. -->
       <div class="content" id="sec-{section.id}-body">
-        <MoveList {plies} {ply} {engine} onselect={onselectply} />
+        <MoveList {tree} {path} {engine} onselect={onselectpath} />
       </div>
     {:else}
       <!--

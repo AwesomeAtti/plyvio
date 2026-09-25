@@ -71,7 +71,7 @@ describe('handlePaste', () => {
   it('stages a confirmation instead of loading into a tab that would lose something', () => {
     const id = openGame('Some Game');
     ensureGameState(id, 'g1');
-    setPlyShapes(id, 0, [{ orig: 'e4', brush: 'green' }]); // no longer pristine
+    setPlyShapes(id, [], [{ orig: 'e4', brush: 'green' }]); // no longer pristine
 
     handlePaste(STANDARD_FEN);
     const pending = get(pendingPaste);
@@ -83,7 +83,7 @@ describe('handlePaste', () => {
   it('stages a confirmation for an already-dirty draft too, not just a real game', () => {
     const id = openNewGame();
     ensureGameState(id, get(stripTabs).find((t) => t.id === id).gameId);
-    setPlyShapes(id, 0, [{ orig: 'e4', brush: 'green' }]); // touched -- not pristine
+    setPlyShapes(id, [], [{ orig: 'e4', brush: 'green' }]); // touched -- not pristine
 
     handlePaste(STANDARD_FEN);
     expect(get(pendingPaste)).not.toBeNull();
@@ -94,7 +94,7 @@ describe('confirmPasteNewTab / confirmPasteReplace / cancelPaste', () => {
   function stagePaste() {
     const id = openGame('Some Game');
     ensureGameState(id, 'g1');
-    setPlyShapes(id, 0, [{ orig: 'e4', brush: 'green' }]);
+    setPlyShapes(id, [], [{ orig: 'e4', brush: 'green' }]);
     handlePaste(STANDARD_FEN);
     return id;
   }

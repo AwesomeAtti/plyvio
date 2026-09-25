@@ -152,39 +152,53 @@ export const writeMovetext = (doc, options = {}) => {
 };
 
 /**
- * Extend the mainline with newly played moves — Stage 4 of
- * `analysis-board-plan.md`. Each entry is `{s}` from a ply this session's
- * board produced (`game/moves.js`'s own `san`, renamed the way
- * `game/plies.js`'s terse ply shape already spells it); nothing else in
- * that shape (`f`/`m`/`k`/…) is stored on a node — a save always re-reads
- * the game fresh afterwards (`realGames` is evicted and `loadRealGame`
- * reruns), so nothing here needs to be right the first time except the SAN.
+ * Fold newly played moves into the tree at THEIR OWN branch point — Stage 4
+ * of `analysis-board-plan.md`, generalized by Stage 5 to attach anywhere,
+ * not only at the mainline's own last node. Each entry is
+ * `{ parentPath, ply: { s } }`: `parentPath` is the path (an array of
+ * child-indices from the root, `game/plies.js`'s own convention) to the
+ * node this move is played FROM, recorded at the moment it was played
+ * (`stores/game.js`'s `playMove`) — so a move played at the mainline's true
+ * end attaches as that node's first child (extending the mainline, Stage
+ * 4's whole scope), and a move played anywhere else attaches as an
+ * ADDITIONAL child (a new variation, or a further move along one already
+ * begun this session). Nothing but `ply.s` (the SAN) is stored on a new
+ * node — a save always re-reads the game fresh afterwards (`realGames` is
+ * evicted and `loadRealGame` reruns), so nothing here needs to be right the
+ * first time except the move itself.
  *
- * Deliberately dumb about WHERE it attaches: it walks to the mainline's own
- * last node (`children[0]` all the way down, same walk `plyCount`/
- * `applyShapesToMovetext` already do) and appends there, in order — correct
- * because this stage only ever plays a move at the last ply to begin with
- * (`stores/game.js`'s `playMove` refuses anywhere else). Mutates `doc` in
- * place and returns it, the same convention `applyShapesToMovetext` uses,
- * since both run once on a document about to be thrown away after
- * `writeMovetext` reads it.
+ * Entries must be processed in the order they were played: a later entry's
+ * `parentPath` may name a node THIS function is about to create (playing a
+ * second move onto a variation begun a moment before), and paths are only
+ * meaningful once every earlier entry has already been attached. Each
+ * entry is pushed as the LAST child of its parent, which is what makes an
+ * entry's own resulting path predictable at play time without consulting
+ * the real document: `parentPath` had exactly `childIndex` children before
+ * this call (base document children plus anything this same fold has
+ * already added), so the new node's path is `[...parentPath, childIndex]`
+ * — `stores/game.js` computes that once, when the move is played, and
+ * hands it to the NEXT entry as ITS `parentPath` if another move follows
+ * from there this session.
+ *
+ * Mutates `doc` in place and returns it, the same convention
+ * `applyShapesToMovetext` uses, since both run once on a document about to
+ * be thrown away after `writeMovetext` reads it.
  *
  * @param {object} doc from `readMovetext` (resolved or not — only
  *   `.moves`'s tree shape matters, not the per-node FEN/check fields
  *   `resolveMovetext` adds, which `writeMovetext` never reads anyway).
- * @param {{s: string}[]} moves plies to append, mainline order.
+ * @param {{parentPath: number[], ply: {s: string}}[]} pendingMoves in the
+ *   order they were played.
  */
-export function appendMoves(doc, moves) {
-  if (!moves?.length) return doc;
-  let node = doc.moves;
-  while (node.children.length) node = node.children[0];
-  for (const { s } of moves) {
-    const child = {
-      data: { san: s, nags: [], ann: [], startingAnn: [], comments: [], startingComments: [] },
+export function appendMoveTree(doc, pendingMoves) {
+  if (!pendingMoves?.length) return doc;
+  for (const { parentPath, ply } of pendingMoves) {
+    let node = doc.moves;
+    for (const index of parentPath ?? []) node = node.children[index];
+    node.children.push({
+      data: { san: ply.s, nags: [], ann: [], startingAnn: [], comments: [], startingComments: [] },
       children: [],
-    };
-    node.children.push(child);
-    node = child;
+    });
   }
   return doc;
 }

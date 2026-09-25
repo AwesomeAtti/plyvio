@@ -2,16 +2,27 @@
  * The Game Workspace's view of a game's moves, read from its movetext.
  *
  * §5.3 navigates by ply, and the board, the Evaluation Bar and the move list each
- * want a different slice of the same position, so one pass produces the array they
- * all index into. Ply 0 is the starting position, which no move produced; ply n is
- * the position after the nth move of the main line.
+ * want a different slice of the same position, so one pass produces the tree they
+ * all index into. Ply 0 is the starting position, which no move produced; a node
+ * N plies deep is the position after N moves along whatever line reaches it.
  *
- * Variations are not walked. §5 specifies no Section that shows one, and reading
- * preserves them either way — this takes the main line because the main line is what
- * the board plays through.
+ * VARIATIONS ARE WALKED — Stage 5 of `analysis-board-plan.md`. Every child of
+ * every node is kept, not just `children[0]` (the mainline continuation): the
+ * shape below is a genuine tree, addressed by PATH (an array of child-indices
+ * from the root, `[]` for the starting position, `[3,1,0]` for "4th mainline
+ * ply's 2nd variation's 1st move"), the same convention Lichess and En
+ * Croissant's own source both use — chosen, after reading both (25 Sep), over
+ * a flat-index-plus-overlay scheme, which no reference tool uses.
  *
- * The shape is terse because it repeats a few hundred times per game, and is the one
- * the components already consume:
+ * `pliesOf`/`pliesFor` still return the flat, MAINLINE-ONLY array components
+ * built against before Stage 5 (the Evaluation Timeline's scrubber and the
+ * Explorer/Engine Sections' move-number arithmetic still want exactly this,
+ * and never needed to become variation-aware — see the plan doc's own Stage 5
+ * scope). It is now derived from the tree (`lineFrom(tree)`) rather than being
+ * the tree, so it is still there for anything holding onto the old shape.
+ *
+ * The per-node shape is terse because it repeats a few hundred times per game, and
+ * is the one the components already consume:
  *
  *   s  SAN of the move that produced this position (null at ply 0)
  *   f  FEN of the resulting position
@@ -40,7 +51,14 @@
  * therefore always empty for the main line, found 24 Sep chasing "an arrow
  * drawn before the first move doesn't show up after reopening" —
  * `pgn/boardAnnotations.js`'s `applyShapesToMovetext` writes ply 0 to
- * `doc.comments` for the same reason.
+ * `doc.comments` for the same reason. A comment at the START of a real
+ * variation (right after its own opening paren) is the one place
+ * `startingAnn`/`startingComments` legitimately fire — not read here, since
+ * nothing yet writes a comment there; existing PGNs carrying one keep it
+ * attached to the variation's own first node once chessops resolves it,
+ * which `buildChildren` below reads off `child.data.ann` the same as any
+ * other node, so it is not lost — just not distinguished from a comment
+ * anywhere else on that node's own line.
  */
 
 import { INITIAL_FEN } from 'chessops/fen';
@@ -141,14 +159,123 @@ const evaluationOf = (annotations) => {
   return none();
 };
 
+/** One real move node's ply-shape, shared by every child regardless of depth
+ *  or which line it's on — a variation's own moves are read exactly the way
+ *  the mainline's are, off the same `data` shape `resolveMovetext` already
+ *  produces for every node in the tree, not just `children[0]`. */
+const nodePlyOf = (data) => ({
+  s: data.san,
+  f: data.fenAfter,
+  m: data.from ? [data.from, boardDestination(data.san, data.from, data.to)] : null,
+  k: data.check,
+  c: commentOf(data.ann),
+  b: bestMoveOf(data.ann),
+  sh: shapesOf(data.ann),
+  ...evaluationOf(data.ann)
+});
+
+/** The root's own ply-shape (ply 0) — the position before any move, read
+ *  from the document's own leading comments rather than a move's `ann` (see
+ *  this file's header comment for why). `fen` is §2.2's custom starting
+ *  position; a game with at least one move reads its actual starting FEN
+ *  off that move's own `fenBefore` instead, which is what `resolveMovetext`
+ *  already resolved it against. */
+const rootPlyOf = (doc, fen) => {
+  const first = doc.moves.children[0];
+  return {
+    s: null,
+    f: first ? first.data.fenBefore : (fen ?? INITIAL_FEN),
+    m: null,
+    k: false,
+    c: commentOf(doc.comments),
+    b: bestMoveOf(doc.comments),
+    sh: shapesOf(doc.comments),
+    ...evaluationOf(doc.comments)
+  };
+};
+
+/** Every child of a chessops tree node, recursively, ply-shaped — not just
+ *  `children[0]`. This is the one place Stage 5 actually changes what gets
+ *  read: everything above builds one node's own shape the same way it
+ *  always did, and this is what now visits all of them rather than
+ *  discarding every sibling past the first. */
+const buildChildren = (chessopsNode) =>
+  chessopsNode.children.map((child) => ({
+    ply: nodePlyOf(child.data),
+    children: buildChildren(child)
+  }));
+
 /**
- * Walk a movetext document's main line into the per-ply array.
- *
- * Ply 0 has no move of its own to carry a comment, so it reads the
- * document's own leading comments (`doc.comments`) instead — see this
- * file's own header comment for why that is the only place it can be.
+ * PATH utilities — a path is an array of child-indices from the root,
+ * `[]` for the root itself (ply 0). Shared by `stores/game.js` (the
+ * board/Section cursor and the pending-move overlay), `MoveList.svelte`
+ * (walking every line to draw it), and `pgn/boardAnnotations.js` (locating
+ * a path's node in the real chessops tree at save time, which uses the
+ * same index-per-child convention so a path means the same thing in both
+ * trees).
  */
-export const pliesOf = (movetext, options) => readGame(movetext, options).plies;
+
+/** The node at a path, or `null` if the path doesn't resolve (a stale path
+ *  against a tree that changed shape under it — defensive, not expected in
+ *  normal use since every path in state was computed against a tree of the
+ *  same shape or an extension of it). */
+export function nodeAtPath(root, path) {
+  let node = root;
+  for (const index of path ?? []) {
+    node = node?.children?.[index];
+    if (!node) return null;
+  }
+  return node ?? null;
+}
+
+/** One line from `node` (inclusive) to wherever `children[0]` runs out —
+ *  the mainline read starting there. `basePath` is the path TO `node`
+ *  itself, so the returned entries carry each one's real, absolute path
+ *  rather than one relative to where the walk started. Used both for the
+ *  game's own mainline (`basePath: []`, from the root) and for a
+ *  variation's own line (`basePath` the path to wherever it branches off). */
+export function lineFrom(node, basePath = []) {
+  const out = [];
+  let n = node;
+  let path = basePath;
+  while (n) {
+    out.push({ ply: n.ply, path });
+    if (!n.children.length) break;
+    n = n.children[0];
+    path = [...path, 0];
+  }
+  return out;
+}
+
+/** The path to the last node of the game's actual mainline — always
+ *  `children[0]` at every step, regardless of what line the cursor is
+ *  currently showing. This is what the `End` key jumps to (Lichess's own
+ *  `last()`: "the end of the mainline", not "the end of whatever line
+ *  you're in" — confirmed from its source, 25 Sep). */
+export function mainlinePath(root) {
+  const line = lineFrom(root);
+  return line.at(-1)?.path ?? [];
+}
+
+/** A path as the string key `st.shapes`/`applyShapesToMovetext` address it
+ *  by — `''` for the root, `'3.1.0'` for `[3,1,0]`. Plain `.join('.')`:
+ *  every segment is a small non-negative integer, so there's no ambiguity
+ *  to escape against. */
+export const pathKey = (path) => (path ?? []).join('.');
+
+/** The reverse of `pathKey` — `''` back to `[]`, `'3.1.0'` back to `[3,1,0]`. */
+export const parsePathKey = (key) => (key === '' ? [] : key.split('.').map(Number));
+
+/**
+ * Walk a movetext document into its full tree — Stage 5's own change; see
+ * this file's header comment. `readGame` below is the one caller, and the
+ * tree is what everything else (the flat mainline `plies`, `stores/game.js`'s
+ * pending-move overlay, the Moves Section) is now built from or against.
+ */
+const buildTree = (doc, fen) => ({
+  ply: rootPlyOf(doc, fen),
+  children: buildChildren(doc.moves)
+});
 
 /**
  * A movetext read once, into everything the Section needs.
@@ -169,54 +296,26 @@ export const pliesOf = (movetext, options) => readGame(movetext, options).plies;
  */
 export const readGame = (movetext, { fen } = {}) => {
   const doc = resolveMovetext(readMovetext(movetext ?? ''), { fen });
-  const plies = [];
-  let node = doc.moves;
-
-  while (node.children.length) {
-    const next = node.children[0];
-    if (!plies.length) {
-      plies.push({
-        s: null,
-        f: next.data.fenBefore,
-        m: null,
-        k: false,
-        c: commentOf(doc.comments),
-        b: bestMoveOf(doc.comments),
-        sh: shapesOf(doc.comments),
-        ...evaluationOf(doc.comments)
-      });
-    }
-    plies.push({
-      s: next.data.san,
-      f: next.data.fenAfter,
-      m: next.data.from
-        ? [next.data.from, boardDestination(next.data.san, next.data.from, next.data.to)]
-        : null,
-      k: next.data.check,
-      c: commentOf(next.data.ann),
-      b: bestMoveOf(next.data.ann),
-      sh: shapesOf(next.data.ann),
-      ...evaluationOf(next.data.ann)
-    });
-    node = next;
-  }
-
-  // A game with no moves is still a position to show -- its own custom
-  // starting position (§2.2) if it has one, the standard array otherwise.
-  if (!plies.length) {
-    plies.push({
-      s: null, f: fen ?? INITIAL_FEN, m: null, k: false,
-      c: commentOf(doc.comments),
-      b: bestMoveOf(doc.comments),
-      sh: shapesOf(doc.comments),
-      ...evaluationOf(doc.comments)
-    });
-  }
-  return { plies, engine: doc.engine ? engineSummary(doc.engine) : null };
+  const tree = buildTree(doc, fen);
+  const plies = lineFrom(tree).map((entry) => entry.ply);
+  return { tree, plies, engine: doc.engine ? engineSummary(doc.engine) : null };
 };
 
 /**
- * The plies of a `games` row, parsed once.
+ * Walk a movetext document's main line into the per-ply array — kept for
+ * every caller that only ever wanted that (the Evaluation Timeline, and the
+ * Explorer/Engine Sections' move-number arithmetic; see this file's header
+ * comment). `readGame(movetext, options).plies` is the same array; this is
+ * the older, narrower entry point some callers still use.
+ */
+export const pliesOf = (movetext, options) => readGame(movetext, options).plies;
+
+/** The tree half of `readGame`, for a caller (MoveList's own tests) that wants
+ *  variations rather than just the mainline `pliesOf` gives. */
+export const treeOf = (movetext, options) => readGame(movetext, options).tree;
+
+/**
+ * The plies (and, since Stage 5, the tree) of a `games` row, parsed once.
  *
  * The row is resolved through §3.1's precedence rather than by reading a field: a row
  * carrying its own `movetext` is read from that, and one without — which is every row
@@ -243,3 +342,10 @@ export const pliesFor = (game) => (game ? readRow(game).plies : []);
 
 /** The engine that produced this game's evaluations, or null when none is declared. */
 export const engineFor = (game) => (game ? readRow(game).engine : null);
+
+/** This game's move tree, root at ply 0 — Stage 5's own addition, the same
+ *  cached read `pliesFor`/`engineFor` already share. An empty game (no row)
+ *  gets a bare, childless root at the standard start, matching `pliesFor`'s
+ *  own `[]` for the same case at the flat-array level. */
+export const treeFor = (game) =>
+  game ? readRow(game).tree : { ply: { s: null, f: INITIAL_FEN, m: null, k: false, c: null, b: null, sh: [], ...none() }, children: [] };

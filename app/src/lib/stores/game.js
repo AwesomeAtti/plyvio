@@ -1,7 +1,10 @@
 import { writable, derived, get } from 'svelte/store';
 import { activeId } from './tabs.js';
 import { GAMES } from '$lib/mock-data/sample-games.js';
-import { pliesFor, engineFor, readGame } from '$lib/game/plies.js';
+import {
+  pliesFor, engineFor, treeFor, readGame,
+  nodeAtPath, lineFrom, mainlinePath, pathKey, parsePathKey
+} from '$lib/game/plies.js';
 import { SECTIONS, DEFAULT_VISIBILITY } from '$lib/game/sections.js';
 import { explorerRows, positionGames, explorerHeight, positionKey } from '$lib/game/explorer.js';
 import { explorerLibraries, positionStats } from '$lib/game/explorerMock.js';
@@ -24,7 +27,7 @@ import {
 } from '$lib/data/games.js';
 import { explorerConnection, requestPersistentStorage } from '$lib/data/session.js';
 import {
-  readMovetext, resolveMovetext, writeMovetext, applyShapesToMovetext, appendMoves
+  readMovetext, resolveMovetext, writeMovetext, applyShapesToMovetext, appendMoveTree
 } from '$lib/pgn/index.js';
 import { destsForFen, turnFromFen, playMove as computeMove } from '$lib/game/moves.js';
 
@@ -188,15 +191,54 @@ function loadRealGame(libraryGameId) {
 }
 
 /**
- * The plies behind a tab's game, real or mock — what `activeGame` and the
- * imperative ply-navigation functions below both need, kept in one place so
- * the two do not each grow their own idea of where a game's moves come from.
+ * The move TREE behind a tab's game, real or mock, before any of this
+ * session's own played moves are folded in — what `computeDirty` compares
+ * a shape override against (a position not yet touched this session has
+ * nothing session-only to overlay), and what `mergedTreeForState` below
+ * clones as its own starting point.
  */
-function pliesForState(st) {
-  const base = readsRealGame(st)
-    ? (get(realGames).get(st.libraryGameId) ?? EMPTY_REAL_GAME).plies
-    : pliesFor(gameById(st.gameId));
-  return st.pendingMoves?.length ? [...base, ...st.pendingMoves] : base;
+function baseTreeForState(st) {
+  return readsRealGame(st)
+    ? (get(realGames).get(st.libraryGameId) ?? EMPTY_REAL_GAME).tree
+    : treeFor(gameById(st.gameId));
+}
+
+/** A tree node, deep-cloned — `children` arrays copied so pushing onto one
+ *  doesn't touch the base tree (`realGames`/the mock cache) it was cloned
+ *  from; `.ply` itself is never mutated, so it's fine to share by reference. */
+function cloneNode(node) {
+  return { ply: node.ply, children: node.children.map(cloneNode) };
+}
+
+/**
+ * The tree `activeGame` and the imperative ply-navigation functions below
+ * both actually navigate — the tab's base tree, PLUS every move played
+ * this session (`st.pendingMoves`, Stage 4/5 of `analysis-board-plan.md`)
+ * attached at its own recorded branch point rather than only ever at the
+ * mainline's end. Each pending entry is `{ parentPath, ply }`
+ * (`playMove` below builds these); folded in order, since a later entry's
+ * `parentPath` may name a node an earlier one in the same list just
+ * created (a second move played onto a variation begun a moment before).
+ *
+ * Cloned once per call rather than mutating the base tree in place: the
+ * base is shared (the `realGames` cache, or `game/plies.js`'s own WeakMap
+ * for a mock row), and two tabs can be open on the same game with
+ * different pending moves of their own.
+ */
+function mergedTreeForState(st) {
+  const root = cloneNode(baseTreeForState(st));
+  for (const { parentPath, ply } of st.pendingMoves ?? []) {
+    const parent = nodeAtPath(root, parentPath);
+    if (parent) parent.children.push({ ply, children: [] });
+  }
+  return root;
+}
+
+/** The node the cursor is actually on — `st.path` resolved against the
+ *  merged tree, falling back to the root if a path somehow no longer
+ *  resolves (defensive; not expected in normal use, see `nodeAtPath`). */
+function currentNode(st, tree) {
+  return nodeAtPath(tree, st.path ?? []) ?? tree;
 }
 
 /**
@@ -284,7 +326,7 @@ function loadExplorerStats(tabId, libraryId, posKey) {
 function refreshExplorerStats(tabId) {
   const st = get(gameStates)[tabId];
   if (!st || !st.explorerLibraryId) return;
-  const fen = pliesForState(st)[st.ply]?.f;
+  const fen = currentNode(st, mergedTreeForState(st)).ply?.f;
   const key = fen ? positionKey(fen) : null;
   if (!key) return;
   loadExplorerStats(tabId, st.explorerLibraryId, key);
@@ -316,35 +358,59 @@ export function ensureGameState(tabId, libraryGameId = null) {
       and no marks, which is the honest reading of "not in a library".
     */
     libraryGameId,
+    /*
+      The cursor — Stage 5 of `analysis-board-plan.md`. An array of
+      child-indices from the tree's root (`game/plies.js`'s own path
+      convention, chosen after checking Lichess's and En Croissant's own
+      source: both address a position this same way, an array/string path
+      rather than a flat ply-plus-overlay scheme). `[]` is the starting
+      position; `[3,1,0]` is "4th mainline ply's 2nd variation's 1st move".
+      `ply` is kept alongside it, always `path.length` — the DEPTH of the
+      position the path resolves to, which is what every consumer that only
+      ever meant "how many moves deep am I" still wants (the Evaluation
+      Timeline's scrubber, the Explorer/Engine Sections' move-number
+      arithmetic, the Game Controls counter): before Stage 5 the two were
+      numerically identical, since nothing but the mainline existed, so
+      keeping `ply` as a derived mirror rather than removing it is not a
+      compromise — it is the same number, still meaning the same thing, for
+      every caller that was never variation-aware and was never asked to
+      become so.
+    */
+    path: [],
     ply: 0,
     orientation: 'white',
     evalVisible: true,
     /*
       Board annotations drawn or cleared during this tab's own SESSION —
-      { [ply]: DrawShape[] }, a per-ply OVERRIDE of whatever's already
-      persisted, not the whole of what the board shows (`activeGame`
-      overlays it onto `plies[ply].sh`, the decoded `%csl`/`%cal` — see
-      that field's own comment). Tab-scoped like `ply`/`orientation` above:
-      a fresh tab on the same game starts with no overrides of its own,
-      showing the persisted annotations plain, exactly as a second tab on
-      the same game would. Set by `setPlyShapes`; `isDirty` below compares
-      each overridden ply against `plies[ply].sh` rather than treating
+      { [pathKey]: DrawShape[] } — `game/plies.js`'s own path-string
+      convention, since Stage 5 — a per-POSITION override of whatever's
+      already persisted, not the whole of what the board shows (`activeGame`
+      overlays it onto the current node's own `.sh`, the decoded
+      `%csl`/`%cal` — see that field's own comment). Tab-scoped like
+      `path`/`orientation` above: a fresh tab on the same game starts with
+      no overrides of its own, showing the persisted annotations plain,
+      exactly as a second tab on the same game would. Set by
+      `setPlyShapes`; `isDirty` below compares each overridden position
+      against the BASE tree's own node at that path rather than treating
       presence alone as dirty, so opening a game that already carries
       annotations is not itself an edit.
     */
     shapes: {},
     /*
-      Moves played on the board THIS SESSION, not yet saved — Stage 4 of
-      `analysis-board-plan.md`. Each entry is a full ply object, the exact
-      shape `game/plies.js` produces (`{s,f,m,k,e,x,c,b,sh}`), appended
-      after whatever `realGames`/`draftSeeds` already has: this stage only
-      ever plays a move at the mainline's own last ply (see `playMove`
-      below), so "append" is the whole operation, never an insertion.
-      `pliesForState`/`activeGame` both read the base plies and this
-      overlay as one array, so ply navigation, the move list and `saveTab`
-      all see the played move as if it were already part of the game.
-      Cleared on save (folded into the real movetext by `appendMoves` first)
-      or when the tab closes with it discarded.
+      Moves played on the board THIS SESSION, not yet saved —
+      `analysis-board-plan.md`'s Stage 4, generalized by Stage 5 to branch
+      from anywhere rather than only ever extending the mainline's own last
+      ply. Each entry is `{ parentPath, ply }`: `ply` is a full ply object,
+      the exact shape `game/plies.js` produces for a tree node
+      (`{s,f,m,k,e,x,c,b,sh}`); `parentPath` is the PATH this move was
+      played from, recorded at play time (`playMove` below) — so folding a
+      list of these onto the base tree (`mergedTreeForState`) reproduces
+      exactly where each one was actually played, mainline extension and
+      variation alike. `mergedTreeForState`/`activeGame` both read the base
+      tree and this overlay as one merged tree, so ply navigation, the move list
+      and `saveTab` all see a played move as if it were already part of the
+      game. Cleared on save (folded into the real movetext by
+      `appendMoveTree` first) or when the tab closes with it discarded.
     */
     pendingMoves: [],
     /*
@@ -523,12 +589,27 @@ export const activeGame = derived(
     ? ($realGames.get(st.libraryGameId) ?? { status: 'loading', ...EMPTY_REAL_GAME })
     : null;
   const loading = !!real && real.status !== 'ready';
-  const basePlies = real ? real.plies : pliesFor(game);
-  // Moves played this session (Stage 4) extend the base array — see
-  // `ensureGameState`'s own comment on `pendingMoves`.
-  const plies = st.pendingMoves?.length ? [...basePlies, ...st.pendingMoves] : basePlies;
+  const baseTree = real ? real.tree : treeFor(game);
+  // Moves played this session (Stage 4/5) are folded in at their own
+  // recorded branch point — see `ensureGameState`'s own comment on
+  // `pendingMoves` and `mergedTreeForState`'s.
+  const tree = mergedTreeForState(st);
+  const path = st.path ?? [];
+  const node = currentNode(st, tree);
+  /*
+    `plies`/`ply` stay the flat, MAINLINE-ONLY shape every pre-Stage-5
+    reader still wants (the Evaluation Timeline's scrubber, the
+    Explorer/Engine Sections' move-number arithmetic) — `game/plies.js`'s
+    own header comment says why this never needed to become
+    variation-aware. `ply` is the current PATH's DEPTH, not necessarily an
+    index into `plies`: the two agree exactly while the cursor is on the
+    mainline (Stage 4's own behaviour, before variations existed, still
+    holds for that case), and `ply` keeps meaning "how many moves deep"
+    even off it, which is all any of those callers ever asked of it.
+  */
+  const plies = lineFrom(tree).map((entry) => entry.ply);
   const gameEngine = real ? real.engine : engineFor(game);
-  const ply = Math.min(st.ply, plies.length - 1);
+  const ply = path.length;
 
   /*
     The Explorer's rows for the position on the board. Real — §6 of the
@@ -558,8 +639,8 @@ export const activeGame = derived(
   */
   const libraries = explorerLibraries($objects?.databases ?? []);
   const library = libraries.find((l) => l.id === st.explorerLibraryId) ?? null;
-  const played = plies[ply + 1]?.s ?? null;
-  const fen = plies[ply]?.f;
+  const played = node.children[0]?.ply?.s ?? null;
+  const fen = node.ply?.f;
   const explorerCacheKey = library && fen ? `${library.id}|${positionKey(fen)}` : null;
   const explorerEntry = explorerCacheKey ? $explorerStats[$id] : null;
   const entry = explorerEntry?.key === explorerCacheKey ? explorerEntry : null;
@@ -582,7 +663,7 @@ export const activeGame = derived(
   const engineList = engineSources($objects?.engines ?? []);
   const engineSource = engineList.find((e) => e.id === st.engineId) ?? engineList[0] ?? null;
   const engineRunning = !!st.engineOn && !!engineSource;
-  const hold = st.engineHold && st.engineHold.ply === ply ? st.engineHold : null;
+  const hold = st.engineHold && pathKey(st.engineHold.path) === pathKey(path) ? st.engineHold : null;
   /*
     A retained result needs an engine to have produced it. If the one that did
     was turned off in Settings while the result was still on screen, the Section
@@ -593,7 +674,7 @@ export const activeGame = derived(
   const engineInputs = engineRunning
     ? { engineId: engineSource.id, lines: st.engineLines, depth: st.engineDepth }
     : (engineSource ? hold : null);
-  const engineLines = engineInputs ? analyse(plies[ply]?.f, engineInputs) : [];
+  const engineLines = engineInputs ? analyse(node.ply?.f, engineInputs) : [];
 
   /*
     GAME INFO's view — the record, plus this user's marks on it.
@@ -639,7 +720,7 @@ export const activeGame = derived(
      card and a reopened dialog show the same, current, unsaved value. */
   const infoBase = row ?? game;
   const record = { ...infoBase, ...(st.pendingInfo ?? {}) };
-  const dirty = isDraftId(st.libraryGameId) ? true : computeDirty(st, infoBase, plies);
+  const dirty = isDraftId(st.libraryGameId) ? true : computeDirty(st, infoBase, baseTree);
   const info = {
     white: known(record.white),
     black: known(record.black),
@@ -656,17 +737,21 @@ export const activeGame = derived(
   };
 
   return {
-    tabId: $id, state: st, game, record, dirty, plies, ply, position: plies[ply], engine: gameEngine,
+    tabId: $id, state: st, game, record, dirty, plies, ply, tree, path, position: node.ply, engine: gameEngine,
     /*
-      This tab's drawn annotations for the ply on the board right now —
-      see `setPlyShapes`. A ply this session has actually drawn on (even
-      to clear it back to nothing) shows exactly that; a ply nobody has
+      This tab's drawn annotations for the position on the board right now
+      — see `setPlyShapes`. A position this session has actually drawn on
+      (even to clear it back to nothing) shows exactly that; one nobody has
       touched this session falls back to what's already persisted for it
-      (`plies[ply].sh`, decoded from `%csl`/`%cal`), so a game opened with
-      existing annotations shows them, and a save's result is visible
-      immediately rather than only after the tab is closed and reopened.
+      (the current node's own `.sh`, decoded from `%csl`/`%cal`), so a game
+      opened with existing annotations shows them, and a save's result is
+      visible immediately rather than only after the tab is closed and
+      reopened. Keyed by PATH since Stage 5 (`game/plies.js`'s `pathKey`),
+      not by the flat `ply` above — a variation position and a mainline
+      position at the same depth are different positions and must not
+      share a shapes key.
     */
-    shapes: st.shapes?.[ply] !== undefined ? st.shapes[ply] : (plies[ply]?.sh ?? []),
+    shapes: st.shapes?.[pathKey(path)] !== undefined ? st.shapes[pathKey(path)] : (node.ply?.sh ?? []),
     /*
       True while a real game's movetext hasn't landed yet (or failed to).
       Nothing reads this today — the board/move list/engine sections render
@@ -681,7 +766,7 @@ export const activeGame = derived(
       source: engineSource,
       running: engineRunning,
       lines: engineLines,
-      hasMoves: hasLegalMoves(plies[ply]?.f),
+      hasMoves: hasLegalMoves(node.ply?.f),
       lineCount: st.engineLines,
       depth: st.engineDepth,
       moveNumber: Math.floor(ply / 2) + 1,
@@ -915,7 +1000,7 @@ export function setEngineOn(tabId, on) {
       : {
           engineOn: false,
           engineHold: {
-            ply: cur.ply, engineId: source.id, lines: cur.engineLines, depth: cur.engineDepth
+            path: cur.path, engineId: source.id, lines: cur.engineLines, depth: cur.engineDepth
           }
         };
   });
@@ -937,59 +1022,153 @@ export function setEngineDepth(tabId, n) {
 
 /* ------------------------------ §5.3 ply navigation ---------------------- */
 
-export function goToPly(tabId, ply) {
+/**
+ * Move the cursor to an exact PATH — Stage 5's own primitive, every other
+ * function below is built from it. Clamped only in the sense that an
+ * invalid path is simply refused (the caller's own responsibility to pass
+ * one `nodeAtPath` can resolve; every function below computes its own
+ * against the current merged tree, so this is never reached with a path
+ * that doesn't exist).
+ *
+ * Leaving the position clears the Engine Section, on or off alike — and
+ * returning does not bring it back. What an engine said about a position it is
+ * no longer searching is not a fact about the game (Q8), and a stale line that
+ * reappeared on a round trip would be indistinguishable from a live one.
+ */
+export function goToPath(tabId, path) {
   const st = get(gameStates)[tabId];
   if (!st) return;
-  const max = pliesForState(st).length - 1;
-  /*
-    Leaving the position clears the Engine Section, on or off alike — and
-    returning does not bring it back. What an engine said about a position it is
-    no longer searching is not a fact about the game (Q8), and a stale line that
-    reappeared on a round trip would be indistinguishable from a live one.
-  */
-  patch(tabId, () => ({ ply: Math.max(0, Math.min(max, ply)), engineHold: null }));
+  if (!nodeAtPath(mergedTreeForState(st), path)) return;
+  patch(tabId, () => ({ path, ply: path.length, engineHold: null }));
   refreshExplorerStats(tabId);
 }
 
-export const nextPly = (tabId) => goToPly(tabId, (get(gameStates)[tabId]?.ply ?? 0) + 1);
-export const prevPly = (tabId) => goToPly(tabId, (get(gameStates)[tabId]?.ply ?? 0) - 1);
-export const firstPly = (tabId) => goToPly(tabId, 0);
-export const lastPly = (tabId) => goToPly(tabId, Number.MAX_SAFE_INTEGER);
+/**
+ * Jump to an ABSOLUTE MAINLINE ply number — what the Evaluation Timeline's
+ * scrubber and the Game Controls Toolbar's own numeric transport both mean
+ * by "go to ply N": always a position on the game's actual mainline,
+ * whatever line the cursor currently shows (leaving a variation, exactly
+ * as clicking a mainline move in the Moves Section does). Clamped to
+ * `[0, mainline length]`, the same behaviour this had before Stage 5, when
+ * the mainline was the only line there was.
+ */
+export function goToPly(tabId, ply) {
+  const st = get(gameStates)[tabId];
+  if (!st) return;
+  const spine = mainlinePath(mergedTreeForState(st));
+  const clamped = Math.max(0, Math.min(spine.length, ply));
+  goToPath(tabId, spine.slice(0, clamped));
+}
 
+/**
+ * Step along whatever line is currently on screen — Lichess's own
+ * behaviour, confirmed from its source (`ui/analyse/src/navigate.ts`'s
+ * `next()`: `ctrl.path + node.children[0].id`) and En Croissant's
+ * (`state/store/tree.ts`'s `goToNext`: `position: [...position, 0]`), both
+ * checked before this stage was scoped, 25 Sep. This is NOT "go to the
+ * next mainline ply" — inside a variation, `nextPly` continues that
+ * variation, and only leaves it if the user clicks a mainline move
+ * directly (`goToPly`/`goToPath` above). A position with no children (the
+ * end of whatever line it's on) simply doesn't move — the same clamped
+ * behaviour `goToPly` always had at the mainline's own end.
+ */
+export function nextPly(tabId) {
+  const st = get(gameStates)[tabId];
+  if (!st) return;
+  const tree = mergedTreeForState(st);
+  const node = currentNode(st, tree);
+  if (!node.children.length) return;
+  goToPath(tabId, [...(st.path ?? []), 0]);
+}
+
+/** Back exactly the way the cursor got here — popping the last path
+ *  segment, whatever line it names. Symmetric with `nextPly`: stepping
+ *  forward then back returns to the same position, on the same line,
+ *  mainline or variation. */
+export function prevPly(tabId) {
+  const st = get(gameStates)[tabId];
+  if (!st) return;
+  goToPath(tabId, (st.path ?? []).slice(0, -1));
+}
+
+/** The starting position — the root, always, regardless of what line was
+ *  showing. */
+export const firstPly = (tabId) => goToPath(tabId, []);
+
+/**
+ * The end of the game's actual MAINLINE — not "the end of whatever line is
+ * currently showing". This is Lichess's own `last()`
+ * (`treePath.fromNodeList(this.ctrl.mainline)`), confirmed from its
+ * source 25 Sep: `End` always leaves a variation for the mainline's own
+ * last move, the same as `goToPly` with a very large number always did
+ * before Stage 5.
+ */
+export function lastPly(tabId) {
+  const st = get(gameStates)[tabId];
+  if (!st) return;
+  goToPath(tabId, mainlinePath(mergedTreeForState(st)));
+}
+
+/**
+ * The end of whatever line the cursor is currently on — no children left
+ * to step into with `nextPly`. Before Stage 5 this only ever meant "the
+ * mainline's own last ply", which was also the one position `moveInputs`/
+ * `playMove` allowed play from; Stage 5 lifts that restriction (a move is
+ * playable from anywhere, and starts a variation if it isn't already the
+ * position's own next move — see `playMove` below), so today this is read
+ * only by `GameWorkspace.svelte`'s autoplay, to know when to stop rather
+ * than keep stepping into nothing.
+ */
 export function atLastPly(tabId) {
   const st = get(gameStates)[tabId];
-  return !!st && st.ply >= pliesForState(st).length - 1;
+  if (!st) return false;
+  const node = currentNode(st, mergedTreeForState(st));
+  return !node.children.length;
 }
 
 /* --------------------------------- moves --------------------------------- */
 
 /**
- * Board interaction inputs for the ply on the board right now — what
- * `ChessBoard.svelte` needs to turn pieces on at all, restricted to Stage
- * 4's own scope: movable only when this tab is a real game or draft (there
- * is nowhere to save a move played on a mock/sandbox tab) AND the board is
- * at the mainline's own last ply (playing anywhere earlier would start a
- * variation — `analysis-board-plan.md`'s Stage 5, unbuilt).
+ * Board interaction inputs for the position on the board right now — what
+ * `ChessBoard.svelte` needs to turn pieces on at all. Movable from ANY
+ * position, since Stage 5: only a mock/sandbox tab (there is nowhere to
+ * save a move played on one) is refused — Stage 4's own restriction to the
+ * mainline's own last ply is exactly the gap Stage 5 fills (`playMove`
+ * below now starts a variation rather than refusing).
  */
 export function moveInputs(tabId) {
   const st = get(gameStates)[tabId];
-  if (!st || !readsRealGame(st) || !atLastPly(tabId)) {
+  if (!st || !readsRealGame(st)) {
     return { movable: false, dests: new Map(), turnColor: 'white' };
   }
-  const fen = pliesForState(st).at(-1)?.f;
+  const fen = currentNode(st, mergedTreeForState(st)).ply?.f;
   if (!fen) return { movable: false, dests: new Map(), turnColor: 'white' };
   return { movable: true, dests: destsForFen(fen), turnColor: turnFromFen(fen) };
 }
 
 /**
- * Play one move at the mainline's own last ply — Stage 4. Appends a new
- * ply to `pendingMoves` (see `ensureGameState`'s comment on that field) and
- * moves the cursor onto it, exactly like any other navigation. Refuses
- * silently (returns `null`) for anything `moveInputs` would already have
- * kept the board from offering: a mock/sandbox tab, a ply that isn't the
- * last one, or a move `game/moves.js` doesn't recognize as legal — the
- * board is the only caller and its own `dests` should already have ruled
- * those out, but nothing here trusts it over the rules a second time.
+ * Play one move from wherever the cursor is — Stage 4 restricted this to
+ * the mainline's own last ply; Stage 5 lifts that, per the scoping agreed
+ * 25 Sep (research on Lichess/Chess.com/ChessBase/En Croissant, all of
+ * which allow play from any position). Three outcomes:
+ *
+ *   - the position already has a child with this exact SAN (the user
+ *     replayed a move that's already there, mainline or an existing
+ *     variation) — no new node, no dirty change, the cursor simply steps
+ *     onto it. Without this, arrowing back and replaying the same move
+ *     would silently fork a duplicate line every time;
+ *   - otherwise, a NEW child is appended — the position's first child if
+ *     it had none (extending the mainline, or continuing a variation
+ *     already begun this session, Stage 4's whole scope generalized) or an
+ *     additional one if it already had a mainline continuation (a genuine
+ *     new variation). Recorded in `pendingMoves` as `{ parentPath, ply }`
+ *     (see `ensureGameState`'s own comment on that field) and the cursor
+ *     moves onto it, exactly like any other navigation;
+ *   - the move is illegal, or this tab has nowhere to save to
+ *     (`moveInputs` would already have kept the board from offering
+ *     either) — refused silently (`null`), the board's own `dests` should
+ *     already have ruled these out, but nothing here trusts it over the
+ *     rules a second time.
  *
  * `promotion` is chessops' role name (`queen`/`rook`/`bishop`/`knight`);
  * required exactly when a pawn move lands on the last rank
@@ -998,19 +1177,30 @@ export function moveInputs(tabId) {
  */
 export function playMove(tabId, { from, to, promotion } = {}) {
   const st = get(gameStates)[tabId];
-  if (!st || !readsRealGame(st) || !atLastPly(tabId)) return null;
-  const plies = pliesForState(st);
-  const fen = plies.at(-1)?.f;
+  if (!st || !readsRealGame(st)) return null;
+  const tree = mergedTreeForState(st);
+  const path = st.path ?? [];
+  const node = currentNode(st, tree);
+  const fen = node.ply?.f;
   if (!fen) return null;
   const result = computeMove(fen, { from, to, promotion });
   if (!result) return null;
+
+  const existingIndex = node.children.findIndex((child) => child.ply.s === result.san);
+  if (existingIndex !== -1) {
+    goToPath(tabId, [...path, existingIndex]);
+    return result;
+  }
+
   const ply = {
     s: result.san, f: result.fenAfter, m: [result.from, result.to],
     k: result.check, e: null, x: null, c: null, b: null, sh: []
   };
+  const childIndex = node.children.length;
   patch(tabId, (cur) => ({
-    pendingMoves: [...(cur.pendingMoves ?? []), ply],
-    ply: cur.ply + 1,
+    pendingMoves: [...(cur.pendingMoves ?? []), { parentPath: path, ply }],
+    path: [...path, childIndex],
+    ply: path.length + 1,
     engineHold: null
   }));
   refreshExplorerStats(tabId);
@@ -1024,15 +1214,18 @@ export function flipBoard(tabId) {
 }
 
 /**
- * Record what's drawn on the board for one ply — chessground's own
+ * Record what's drawn on the board for one POSITION — chessground's own
  * `DrawShape[]`, straight from its `drawable.onChange`, no translation.
- * Overlays `cur.shapes` rather than replacing it, so drawing on ply 4 does
- * not lose whatever is already recorded for ply 2. Not persisted anywhere
- * yet (Stage 2), gone with the tab; counted by `isDirty` below in the
+ * Keyed by PATH (`game/plies.js`'s `pathKey`) since Stage 5, not by a flat
+ * ply number: a variation position and a mainline position at the same
+ * depth are different positions and must not share a key. Overlays
+ * `cur.shapes` rather than replacing it, so drawing here does not lose
+ * whatever is already recorded elsewhere. Not persisted anywhere yet
+ * (Stage 2), gone with the tab; counted by `isDirty` below in the
  * meantime.
  */
-export function setPlyShapes(tabId, ply, shapes) {
-  patch(tabId, (cur) => ({ shapes: { ...cur.shapes, [ply]: shapes } }));
+export function setPlyShapes(tabId, path, shapes) {
+  patch(tabId, (cur) => ({ shapes: { ...cur.shapes, [pathKey(path)]: shapes } }));
 }
 
 /**
@@ -1078,22 +1271,29 @@ function shapesDiffer(a, b) {
  * True once anything in this tab differs from what a save would currently
  * write over it. Two categories today, more as later stages land:
  *
- *   - board annotations — only a ply this session has actually drawn on
- *     (`st.shapes` holds a session override for it) AND whose result
- *     differs from what's already persisted there (`plies[ply].sh`,
- *     decoded from `%csl`/`%cal` by `game/plies.js`). A ply nobody touched
- *     this session is never dirty just because it happens to carry a
+ *   - board annotations — only a position this session has actually drawn
+ *     on (`st.shapes` holds a session override for it, keyed by PATH since
+ *     Stage 5) AND whose result differs from what's already persisted
+ *     there (the BASE tree's own node at that path, `.sh`, decoded from
+ *     `%csl`/`%cal` by `game/plies.js`). A position nobody touched this
+ *     session is never dirty just because it happens to carry a
  *     previously-saved arrow — reopening a game that already has
- *     annotations is not itself an edit;
+ *     annotations is not itself an edit. A path this session's OWN pending
+ *     moves created has no base node at all (`nodeAtPath` on `tree` finds
+ *     nothing there yet) — harmless: `pendingMoves.length > 0` already
+ *     returns true above before this loop ever runs, on any tab where that
+ *     could occur;
  *   - staged Game Info fields — only those that actually differ from the
  *     record they'd replace, so reopening the dialog and hitting Save
  *     without changing anything does not manufacture a dirty tab.
  *
- * `plies` is passed in rather than resolved here because the two callers
+ * `tree` is passed in rather than resolved here because the two callers
  * already have it two different ways — `isDirty` reads it imperatively
- * from `realGames`/mock data, `dirtyTabs` and `activeGame` read it
+ * from `realGames`/mock data (`baseTreeForState`), `dirtyTabs` reads it
  * reactively — and computing it a third way here would risk a third
- * answer.
+ * answer. Always the BASE tree, never the merged one `activeGame` shows on
+ * the board: see the pending-move case above for why the merged tree is
+ * not needed here.
  *
  * The single flag Stage 1's save button, tab-close indicator and
  * confirmation dialog all read from (`analysis-board-plan.md`). Favourite/
@@ -1101,11 +1301,12 @@ function shapesDiffer(a, b) {
  * real immediately, on their own existing path, on purpose (Stage 1's
  * revision, 24 Sep).
  */
-function computeDirty(st, base, plies) {
+function computeDirty(st, base, tree) {
   if ((st.pendingMoves?.length ?? 0) > 0) return true;
   const overrides = st.shapes ?? {};
-  for (const ply of Object.keys(overrides)) {
-    if (shapesDiffer(overrides[ply], plies?.[Number(ply)]?.sh)) return true;
+  for (const key of Object.keys(overrides)) {
+    const node = nodeAtPath(tree, parsePathKey(key));
+    if (shapesDiffer(overrides[key], node?.ply?.sh)) return true;
   }
   const pending = st.pendingInfo ?? {};
   if (Object.keys(pending).length === 0) return false;
@@ -1116,7 +1317,7 @@ export function isDirty(tabId) {
   const st = get(gameStates)[tabId];
   if (!st) return false;
   if (isDraftId(st.libraryGameId)) return true;
-  return computeDirty(st, baseRecordFor(st), pliesForState(st));
+  return computeDirty(st, baseRecordFor(st), baseTreeForState(st));
 }
 
 /**
@@ -1137,8 +1338,8 @@ export const dirtyTabs = derived(
       ? ($libraryGames ?? []).find((r) => r.id === st.libraryGameId) ?? null
       : null;
     const real = readsRealGame(st) ? ($realGames.get(st.libraryGameId) ?? EMPTY_REAL_GAME) : null;
-    const plies = real ? real.plies : pliesFor(game);
-    if (computeDirty(st, row ?? game, plies)) ids.add(tabId);
+    const tree = real ? real.tree : treeFor(game);
+    if (computeDirty(st, row ?? game, tree)) ids.add(tabId);
   }
   return ids;
 });
@@ -1200,13 +1401,13 @@ export async function saveTab(tabId) {
     if (hasShapes || hasMoves) {
       const { movetext } = await readMovetextFor(connection, st.libraryGameId);
       const doc = resolveMovetext(readMovetext(movetext ?? ''));
+      // Moves played this session (Stage 4/5) are folded in FIRST, at their
+      // own recorded branch point (`appendMoveTree`) -- a shape drawn on a
+      // position this same session only just played (a fresh mainline
+      // extension, or a variation) is a path that doesn't exist in `doc`
+      // until this runs; applying shapes first would silently drop it.
+      if (hasMoves) appendMoveTree(doc, st.pendingMoves);
       if (hasShapes) applyShapesToMovetext(doc, st.shapes ?? {});
-      // Moves played this session (Stage 4) are appended after shapes are
-      // applied to the EXISTING plies -- `appendMoves` only ever adds new
-      // nodes past the mainline's current end, so the order between the
-      // two doesn't matter, but doing shapes first keeps this branch
-      // reading top-to-bottom as "apply session edits, then extend".
-      if (hasMoves) appendMoves(doc, st.pendingMoves);
       await writeMovetextFor(connection, st.libraryGameId, writeMovetext(doc));
     }
 
@@ -1252,8 +1453,11 @@ export async function saveTab(tabId) {
 async function createGameFromDraft(tabId, st, connection) {
   const draft = draftSeeds.get(st.libraryGameId) ?? { movetext: '', fen: null, fields: {} };
   const doc = resolveMovetext(readMovetext(draft.movetext ?? ''), { fen: draft.fen ?? null });
+  // Moves first, then shapes -- see the real-game branch's own comment on
+  // why: a shape on a position this draft's own pending moves just
+  // created needs that position to already exist in `doc`.
+  if ((st.pendingMoves ?? []).length) appendMoveTree(doc, st.pendingMoves);
   if (Object.keys(st.shapes ?? {}).length) applyShapesToMovetext(doc, st.shapes ?? {});
-  if ((st.pendingMoves ?? []).length) appendMoves(doc, st.pendingMoves);
 
   const fields = {
     ...draft.fields,

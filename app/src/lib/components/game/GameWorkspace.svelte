@@ -13,7 +13,7 @@
   import { t } from '$lib/stores/i18n.js';
   import {
     activeGame, composition, ensureGameState,
-    firstPly, prevPly, nextPly, lastPly, goToPly, atLastPly,
+    firstPly, prevPly, nextPly, lastPly, goToPly, goToPath, atLastPly,
     moveInputs, playMove,
     flipBoard, toggleCollapsed, toggleHidden, setPlyShapes,
   explorerContentHeight, setExplorerLibrary,
@@ -136,7 +136,7 @@
       orientation={g.state.orientation}
       evalVisible={g.state.evalVisible}
       shapes={g.shapes}
-      onshapeschange={(s) => setPlyShapes(tabId, g.ply, s)}
+      onshapeschange={(s) => setPlyShapes(tabId, g.path, s)}
       movable={moves.movable}
       dests={moves.dests}
       turnColor={moves.turnColor}
@@ -151,6 +151,8 @@
       plies={g.plies}
       engine={g.engine}
       ply={g.ply}
+      tree={g.tree}
+      path={g.path}
       orientation={g.state.orientation}
       explorer={g.explorer}
       onselectlibrary={(id) => setExplorerLibrary(tabId, id)}
@@ -163,6 +165,7 @@
       onenginesettings={openEngineSettings}
       plyCount={g.plies.length}
       onselectply={(n) => { stop(); goToPly(tabId, n); }}
+      onselectpath={(p) => { stop(); goToPath(tabId, p); }}
       {playing}
       info={g.info}
       onfavourite={() => toggleFavourite(tabId)}

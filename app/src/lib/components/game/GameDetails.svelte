@@ -21,13 +21,13 @@
   import GameControls from './GameControls.svelte';
 
   let {
-    sections = [], plies = [], ply = 0, engine = null, orientation = 'white',
+    sections = [], plies = [], ply = 0, tree = null, path = [], engine = null, orientation = 'white',
     explorer = null, onselectlibrary, onexplorersettings,
     engineView = null, onengine, onselectengine, onenginelines, onenginedepth,
     onenginesettings,
     info = null, onfavourite, oneditinfo, onedittags, dirty = false, onsave,
     plyCount = 1, playing = false,
-    oncollapse, onhide, onselectply,
+    oncollapse, onhide, onselectply, onselectpath,
     onfirst, onprev, onnext, onlast, onflip, onplay,
     sectionsMenu = false, onmore, ontoggleSection, displacedOut
   } = $props();
@@ -78,6 +78,9 @@
         collapsed={!!s.collapsed}
         {plies}
         {ply}
+        {tree}
+        {path}
+        {onselectpath}
         {engine}
         {orientation}
         {explorer}

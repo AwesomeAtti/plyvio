@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   MovetextError,
-  appendMoves,
+  appendMoveTree,
   plyCount,
   readMovetext,
   resolveMovetext,
@@ -294,30 +294,35 @@ describe('resolving positions', () => {
 
 
 /**
- * `appendMoves` -- Stage 4 of `analysis-board-plan.md`: folding moves
- * played on the board into the movetext tree at save time. It only ever
- * extends the mainline's own last node (this stage's own scope -- see
- * `game/moves.js`'s header comment), so these tests never touch a
- * variation.
+ * `appendMoveTree` -- Stage 4/5 of `analysis-board-plan.md`: folding moves
+ * played on the board into the movetext tree at save time, each at its own
+ * recorded `parentPath` rather than always the mainline's last node (Stage
+ * 5 generalised this from Stage 4's mainline-only version).
  */
-describe('appendMoves', () => {
+describe('appendMoveTree', () => {
   it('appends onto a blank document', () => {
-    const doc = appendMoves(readMovetext(''), [{ s: 'e4' }, { s: 'e5' }]);
+    const doc = appendMoveTree(readMovetext(''), [
+      { parentPath: [], ply: { s: 'e4' } },
+      { parentPath: [0], ply: { s: 'e5' } }
+    ]);
     expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5');
   });
 
   it('appends after an existing mainline, continuing the move numbers', () => {
-    const doc = appendMoves(readMovetext('1. e4 e5 2. Nf3'), [{ s: 'Nc6' }, { s: 'Bb5' }]);
+    const doc = appendMoveTree(readMovetext('1. e4 e5 2. Nf3'), [
+      { parentPath: [0, 0, 0], ply: { s: 'Nc6' } },
+      { parentPath: [0, 0, 0, 0], ply: { s: 'Bb5' } }
+    ]);
     expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. Nf3 Nc6 3. Bb5');
   });
 
   it('leaves existing comments, NAGs and variations on earlier nodes untouched', () => {
-    const doc = appendMoves(
+    const doc = appendMoveTree(
       readMovetext('1. e4 {Good choice} e5 2. Nf3 $1 (2. f4 exf4) Nc6'),
-      [{ s: 'Bb5' }]
+      [{ parentPath: [0, 0, 0, 0], ply: { s: 'Bb5' } }]
     );
     // A black move right after a comment or NAG always gets its own
-    // move number (`writeMovetext`'s own rule, unrelated to appendMoves) --
+    // move number (`writeMovetext`'s own rule, unrelated to appendMoveTree) --
     // both pre-existing, neither something appending a move changes.
     expect(writeMovetext(doc, { wrap: null }))
       .toBe('1. e4 {Good choice} 1... e5 2. Nf3 $1 (2. f4 exf4) 2... Nc6 3. Bb5');
@@ -325,15 +330,17 @@ describe('appendMoves', () => {
 
   it('does nothing to a document when handed no moves', () => {
     const before = readMovetext('1. e4 e5');
-    const doc = appendMoves(before, []);
+    const doc = appendMoveTree(before, []);
     expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5');
   });
 
   it('a resolved document (fenBefore/fenAfter already attached) appends the same way', () => {
-    // `stores/game.js` always hands `appendMoves` a RESOLVED doc (it needs
+    // `stores/game.js` always hands `appendMoveTree` a RESOLVED doc (it needs
     // one anyway for `applyShapesToMovetext`) -- this is what `writeMovetext`
     // actually reads at save time, so it is the shape worth proving against.
-    const doc = appendMoves(resolveMovetext(readMovetext('1. e4 e5')), [{ s: 'Nf3' }]);
+    const doc = appendMoveTree(resolveMovetext(readMovetext('1. e4 e5')), [
+      { parentPath: [0, 0], ply: { s: 'Nf3' } }
+    ]);
     expect(writeMovetext(doc, { wrap: null })).toBe('1. e4 e5 2. Nf3');
   });
 });

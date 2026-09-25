@@ -46,7 +46,7 @@ describe('requestCloseTab', () => {
   it('holds a dirty tab open and stages it for confirmation instead of closing it', () => {
     const id = openGame('Dirty Game');
     ensureGameState(id, 'g1');
-    setPlyShapes(id, 0, [{ orig: 'e4', brush: 'green' }]);
+    setPlyShapes(id, [], [{ orig: 'e4', brush: 'green' }]);
 
     requestCloseTab(id);
 
@@ -65,7 +65,7 @@ describe('requestCloseActiveTab', () => {
   it('guards whichever tab is currently active', () => {
     const id = openGame('Active Dirty Game');
     ensureGameState(id, 'g1');
-    setPlyShapes(id, 0, [{ orig: 'e4', brush: 'green' }]);
+    setPlyShapes(id, [], [{ orig: 'e4', brush: 'green' }]);
     activeId.set(id);
 
     requestCloseActiveTab();
@@ -78,7 +78,7 @@ describe('cancelClose', () => {
   it('clears the pending id and leaves the tab open, still dirty', () => {
     const id = openGame('Dirty Game');
     ensureGameState(id, 'g1');
-    setPlyShapes(id, 0, [{ orig: 'e4', brush: 'green' }]);
+    setPlyShapes(id, [], [{ orig: 'e4', brush: 'green' }]);
     requestCloseTab(id);
 
     cancelClose();
@@ -93,7 +93,7 @@ describe('discardAndClose', () => {
   it('closes the pending tab without saving, dropping its dirty state with it', () => {
     const id = openGame('Dirty Game');
     ensureGameState(id, 'g1');
-    setPlyShapes(id, 0, [{ orig: 'e4', brush: 'green' }]);
+    setPlyShapes(id, [], [{ orig: 'e4', brush: 'green' }]);
     requestCloseTab(id);
 
     discardAndClose();

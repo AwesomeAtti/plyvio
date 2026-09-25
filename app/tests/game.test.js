@@ -14,7 +14,7 @@ import {
   evalLabel, evalSide, evalFraction, evalIsStep, evalScore, allocateSections, scrollThreshold
 } from '../src/lib/game/layout.js';
 import { GAMES } from '../src/lib/mock-data/sample-games.js';
-import { pliesFor, pliesOf, readGame, engineFor } from '../src/lib/game/plies.js';
+import { pliesFor, pliesOf, treeOf, readGame, engineFor } from '../src/lib/game/plies.js';
 import MoveList from '../src/lib/components/game/MoveList.svelte';
 import { movetextFromRow } from '../src/lib/data/games.js';
 import {
@@ -1148,11 +1148,26 @@ describe('§5.4.2 Move List', () => {
 
   it('pairs the plies into numbered rows', async () => {
     const { container } = await openGameTab();
-    const rows = container.querySelectorAll('.ml .row');
+    // Scoped to the mainline: this corpus game (the Opera Game) carries real
+    // variations (Stage 5), which get their own rows nested inside `.var` --
+    // counted separately below, not here.
+    const rows = [...container.querySelectorAll('.ml .row')].filter((r) => !r.closest('.var'));
     const plies = pliesFor(gameById(get(activeGame).state.gameId));
     // plies[0] is the starting position and belongs to no row.
     expect(rows.length).toBe(Math.ceil((plies.length - 1) / 2));
     expect(rows[0].querySelector('.no').textContent.trim()).toBe('1.');
+  });
+
+  it('renders the movetext’s own variations as nested, indented blocks (Stage 5)', async () => {
+    const { container } = await openGameTab();
+    // The Opera Game's movetext carries real variations, e.g. "(2... Nc6)" --
+    // Stage 5's whole point is that these are no longer silently dropped.
+    const vars = container.querySelectorAll('.ml .var');
+    expect(vars.length).toBeGreaterThan(0);
+    const first = vars[0];
+    expect(first.querySelector('.var-hdr')).toBeTruthy();
+    expect([...first.querySelectorAll(':scope > .row, :scope > .blk .row')].length)
+      .toBeGreaterThan(0);
   });
 
   it('renders the game\u2019s actual moves, read from its movetext', async () => {
@@ -1215,8 +1230,8 @@ describe('§5.4.2 Moves — comments', () => {
   const MOVETEXT = '1. e4 {White has something to say} e5 {So does Black} '
     + '2. Nf3 Nc6 {Only Black here} 3. Bc4 Nf6 *';
 
-  const mount = (ply = 0) =>
-    render(MoveList, { props: { plies: pliesOf(MOVETEXT), ply, onselect: () => {} } });
+  const mount = (path = []) =>
+    render(MoveList, { props: { tree: treeOf(MOVETEXT), path, onselect: () => {} } });
 
   const moveCells = (c) => [...c.querySelectorAll('.mv')].map((e) => e.textContent.trim());
   const comments = (c) => [...c.querySelectorAll('.cmt')].map((e) => e.textContent.trim());
@@ -1404,8 +1419,8 @@ describe('§5.4.2 Moves — comment banner', () => {
     + '2. Nf3 { [%eval -0.12] Mixed with a sentence } Nc6 *';
 
   const mount = () => {
-    const { plies, engine } = readGame(ANNOTATED);
-    return render(MoveList, { props: { plies, ply: 0, engine, onselect: () => {} } });
+    const { tree, engine } = readGame(ANNOTATED);
+    return render(MoveList, { props: { tree, path: [], engine, onselect: () => {} } });
   };
   const open = async (c, i = 0) => {
     await fireEvent.click([...c.querySelectorAll('.cc')][i]);
@@ -1466,8 +1481,8 @@ describe('§5.4.2 Moves — comment banner', () => {
   });
 
   it('gives a move with only a banner a control of its own', async () => {
-    const { plies, engine } = readGame('1. e4 { [%eval 0.30] } e5 2. Nf3 *');
-    const { container } = render(MoveList, { props: { plies, ply: 0, engine, onselect: () => {} } });
+    const { tree, engine } = readGame('1. e4 { [%eval 0.30] } e5 2. Nf3 *');
+    const { container } = render(MoveList, { props: { tree, path: [], engine, onselect: () => {} } });
     expect(container.querySelectorAll('.cc').length).toBe(1);
     await fireEvent.click(container.querySelector('.cc'));
     expect(container.querySelector('.ban')).toBeTruthy();
@@ -1543,11 +1558,11 @@ describe('§5.4.2 Moves — comment banner', () => {
    * move. It is not about a position, so it carries no evaluation and no best move.
    */
   it('states the document\u2019s engine context at the top of the Section', () => {
-    const { plies, engine } = readGame(
+    const { tree, engine } = readGame(
       '{ [%engine name="Stockfish 16" depth=10 timestamp="2026-09-12T00:47:41Z"] } '
       + '1. e4 { [%eval 0.30] } e5 *'
     );
-    const { container } = render(MoveList, { props: { plies, ply: 0, engine, onselect: () => {} } });
+    const { container } = render(MoveList, { props: { tree, path: [], engine, onselect: () => {} } });
 
     const game = container.querySelector('.ban.game');
     expect(game, 'no game banner').toBeTruthy();
@@ -1565,8 +1580,8 @@ describe('§5.4.2 Moves — comment banner', () => {
   });
 
   it('says nothing about an engine when the document declares none', () => {
-    const { plies, engine } = readGame('1. e4 { [%eval 0.30] } e5 *');
-    const { container } = render(MoveList, { props: { plies, ply: 0, engine, onselect: () => {} } });
+    const { tree, engine } = readGame('1. e4 { [%eval 0.30] } e5 *');
+    const { container } = render(MoveList, { props: { tree, path: [], engine, onselect: () => {} } });
     expect(container.querySelector('.ban.game')).toBeNull();
   });
 

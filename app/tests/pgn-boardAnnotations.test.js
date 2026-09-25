@@ -70,7 +70,7 @@ describe('setShapes', () => {
 describe('applyShapesToMovetext', () => {
   it('writes ply 0 (before the first move) into the document\'s own comments, and it reads back', () => {
     const doc = resolveMovetext(readMovetext('1. e4 e5'));
-    applyShapesToMovetext(doc, { 0: [{ orig: 'e4', brush: 'green' }] });
+    applyShapesToMovetext(doc, { '': [{ orig: 'e4', brush: 'green' }] });
     const text = writeMovetext(doc);
     expect(text).toMatch(/\{\s*\[%csl Ge4\]\s*\}\s*1\.\s*e4/);
 
@@ -84,7 +84,7 @@ describe('applyShapesToMovetext', () => {
 
   it('writes ply N (after the Nth move) into that move\'s own ann', () => {
     const doc = resolveMovetext(readMovetext('1. e4 e5 2. Nf3'));
-    applyShapesToMovetext(doc, { 2: [{ orig: 'e5', dest: 'e4', brush: 'red' }] });
+    applyShapesToMovetext(doc, { '0.0': [{ orig: 'e5', dest: 'e4', brush: 'red' }] });
     const text = writeMovetext(doc);
     expect(text).toMatch(/e5\s*\{\s*\[%cal Re5e4\]\s*\}/);
   });
@@ -92,8 +92,8 @@ describe('applyShapesToMovetext', () => {
   it('several plies at once each land on their own move', () => {
     const doc = resolveMovetext(readMovetext('1. e4 e5 2. Nf3'));
     applyShapesToMovetext(doc, {
-      0: [{ orig: 'e4', brush: 'green' }],
-      1: [{ orig: 'e5', brush: 'red' }]
+      '': [{ orig: 'e4', brush: 'green' }],
+      '0': [{ orig: 'e5', brush: 'red' }]
     });
     const text = writeMovetext(doc);
     expect(text).toMatch(/\[%csl Ge4\][\s\S]*1\.\s*e4/);
@@ -109,7 +109,7 @@ describe('applyShapesToMovetext', () => {
 
   it('an empty override on a ply that already has %csl/%cal removes it, and the stub comment with it', () => {
     const doc = resolveMovetext(readMovetext('1. e4 { [%csl Ge4] } e5'));
-    applyShapesToMovetext(doc, { 1: [] });
+    applyShapesToMovetext(doc, { '0': [] });
     const text = writeMovetext(doc);
     expect(text).not.toContain('%csl');
     // No comment left on e4 to force "1..." before e5 either.
@@ -119,19 +119,19 @@ describe('applyShapesToMovetext', () => {
   it('an empty override on a ply with nothing to clear writes no spurious empty comment', () => {
     const before = writeMovetext(resolveMovetext(readMovetext('1. e4 e5')));
     const doc = resolveMovetext(readMovetext('1. e4 e5'));
-    applyShapesToMovetext(doc, { 1: [] });
+    applyShapesToMovetext(doc, { '0': [] });
     expect(writeMovetext(doc)).toBe(before);
   });
 
   it('falls back to the document\'s own comments when the game has no moves at all', () => {
     const doc = resolveMovetext(readMovetext(''));
-    applyShapesToMovetext(doc, { 0: [{ orig: 'd4', brush: 'yellow' }] });
+    applyShapesToMovetext(doc, { '': [{ orig: 'd4', brush: 'yellow' }] });
     expect(writeMovetext(doc)).toBe('{[%csl Yd4]}');
   });
 
   it('round-trips back through readMovetext/resolveMovetext into the same shapes', () => {
     const doc = resolveMovetext(readMovetext('1. e4 e5 2. Nf3'));
-    applyShapesToMovetext(doc, { 1: [{ orig: 'e5', dest: 'e4', brush: 'blue' }, { orig: 'g8', brush: 'green' }] });
+    applyShapesToMovetext(doc, { '0': [{ orig: 'e5', dest: 'e4', brush: 'blue' }, { orig: 'g8', brush: 'green' }] });
     const written = writeMovetext(doc);
 
     const reread = resolveMovetext(readMovetext(written));
@@ -178,14 +178,14 @@ describe('shapesFromAnnotations — the read-back direction', () => {
   it('round-trips a full save through applyShapesToMovetext, write, reread and decode', () => {
     const doc = resolveMovetext(readMovetext('1. e4 e5 2. Nf3'));
     applyShapesToMovetext(doc, {
-      0: [{ orig: 'd2', brush: 'green' }, { orig: 'd4', brush: 'green' }],
-      2: [{ orig: 'e5', dest: 'e4', brush: 'red' }]
+      '': [{ orig: 'd2', brush: 'green' }, { orig: 'd4', brush: 'green' }],
+      '0.0': [{ orig: 'e5', dest: 'e4', brush: 'red' }]
     });
     const written = writeMovetext(doc);
 
     const reread = resolveMovetext(readMovetext(written));
     const firstMove = reread.moves.children[0];
-    const secondMove = firstMove.children[0]; // ply 2 (after e5) -- shapesByPly's key 2
+    const secondMove = firstMove.children[0]; // path '0.0' (after e5)
 
     // Ply 0 reads from the document's own comments, not the first move's
     // startingAnn -- see boardAnnotations.js's own note on why.

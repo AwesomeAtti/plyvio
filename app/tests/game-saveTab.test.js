@@ -111,7 +111,7 @@ describe('saveTab — real write round trip', () => {
     game.ensureGameState('t1', gameId);
     tabs.activeId.set('t1');
 
-    game.setPlyShapes('t1', 0, [{ orig: 'e4', brush: 'green' }]);
+    game.setPlyShapes('t1', [], [{ orig: 'e4', brush: 'green' }]);
     expect(game.isDirty('t1')).toBe(true);
 
     const wrote = await game.saveTab('t1');
@@ -133,7 +133,7 @@ describe('saveTab — real write round trip', () => {
 
     // Ply 0 specifically -- the "arrow drawn before the first move" case
     // that exposed ply 0 never actually reading back at all (24 Sep).
-    game.setPlyShapes('t1', 0, [{ orig: 'd2', brush: 'green' }, { orig: 'd4', brush: 'green' }]);
+    game.setPlyShapes('t1', [], [{ orig: 'd2', brush: 'green' }, { orig: 'd4', brush: 'green' }]);
     await game.saveTab('t1');
 
     // A second tab on the same game, opened fresh after the save -- not the
@@ -166,7 +166,7 @@ describe('saveTab — real write round trip', () => {
     const gameId = sampleGames.GAMES[0].id;
     game.ensureGameState('t1', gameId);
     tabs.activeId.set('t1');
-    game.setPlyShapes('t1', 0, [{ orig: 'e4', brush: 'red' }]);
+    game.setPlyShapes('t1', [], [{ orig: 'e4', brush: 'red' }]);
     await game.saveTab('t1');
 
     game.ensureGameState('t2', gameId);
@@ -177,7 +177,7 @@ describe('saveTab — real write round trip', () => {
 
     // The user erases it on the board -- chessground reports the ply's new,
     // now-empty, complete shape list.
-    game.setPlyShapes('t2', 0, []);
+    game.setPlyShapes('t2', [], []);
     expect(game.isDirty('t2')).toBe(true);
 
     await game.saveTab('t2');
@@ -193,7 +193,7 @@ describe('saveTab — real write round trip', () => {
     game.ensureGameState('t1', null);
     tabs.activeId.set('t1');
 
-    game.setPlyShapes('t1', 0, [{ orig: 'e4', brush: 'green' }]);
+    game.setPlyShapes('t1', [], [{ orig: 'e4', brush: 'green' }]);
     expect(game.isDirty('t1')).toBe(true);
 
     await expect(game.saveTab('t1')).resolves.toBe(false);
@@ -297,7 +297,7 @@ describe('saveTab’s create branch — a draft tab getting its first real row (
     const draftId = game.seedDraftGame();
     game.ensureGameState('t1', draftId);
     tabs.activeId.set('t1');
-    game.setPlyShapes('t1', 0, [{ orig: 'e4', brush: 'green' }]);
+    game.setPlyShapes('t1', [], [{ orig: 'e4', brush: 'green' }]);
 
     await game.saveTab('t1');
     const newId = get(game.gameStates).t1.libraryGameId;
@@ -349,7 +349,7 @@ describe('isPristineDraft — the one case a board paste’s confirm dialog skip
 
     const blank = game.seedDraftGame();
     game.ensureGameState('t2', blank);
-    game.setPlyShapes('t2', 0, [{ orig: 'e4', brush: 'green' }]);
+    game.setPlyShapes('t2', [], [{ orig: 'e4', brush: 'green' }]);
     expect(game.isPristineDraft('t2')).toBe(false);
   });
 
@@ -374,7 +374,7 @@ describe('moveInputs / playMove — moving a piece on the board (Stage 4, "move 
     expect(game.playMove('t1', { from: 'e2', to: 'e4' })).toBeNull();
   });
 
-  it('a real game is not movable anywhere but its own last ply', async () => {
+  it('a real game is movable from any ply, not just the last (Stage 5, lifted per Lichess)', async () => {
     const mods = await freshModules();
     const { game, library, tabs, sampleGames } = mods;
     await setUpRealLibrary(mods);
@@ -385,13 +385,59 @@ describe('moveInputs / playMove — moving a piece on the board (Stage 4, "move 
     tabs.activeId.set('t1');
     await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(4));
 
-    game.goToPly('t1', 1);
-    expect(game.moveInputs('t1').movable).toBe(false);
-    expect(game.playMove('t1', { from: 'g1', to: 'f3' })).toBeNull();
+    game.goToPly('t1', 1); // after 1. e4, Black to move -- not the last ply
+    expect(game.moveInputs('t1').movable).toBe(true);
+    expect(game.moveInputs('t1').turnColor).toBe('black');
 
     game.lastPly('t1');
     expect(game.moveInputs('t1').movable).toBe(true);
     expect(game.moveInputs('t1').turnColor).toBe('black');
+  });
+
+  it('playing an alternative to an already-mainlined move creates a variation, not a rewrite', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?', ['1. e4 e5 2. Nf3', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(4));
+
+    game.goToPly('t1', 1); // after 1. e4
+    const result = game.playMove('t1', { from: 'c7', to: 'c5' });
+    expect(result.san).toBe('c5');
+
+    const active = get(game.activeGame);
+    // The mainline itself is untouched -- this branched off it rather than replacing it.
+    expect(active.plies).toHaveLength(4);
+    expect(active.plies[2].s).toBe('e5');
+    // The cursor sits on the new variation's own node.
+    expect(active.path).toEqual([0, 1]);
+    expect(active.position.s).toBe('c5');
+    expect(game.isDirty('t1')).toBe(true);
+  });
+
+  it('replaying a move that already exists at a position navigates onto it instead of branching again', async () => {
+    const mods = await freshModules();
+    const { game, library, tabs, sampleGames } = mods;
+    await setUpRealLibrary(mods);
+    const gameId = sampleGames.GAMES[0].id;
+    const connection = await library.activeLibraryConnection();
+    await connection.run('update games set movetext = ? where id = ?', ['1. e4 e5 2. Nf3', gameId]);
+    game.ensureGameState('t1', gameId);
+    tabs.activeId.set('t1');
+    await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(4));
+
+    game.goToPly('t1', 1); // after 1. e4
+    const result = game.playMove('t1', { from: 'e7', to: 'e5' }); // already the mainline's own reply
+
+    expect(result.san).toBe('e5');
+    const active = get(game.activeGame);
+    expect(active.path).toEqual([0, 0]);
+    // No branch was created, so nothing was staged to save.
+    expect(game.isDirty('t1')).toBe(false);
   });
 
   it('playing a move at the last ply appends a ply, advances the cursor and marks the tab dirty', async () => {
