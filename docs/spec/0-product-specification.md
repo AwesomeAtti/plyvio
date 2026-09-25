@@ -2166,7 +2166,7 @@ A **principal variation** is one line the engine considers best, given as a scor
 
 **It is a live view of the current position and nothing else.** It runs against the position the board is showing, for as long as it is switched on. It does not read the game's stored evaluations to decide what to show, it does not produce one, and it does not walk the game. A feature that computes or rewrites evaluations across a whole game is a different feature with its own specification; this Section's design does not assume it exists.
 
-**It reports; it does not navigate.** No row is clickable and the cursor does not change over one — the same rule §5.6.3 states, and for the same reason. Playing a line onto the board would let the board show a position the game never reached, which belongs with interactive analysis.
+**Hovering a row previews it; clicking plays it.** Hovering draws the line's next two plies on the board as a temporary annotation — never saved, and cleared the moment the pointer leaves the row. It is drawn only while the Section is actually running; a retained line (the Section switched off, its last lines dimmed) hovers with no board preview. Clicking a row plays its first move through the same tab-scoped mechanism a board drag uses: it walks onto an existing move at that position, or branches a new variation, and works for a retained line the same as a running one. The cursor changes to a pointer over a row. This Section is not the read-only report §5.6.3 specifies for the Explorer; the two are no longer the same rule.
 
 #### Height
 
