@@ -30,11 +30,21 @@
     black: { queen: '♛', rook: '♜', bishop: '♝', knight: '♞' }
   };
 
-  const file = square.charCodeAt(0) - 97; // 'a' -> 0
-  const rank = Number(square[1]) - 1; // '1' -> 0
-  const col = orientation === 'white' ? file : 7 - file;
-  const destRow = orientation === 'white' ? 7 - rank : rank;
-  const rows = destRow === 0 ? [0, 1, 2, 3] : [3, 2, 1, 0].map((n) => 7 - n);
+  /*
+   * $derived, not const: `square`/`orientation` are reactive props, and
+   * though this component is normally torn down and recreated fresh for
+   * each promotion (ChessBoard's own `{#if pendingPromotion}`), the board
+   * can still be flipped while the picker is up -- `flipBoard` isn't
+   * gated on it -- so `orientation` (and, if this component were ever
+   * reused across promotions instead of recreated, `square`) do need to
+   * stay live rather than freezing at mount (Svelte's own
+   * `state_referenced_locally` warning, fixed 25 Sep).
+   */
+  const file = $derived(square.charCodeAt(0) - 97); // 'a' -> 0
+  const rank = $derived(Number(square[1]) - 1); // '1' -> 0
+  const col = $derived(orientation === 'white' ? file : 7 - file);
+  const destRow = $derived(orientation === 'white' ? 7 - rank : rank);
+  const rows = $derived(destRow === 0 ? [0, 1, 2, 3] : [3, 2, 1, 0].map((n) => 7 - n));
 
   const square$ = (s) => s / 8;
 
