@@ -431,7 +431,15 @@ describe('§3.4.11 About', () => {
         licence: r.querySelector('dd').textContent.trim()
       }));
 
-    for (const { component, licence } of table) {
+    /*
+      NOT YET ON THE ABOUT SCREEN, deliberately: Stockfish.js ships from Stage 1
+      of the live-engine plan (25 Sep), but listing it in About is a §6.10 /
+      §7.6 change, so it waits for G3 after Built. Exempt until then; tracked in
+      ACTIONS.md. Remove this line when About lists it.
+    */
+    const NOT_YET_IN_ABOUT = new Set(['Stockfish.js']);
+
+    for (const { component, licence } of table.filter((r) => !NOT_YET_IN_ABOUT.has(r.component))) {
       // IBM Plex is one row on screen and one line in the table, spelled slightly
       // differently because the table names both families.
       const name = component.startsWith('IBM Plex') ? 'IBM Plex' : component;

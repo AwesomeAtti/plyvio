@@ -16,6 +16,7 @@ in full, as those licences require.
 | --- | --- | --- | --- |
 | Chessground | 10.1.1 | GPL-3.0-or-later | The board: rendering, dragging, animation |
 | chessops | 0.15.1 | GPL-3.0-or-later | Reading movetext: positions, legality, SAN (§3 of the schema) |
+| Stockfish.js | 19.0.0 | GPL-3.0 | The built-in engine for live analysis (§5.6.4): Stockfish 19 lite, single-threaded WebAssembly |
 | Svelte | 5.57.0 | MIT | Application framework runtime |
 | Lucide | 1.41.0 | ISC | Icon set (§7.4) |
 | Simple Icons | — | CC0-1.0 | chess.com and lichess brand marks (§7.4.2) |
@@ -47,6 +48,26 @@ Chessground does: it is imported by application code and bundled into it rather 
 shipped beside it. It does not change the licence conclusion — that was already settled
 by Chessground — but it does mean two of the redistributed components are copyleft
 rather than one.
+
+---
+
+## Stockfish.js — GPL-3.0
+
+Stockfish.js (c) 2026, Chess.com, LLC, by Nathan Rugg — a WebAssembly build of
+Stockfish, by the Stockfish developers (see the upstream `AUTHORS` file).
+Source: https://github.com/nmrugg/stockfish.js (tag `v19.0.0`), built from
+https://github.com/official-stockfish/Stockfish.
+Package: npm `stockfish@19.0.0`.
+
+Two files from that package, `stockfish-19-lite-single.js` and
+`stockfish-19-lite-single.wasm`, are shipped **unmodified** in
+`app/static/engines/stockfish-19-lite/`, together with the package's own
+licence text, `Copying.txt`, and a note of where they came from and their
+SHA-256 values. Unlike Chessground and chessops they are not bundled into the
+application's JavaScript: the engine runs as a separate Web Worker and the app
+talks to it only in UCI text. They are still redistributed with every build,
+so the GPL's source obligation applies to them; the source is at the links
+above.
 
 ---
 
