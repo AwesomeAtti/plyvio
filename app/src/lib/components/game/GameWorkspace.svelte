@@ -82,29 +82,42 @@
    * `editing`/`playing` above: nothing here is saved, and none of it
    * belongs in the tab's own state in `stores/game.js`.
    *
-   * The hovered LINE, not just its rank, because `EngineLines.svelte`
-   * reports the row it has -- keeping the object rather than re-deriving it
-   * from `g.engineView.lines` avoids a mismatch if the lines array reflows
-   * (a new search result) while the pointer is still over the row.
+   * The hovered RANK, not the line object itself. `EngineLines.svelte`
+   * reports whichever row the pointer is over; the line data for that row
+   * is re-derived from `g.engineView.lines` on every render instead of
+   * captured once at pointerenter. Two things needed this, both found by
+   * hand 25 Sep: clicking a line plays its move, which moves the board and
+   * starts a new search, but the pointer is still sitting over the same
+   * row the whole time -- no pointerenter/pointerleave fires, so nothing
+   * would tell a captured-object version to update, and it either froze on
+   * the old line or (with the explicit clear this replaced) went blank
+   * until the pointer left and came back. Deriving by rank instead means
+   * the annotation tracks whatever that row is currently showing -- the
+   * old line until the new position's first result arrives, then the new
+   * one -- with no re-hover needed. It's also just correct for the case
+   * the old comment here worried about (the object going stale mid-search
+   * as depth improves the PV): now it can't go stale, because it's never
+   * kept past one render.
    */
-  let hoveredEngineLine = $state(null);
+  let hoveredRank = $state(null);
 
-  // A stale line drawn over a position it no longer describes would be
-  // wrong, not just untidy -- clear the moment the board moves, by any
-  // means (navigation, a played move, opening a different tab).
-  $effect(() => { g?.path; hoveredEngineLine = null; });
+  const hoveredLine = $derived(
+    hoveredRank == null ? null : (g?.engineView?.lines ?? []).find((l) => l.rank === hoveredRank) ?? null
+  );
 
   /**
    * The board's `autoShapes` for the hover preview -- `game/engine.js`'s
    * `engineHoverAutoShapes` does the actual work (pure, tested on its own);
-   * this just feeds it the position actually on screen and the hovered line.
+   * this just feeds it the position actually on screen and the row's
+   * current line, if any (the position may have fewer legal moves than
+   * the hovered rank, or no result yet for a search just starting).
    */
   const engineHoverShapes = $derived(
-    g ? engineHoverAutoShapes(g.position.f, hoveredEngineLine) : []
+    g && hoveredLine ? engineHoverAutoShapes(g.position.f, hoveredLine) : []
   );
 
   function onEngineHover(line) {
-    hoveredEngineLine = line;
+    hoveredRank = line ? line.rank : null;
   }
 
   /** Plays the line's first ply exactly as a board drag would -- through the
