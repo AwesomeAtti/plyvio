@@ -1,19 +1,25 @@
 /**
- * Engine Section hover preview -- refreshing after a click, not just on a
- * fresh hover.
+ * Engine Section hover preview -- two behaviours found and changed by hand,
+ * both 25 Sep (AwesomeAtti), both in `GameWorkspace.svelte`'s hover wiring:
  *
- * Found by hand 25 Sep (AwesomeAtti), right after the hover/click feature
- * itself (ACTIONS.md) was confirmed working: click a line, and the pointer
- * is left sitting over the SAME row -- no pointerenter/pointerleave fires,
- * because it never moved. `GameWorkspace.svelte` used to capture the
- * hovered LINE OBJECT at pointerenter and clear it on path change; with no
- * new pointer event, the board's annotation either froze on the old line
- * or went blank, and stayed wrong until the pointer physically left the
- * row and came back. Fixed by tracking the hovered RANK instead and
- * re-deriving the line from `engineView.lines` on every render, so the
- * annotation tracks whatever that row is currently showing.
+ * 1. REFRESHING AFTER A CLICK, not just on a fresh hover. Click a line, and
+ *    the pointer is left sitting over the SAME row -- no
+ *    pointerenter/pointerleave fires, because it never moved. The old code
+ *    captured the hovered LINE OBJECT at pointerenter and cleared it on
+ *    path change; with no new pointer event, the board's annotation either
+ *    froze on the old line or went blank, staying wrong until the pointer
+ *    physically left the row and came back. Fixed by tracking the hovered
+ *    RANK instead and re-deriving the line from `engineView.lines` on
+ *    every render, so the annotation tracks whatever that row is
+ *    currently showing.
  *
- * This needs the real `@lichess-org/chessground` (not a mock double) so the
+ * 2. NO PREVIEW WHILE THE ENGINE IS OFF. A retained row (switched off, Q8)
+ *    still reports hover and still plays on click, same as a live one --
+ *    but drawing board arrows for a line that isn't actually being
+ *    searched right now reads as live when it isn't. On request: hover on
+ *    a retained row draws nothing; click is unaffected.
+ *
+ * Both need the real `@lichess-org/chessground` (not a mock double) so the
  * assertions are against its own `drawable.autoShapes`, the same technique
  * `ChessBoard.test.js` uses -- kept in its own file, rather than added to
  * `game.test.js`, so this capture wrapper doesn't shadow the real,
@@ -99,5 +105,49 @@ describe('Engine Section hover preview refreshes after a click (bug found 25 Sep
     expect(afterShapes).toEqual(engineHoverAutoShapes(after.position.f, afterLine));
     expect(afterShapes.length).toBeGreaterThan(0);
     expect(afterShapes).not.toEqual(beforeShapes);
+  });
+});
+
+
+describe('Engine hover preview draws nothing while the engine is off (on request, 25 Sep)', () => {
+  it('a retained (dimmed) row still plays on click, but draws no board annotation on hover', async () => {
+    capturedApi = null;
+    const { container } = render(AppShell);
+    const id = openDraftTab();
+    await tick();
+    setEngineSource(id, 'engine-1');
+    setEngineOn(id, true);
+    await tick();
+
+    const running = get(activeGame);
+    const runningLine = running.engineView.lines[0];
+    expect(runningLine).toBeTruthy();
+
+    const row = container.querySelector('#sec-engine-body .row');
+    await fireEvent.pointerEnter(row);
+    // While it's actually running, hover draws as before -- this is the
+    // control case, so a regression in behaviour 1 above would show up
+    // here too.
+    expect(capturedApi.state.drawable.autoShapes.length).toBeGreaterThan(0);
+    await fireEvent.pointerLeave(row);
+
+    // Q8 -- switching off retains the rows (dimmed), it doesn't clear them.
+    setEngineOn(id, false);
+    await tick();
+    const retained = get(activeGame);
+    expect(retained.engineView.running).toBe(false);
+    expect(retained.engineView.lines.length).toBeGreaterThan(0);
+    const retainedRow = container.querySelector('#sec-engine-body .body.stale .row');
+    expect(retainedRow).toBeTruthy();
+
+    await fireEvent.pointerEnter(retainedRow);
+    // The preference: no preview while nothing is actually searching.
+    expect(capturedApi.state.drawable.autoShapes).toEqual([]);
+
+    // Click is unaffected -- a retained row still plays its move.
+    const before = get(activeGame);
+    await fireEvent.click(retainedRow);
+    const after = get(activeGame);
+    expect(after.path.length).toBe(before.path.length + 1);
   });
 });

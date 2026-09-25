@@ -111,9 +111,17 @@
    * this just feeds it the position actually on screen and the row's
    * current line, if any (the position may have fewer legal moves than
    * the hovered rank, or no result yet for a search just starting).
+   *
+   * Gated on `running` (25 Sep, on request): a retained row (engine
+   * switched off, Q8) still reports hover/click the same as a live one --
+   * the rows themselves stay exactly as they were, dimmed but present --
+   * but the preference is for the board to stay quiet while nothing is
+   * actually searching, rather than drawing arrows for a line that's just
+   * sitting there from before. Click is untouched; it still plays a
+   * retained row's move the same as always.
    */
   const engineHoverShapes = $derived(
-    g && hoveredLine ? engineHoverAutoShapes(g.position.f, hoveredLine) : []
+    g && g.engineView?.running && hoveredLine ? engineHoverAutoShapes(g.position.f, hoveredLine) : []
   );
 
   function onEngineHover(line) {
