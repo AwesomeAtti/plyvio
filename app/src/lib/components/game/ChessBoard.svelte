@@ -27,6 +27,25 @@
    * fires once the piece has already been dropped, with no pause for a
    * choice, so the picker (`PromotionPicker.svelte`) has to sit here, between
    * that event and `onmove`, holding the move back until a piece is chosen.
+   *
+   * BUG FIX, 25 Sep: `turnColor` has to be pushed to chessground as its OWN
+   * top-level config key, in both the mount call and the reactive `api.set`
+   * below -- not only folded into `movable.color`, which is a different
+   * field (`movable.color` says WHICH SIDE'S pieces may move at all;
+   * chessground's own internal `state.turnColor` is a second, separate
+   * field it uses to tell an ordinary move from a PREMOVE). Left unset,
+   * chessground's `state.turnColor` never moves off its own default,
+   * `'white'` (confirmed from `state.ts`) -- and its `isPremovable` check
+   * is `movable.color === piece.color && state.turnColor !== piece.color`.
+   * With `state.turnColor` stuck at `'white'`, that condition is met for
+   * every Black-to-move position (root's own first move looked fine only
+   * because White-to-move positions coincidentally match the stuck
+   * default), so dragging a Black piece anywhere fell into chessground's
+   * PREMOVE path instead of an ordinary move: naive, un-legality-checked
+   * destinations (`premove()`, not `dests`) shown in its own grey premove
+   * styling, and no `movable.events.after` firing at all -- reported as
+   * "can't add a variation for ply 1 / for any Black move", with "grey
+   * dots" including illegal squares, both exactly premove's own signature.
    */
   import { onMount } from 'svelte';
   import { Chessground } from '@lichess-org/chessground';
@@ -78,6 +97,7 @@
     api = Chessground(el, {
       fen,
       orientation,
+      turnColor,
       lastMove: lastMove ?? undefined,
       check,
       /*
@@ -132,7 +152,7 @@
     // moment that happens, same as any other prop change below.
     const interactive = movable && !pendingPromotion;
     api.set({
-      fen, orientation, lastMove: lastMove ?? undefined, check, drawable: { shapes },
+      fen, orientation, turnColor, lastMove: lastMove ?? undefined, check, drawable: { shapes },
       movable: { color: interactive ? turnColor : undefined, dests: interactive ? dests : new Map() },
       draggable: { enabled: interactive },
       selectable: { enabled: interactive }
