@@ -23,6 +23,7 @@
  */
 
 import Database from '@tauri-apps/plugin-sql';
+import { convertFileSrc } from '@tauri-apps/api/core';
 import { assertConnection, DataError } from '../connection.js';
 
 /**
@@ -154,3 +155,55 @@ export const listDirectoryNames = async (path) => {
     throw new DataError(`could not list ${path}: ${cause?.message ?? cause}`);
   }
 };
+
+/**
+ * Write bytes to a file on disk, creating any missing parent directories —
+ * engine Stage 2's install flow (`engine/storage.js`), via the same small
+ * custom Rust command pattern as `ensureDirectory`/`listDirectoryNames`
+ * (`write_binary_file`, `src-tauri/src/lib.rs`): no `fs` plugin dependency
+ * for this either. `bytes` crosses the IPC bridge as a plain array of
+ * numbers — `Array.from(uint8Array)` — the same JSON serialization every
+ * other command argument here already uses, not a new binary transport.
+ *
+ * @param {string} path absolute file path
+ * @param {Uint8Array} bytes
+ */
+export const writeBinaryFile = async (path, bytes) => {
+  if (!path) throw new DataError('writeBinaryFile requires a path');
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('write_binary_file', { path, bytes: Array.from(bytes) });
+  } catch (cause) {
+    throw new DataError(`could not write ${path}: ${cause?.message ?? cause}`);
+  }
+};
+
+/**
+ * Delete a directory and everything in it — engine Stage 2's "Remove"
+ * (`engine/storage.js`), via `remove_dir_all` in `src-tauri/src/lib.rs`.
+ * A missing directory is not an error (an engine whose install never
+ * finished writing anything has nothing to remove).
+ *
+ * @param {string} path absolute directory path
+ */
+export const removeDirectoryAll = async (path) => {
+  if (!path) throw new DataError('removeDirectoryAll requires a path');
+  try {
+    const { invoke } = await import('@tauri-apps/api/core');
+    await invoke('remove_dir_all', { path });
+  } catch (cause) {
+    throw new DataError(`could not remove ${path}: ${cause?.message ?? cause}`);
+  }
+};
+
+/**
+ * The `asset://` URL a Web Worker can load a desktop-stored engine file
+ * from — Tauri's asset protocol, scoped to `$APPDATA/engines/**` in
+ * `tauri.conf.json` (`security.assetProtocol`). Synchronous: a pure string
+ * rewrite (`convertFileSrc`, `@tauri-apps/api/core`) with no IPC round
+ * trip, unlike the PWA's own OPFS-backed equivalent (`engine/storage.js`'s
+ * blob-URL cache), which is why that cache exists only on that side.
+ *
+ * @param {string} path absolute file path
+ */
+export const assetUrlFor = (path) => convertFileSrc(path);

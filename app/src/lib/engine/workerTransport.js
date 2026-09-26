@@ -1,6 +1,8 @@
 /**
- * The transport for an engine that runs as a Web Worker — the bundled
- * Stockfish WASM build (`static/engines/stockfish-19-lite/`).
+ * The transport for an engine that runs as a Web Worker — every WASM engine
+ * Settings can install (engine Stage 2, `engine-stage2-plan.md`; Stage 1's
+ * bundled `static/engines/stockfish-19-lite/` copy is retired, and this file
+ * never assumed one engine's files to begin with).
  *
  * A transport carries UCI text and nothing else: `send(line)` one way,
  * `onLine(line)` the other, `onError(err)` if the engine can't start or

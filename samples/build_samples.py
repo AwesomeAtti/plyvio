@@ -181,17 +181,24 @@ CREATE TABLE subscriptions (
     last_viewed_at      TEXT
 );
 
--- v010 section 5.3, plus enabled, threads and hash_mb.
+-- v010 section 5.3, plus enabled, threads and hash_mb, plus kind/asset_url/
+-- sha256/threads_max for engine Stage 2 (26 Sep 2026) -- see schema.js's own
+-- comment on this table, kept in step by hand.
 CREATE TABLE engines (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL,
     version     TEXT,
     url         TEXT,
-    binary_path TEXT NOT NULL,
+    kind        TEXT NOT NULL DEFAULT 'native' CHECK (kind IN ('native', 'wasm')),
+    binary_path TEXT,
+    asset_url   TEXT,
+    sha256      TEXT,
+    threads_max INTEGER CHECK (threads_max IS NULL OR threads_max >= 1),
     created_at  TEXT NOT NULL,
     enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
     threads     INTEGER NOT NULL DEFAULT 1 CHECK (threads >= 1),
-    hash_mb     INTEGER NOT NULL DEFAULT 256 CHECK (hash_mb >= 1)
+    hash_mb     INTEGER NOT NULL DEFAULT 256 CHECK (hash_mb >= 1),
+    CHECK (kind != 'native' OR binary_path IS NOT NULL)
 );
 
 -- The curated lists offered for download (settings section 3.4.8.1, 3.4.8.2).

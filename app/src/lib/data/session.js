@@ -165,6 +165,31 @@ export const defaultLibrariesDirDisplay = async () => {
 };
 
 /**
+ * Where a downloaded engine's files live on desktop — engine Stage 2
+ * (26 Sep 2026, `engine-stage2-plan.md`). Unlike `defaultLibrariesDir()`,
+ * this deliberately IS `appDataDir()`: an engine binary is app-managed
+ * capability data, never shown to or chosen by the user the way a Library's
+ * path is (§6.6), so the bundle identifier landing in the path here is not
+ * the problem it would be there. Matches `tauri.conf.json`'s asset-protocol
+ * scope, `$APPDATA/engines/**` — the two must stay in step by hand, same as
+ * `schema.js`'s DDL and its Python mirror.
+ *
+ * `@tauri-apps/api/path` is imported dynamically, the same lazy-chunk
+ * pattern this file's other Tauri-only helpers already use. Tauri only;
+ * callers guard with `isTauri()`/`getBackend()` first (`engine/storage.js` does).
+ */
+export const defaultEnginesDir = async () => {
+  const { appDataDir, join } = await import('@tauri-apps/api/path');
+  return join(await appDataDir(), 'engines');
+};
+
+/** `defaultEnginesDir()` joined with an engine's own id — its own subfolder. */
+export const engineDir = async (id) => {
+  const { join } = await import('@tauri-apps/api/path');
+  return join(await defaultEnginesDir(), String(id));
+};
+
+/**
  * `samples/config.db`'s own `libraries.game_db_path` values are bare
  * filenames (`'sample-games.db'`) rather than absolute paths — §5.1 documents the
  * column as "the filesystem path to the game database" but says nothing

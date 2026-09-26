@@ -134,24 +134,67 @@ export const createLibrary = async (connection, { name, path, createdAt, enabled
 /**
  * The engines configured in `config.db`. §5, camelCase per `readLibraries`/
  * `readGames`'s own convention: `binary_path` → `binaryPath`, `hash_mb` →
- * `hashMb`, `created_at` → `createdAt`.
+ * `hashMb`, `created_at` → `createdAt`, `asset_url` → `assetUrl`,
+ * `threads_max` → `threadsMax` (engine Stage 2, 26 Sep 2026).
  */
 export const readEngines = async (connection) => {
   const rows = await connection.all(
-    'select id, name, version, url, binary_path, created_at, enabled, threads, hash_mb ' +
-      'from engines order by id'
+    'select id, name, version, url, kind, binary_path, asset_url, sha256, ' +
+      'threads_max, created_at, enabled, threads, hash_mb from engines order by id'
   );
   return rows.map((row) => ({
     id: row.id,
     name: row.name,
     version: row.version,
     url: row.url,
+    kind: row.kind,
     binaryPath: row.binary_path,
+    assetUrl: row.asset_url,
+    sha256: row.sha256,
+    threadsMax: row.threads_max,
     createdAt: row.created_at,
     enabled: row.enabled === 1,
     threads: row.threads,
     hashMb: row.hash_mb
   }));
+};
+
+/**
+ * Register a real, downloaded engine — engine Stage 2's install flow
+ * (`stores/settings.js`'s `installEngine()`), once the files themselves are
+ * already verified and written to storage. Mirrors `createLibrary()`'s own
+ * shape: `engines.id` is an ordinary rowid, assigned by SQLite and returned
+ * via `last_insert_rowid()` on the same connection, not generated here.
+ *
+ * `kind: 'wasm'` is the only caller today; `binaryPath` stays `null` for it
+ * (the schema's own `CHECK` only requires one for `kind = 'native'`).
+ *
+ * @returns {Promise<number>} the new `engines.id`
+ */
+export const createEngine = async (connection, {
+  name, version = null, kind, binaryPath = null, assetUrl = null, sha256 = null,
+  threadsMax = null, threads = 1, hashMb = 256, createdAt, enabled = true
+}) => {
+  await connection.run(
+    'insert into engines ' +
+      '(name, version, kind, binary_path, asset_url, sha256, threads_max, ' +
+      ' created_at, enabled, threads, hash_mb) ' +
+      'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [name, version, kind, binaryPath, assetUrl, sha256, threadsMax,
+      createdAt, enabled ? 1 : 0, threads, hashMb]
+  );
+  return connection.value('select last_insert_rowid()');
+};
+
+/**
+ * Forget an engine — engine Stage 2's "Remove" (`EngineSection.svelte`),
+ * mirroring `deleteLibrary()`. Unlike a Library, an engine's downloaded
+ * files ARE the thing being removed (there is no separate "file on disk the
+ * user might still want" the way a game database is) — deleting the stored
+ * bytes is the caller's job, done alongside this, not this function's.
+ */
+export const deleteEngine = async (connection, id) => {
+  await connection.run('delete from engines where id = ?', [id]);
 };
 
 /** Rename an engine. §5.3 */

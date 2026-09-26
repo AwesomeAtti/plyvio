@@ -165,11 +165,20 @@ CREATE TABLE engines (
     name        TEXT NOT NULL,
     version     TEXT,
     url         TEXT,
-    binary_path TEXT NOT NULL,
+    -- kind/asset_url/sha256/threads_max added for engine Stage 2 (26 Sep 2026,
+    -- engine-stage2-plan.md): a WASM engine has no OS binary to invoke, so
+    -- binary_path is relaxed to nullable and required only for kind = 'native'.
+    -- 'native' is the default so every pre-Stage-2 row keeps its meaning.
+    kind        TEXT NOT NULL DEFAULT 'native' CHECK (kind IN ('native', 'wasm')),
+    binary_path TEXT,
+    asset_url   TEXT,
+    sha256      TEXT,
+    threads_max INTEGER CHECK (threads_max IS NULL OR threads_max >= 1),
     created_at  TEXT NOT NULL,
     enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
     threads     INTEGER NOT NULL DEFAULT 1 CHECK (threads >= 1),
-    hash_mb     INTEGER NOT NULL DEFAULT 256 CHECK (hash_mb >= 1)
+    hash_mb     INTEGER NOT NULL DEFAULT 256 CHECK (hash_mb >= 1),
+    CHECK (kind != 'native' OR binary_path IS NOT NULL)
 );
 
 -- What the user chose in Settings.
