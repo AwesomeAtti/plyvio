@@ -28,7 +28,17 @@ export const AVAILABLE_ENGINES = [
  * `bytes` is the zip's own size (what the Available row's download line
  * shows); `threadsMax` is copied onto the `engines` row at install time and
  * bounds the Threads control in place of `THREAD_OPTIONS` (Q4).
- * `assetUrl`/`sha256` are the confirmed, live values recorded in the plan.
+ *
+ * `assetUrl` is jsDelivr's GitHub CDN, not the `engines-v1` GitHub Release
+ * directly — found by hand 26 Sep: a Release asset's URL sends no
+ * `Access-Control-Allow-Origin`, so a browser `fetch()` to one always fails
+ * (`TypeError: Failed to fetch`), on the PWA and the desktop webview alike.
+ * jsDelivr serves the identical bytes with CORS enabled, from a dedicated
+ * orphan branch (`engine-assets`, tag `engine-assets-v1`) that holds
+ * nothing else — the `engines-v1` Release stays live as the human-facing
+ * record and the GPL source-availability reference (`ACTIONS.md`), it just
+ * isn't what the app fetches from. `sha256` is unchanged either way: the
+ * jsDelivr copy is byte-for-byte identical to the Release asset.
  */
 export const WASM_ENGINES = [
   {
@@ -38,7 +48,7 @@ export const WASM_ENGINES = [
     kind: 'wasm',
     platform: 'wasm',
     protocol: 'UCI',
-    assetUrl: 'https://github.com/AwesomeAtti/plyvio/releases/download/engines-v1/stockfish-19-lite-wasm-single.zip',
+    assetUrl: 'https://cdn.jsdelivr.net/gh/AwesomeAtti/plyvio@engine-assets-v1/stockfish-19-lite-wasm-single.zip',
     sha256: 'c2d2c1068116c9b75fb61a5f481a6cb1c3a49bb3c60b05bbc041d489d8afa7be',
     bytes: 1_209_947,
     threadsMax: 1
