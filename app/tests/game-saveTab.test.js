@@ -629,7 +629,7 @@ describe('promoteVariation / makeMainLine — promoting a variation', () => {
 
   it('re-keys drawn shapes, a held engine result, and a pending move\'s own branch point along with the promoted line', async () => {
     const mods = await freshModules();
-    const { game, library, tabs, sampleGames } = mods;
+    const { game, library, tabs, sampleGames, settings } = mods;
     await setUpRealLibrary(mods);
     const gameId = sampleGames.GAMES[0].id;
     const connection = await library.activeLibraryConnection();
@@ -638,6 +638,9 @@ describe('promoteVariation / makeMainLine — promoting a variation', () => {
     game.ensureGameState('t1', gameId);
     tabs.activeId.set('t1');
     await vi.waitFor(() => expect(get(game.activeGame).plies).toHaveLength(7));
+    // A held engine result needs an engine to hold for -- any row will do,
+    // since this test is about the hold surviving promotion, not a search.
+    settings.objects.update((o) => ({ ...o, engines: [{ id: 'test-engine', name: 'Test', status: 'ready', enabled: true }] }));
 
     const bc4 = [0, 0, 0, 0, 1];
     const bc5 = [0, 0, 0, 0, 1, 0];
@@ -826,10 +829,15 @@ describe('variation editing — one-step promote, demote, delete', () => {
   });
 
   it('a held engine result inside a deleted line is dropped', async () => {
-    const { game } = await openGame();
+    const { game, settings } = await openGame();
+    settings.objects.update((o) => ({ ...o, engines: [{ id: 'test-engine', name: 'Test', status: 'ready', enabled: true }] }));
     game.goToPath('t1', [0, 0, 1]);
     game.setEngineOn('t1', true);
     game.setEngineOn('t1', false);
+    // With the seeded engine, the hold set just above is real (non-null) --
+    // this proves deleteVariation actually clears it, not that there was
+    // never anything to clear.
+    expect(get(game.gameStates).t1.engineHold).not.toBeNull();
     game.deleteVariation('t1', [0, 0, 1]);
     expect(get(game.gameStates).t1.engineHold).toBeNull();
   });

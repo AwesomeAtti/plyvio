@@ -13,7 +13,64 @@
  * arrangement the Explorer uses.
  */
 
+import { parseFen } from 'chessops/fen';
+import { Chess } from 'chessops/chess';
+import { makeSan } from 'chessops/san';
 import { pvMoves } from './moves.js';
+
+/* ------------------------------ legal moves ------------------------------ */
+
+/** A chessops position from a FEN, or null if the FEN doesn't parse. */
+export function positionFrom(fen) {
+  try {
+    return Chess.fromSetup(parseFen(fen).unwrap()).unwrap();
+  } catch {
+    return null;
+  }
+}
+
+/** Legal moves from a position, in a stable order, as {move, san}. */
+export function legalMoves(pos) {
+  const out = [];
+  try {
+    for (const [from, dests] of pos.allDests()) {
+      for (const to of dests) {
+        const piece = pos.board.get(from);
+        const promotion = piece?.role === 'pawn' && (to < 8 || to >= 56) ? 'queen' : undefined;
+        const move = { from, to, ...(promotion ? { promotion } : {}) };
+        try {
+          out.push({ move, san: makeSan(pos, move) });
+        } catch {
+          /* not a move we can name */
+        }
+      }
+    }
+  } catch {
+    return [];
+  }
+  return out;
+}
+
+/**
+ * Whether the position has anything to search at all.
+ *
+ * Separate from an analysis returning nothing, because the two empties mean
+ * different things to the Section: no engine selected is one state and a
+ * finished game is another, and the prototype's games all end in one.
+ */
+export function hasLegalMoves(fen) {
+  return legalMoveCount(fen) > 0;
+}
+
+/**
+ * How many legal moves the position has — the most principal variations an
+ * engine can report for it, whatever MultiPV asks for. The store uses it for
+ * the built-in engine too (`engineView.expectedLines`).
+ */
+export function legalMoveCount(fen) {
+  const pos = positionFrom(fen);
+  return pos ? legalMoves(pos).length : 0;
+}
 
 /* --------------------------------- the row ------------------------------ */
 

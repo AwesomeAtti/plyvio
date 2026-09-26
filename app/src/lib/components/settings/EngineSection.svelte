@@ -86,8 +86,8 @@
             <span class="k"><label for="engthreads-{e.id}">{$t('field.threads')}</label></span>
             <!-- §4 (Q4, engine-stage2-plan.md) — one control markup for every
                  engine, bounded 1..threads_max when the row declares one
-                 (every WASM row today), THREAD_OPTIONS otherwise (every
-                 native mock row, which hasn't declared one). -->
+                 (every WASM row today), THREAD_OPTIONS otherwise (a future
+                 native row that hasn't declared one, Stage 3). -->
             <select
               id="engthreads-{e.id}" class="sel" value={e.threads}
               onchange={(ev) => setEngineOption(e.id, 'threads', Number(ev.currentTarget.value))}
@@ -105,8 +105,8 @@
             </select>
           </div>
           <!-- Q3 (engine-stage2-plan.md) — every engine is an ordinary
-               removable row now; `removeEngine()` itself splits real vs
-               mock (config.db + stored files vs store-only). -->
+               removable row now; `removeEngine()` itself splits on id type
+               (config.db + stored files vs store-only). -->
           <div class="er">
             <span class="k"></span>
             <button class="dan" type="button" onclick={() => removeEngine(e.id)}>

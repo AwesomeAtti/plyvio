@@ -10,13 +10,12 @@ import {
   availableEngines, installEngine, renameEngine, setEngineOption, setEngineEnabled
 } from '../src/lib/stores/settings.js';
 import {
-  AVAILABLE_ENGINES, WASM_ENGINES, DEFAULT_THREADS, DEFAULT_HASH, THREAD_OPTIONS,
+  WASM_ENGINES, THREAD_OPTIONS,
   installedDetail, availableDetail, downloadingDetail, formatBytes
 } from '../src/lib/settings/engines.js';
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
 const src = readFileSync('src/lib/components/settings/EngineSection.svelte', 'utf8');
-const now = (fn) => fn();
 
 const ENGINES = [
   { id: 'engine-1', name: 'Stockfish', version: '17.1', protocol: 'UCI',
@@ -57,13 +56,11 @@ describe('§3.4.8.2 detail line', () => {
   });
 
   it('reads protocol · download size when available', () => {
-    const e = AVAILABLE_ENGINES.find((x) => x.id === 'avail-berserk');
-    expect(availableDetail(e)).toBe('UCI · 42 MB download');
+    expect(availableDetail({ protocol: 'UCI', bytes: 42_000_000 })).toBe('UCI · 42 MB download');
   });
 
   it('reports the transfer while downloading', () => {
-    const e = AVAILABLE_ENGINES.find((x) => x.id === 'avail-koivisto');
-    expect(downloadingDetail(e, 60)).toBe('Downloading · 21 MB of 35 MB');
+    expect(downloadingDetail({ bytes: 35_000_000 }, 60)).toBe('Downloading · 21 MB of 35 MB');
   });
 
   it('rounds engine sizes to whole megabytes', () => {
@@ -84,61 +81,35 @@ describe('§3.4.8.2 detail line', () => {
 /* ===================== the catalogue ===================== */
 
 describe('§3.4.8.2 Available', () => {
-  it('offers the curated engines', () => {
-    // Includes the WASM catalogue too (engine Stage 2). The fixture's own
-    // already-installed 'Stockfish' 17.1 (no catalogId, same shape as the
-    // desktop sample's seed row) must not hide the unrelated WASM
-    // 'Stockfish' entry -- see the dedup regression tests below.
-    expect(get(availableEngines).map((e) => e.name)).toEqual([
-      'Berserk', 'Ethereal', 'Koivisto', 'Leela Chess Zero', 'Rubichess',
-      ...WASM_ENGINES.map((e) => e.name)
-    ]);
-  });
-
-  it('drops an entry once installed', () => {
-    installEngine('avail-berserk', { tick: now });
-    expect(get(objects).engines.some((e) => e.name === 'Berserk')).toBe(true);
-    expect(get(availableEngines).some((e) => e.name === 'Berserk')).toBe(false);
-  });
-
-  /* One phase, as for Databases: a binary downloads and is ready. */
-  it('installs ready and enabled, with sane defaults', () => {
-    installEngine('avail-ethereal', { tick: now });
-    const e = get(objects).engines.find((x) => x.name === 'Ethereal');
-    expect(e.status).toBe('ready');
-    expect(e.enabled).toBe(true);
-    expect(e.version).toBe('14.25');
-    expect(e.threads).toBe(DEFAULT_THREADS);
-    expect(e.hashMb).toBe(DEFAULT_HASH);
-  });
-
-  it('refuses a second transfer of the same entry', () => {
-    let pending = null;
-    installEngine('avail-lc0', { tick: (fn) => { pending = fn; } });
-    expect(installEngine('avail-lc0', { tick: now })).toBe(false);
-    expect(pending).toBeTypeOf('function');
+  /*
+   * The native-engine placeholder catalogue (Berserk, Ethereal, Koivisto,
+   * Leela Chess Zero, Rubichess) simulated a download that never happened;
+   * removed 26 Sep 2026 along with the rest of the native-engine mock
+   * (working/CLOSED.md). Only the real, downloadable WASM catalogue remains.
+   */
+  it('offers the WASM catalogue', () => {
+    expect(get(availableEngines).map((e) => e.name)).toEqual(WASM_ENGINES.map((e) => e.name));
   });
 
   it('ignores an unknown entry', () => {
-    expect(installEngine('nope', { tick: now })).toBe(false);
+    expect(installEngine('nope')).toBe(false);
   });
 
   /* Engines and Databases share one download map; the ids must not collide. */
   it('has ids disjoint from the database catalogue', async () => {
     const { AVAILABLE_DATABASES } = await import('../src/lib/settings/databases.js');
-    const a = new Set(AVAILABLE_ENGINES.map((e) => e.id));
-    expect(AVAILABLE_DATABASES.some((d) => a.has(d.id))).toBe(false);
+    const w = new Set(WASM_ENGINES.map((e) => e.id));
+    expect(AVAILABLE_DATABASES.some((d) => w.has(d.id))).toBe(false);
   });
 });
 
 /*
- * Found by hand, on desktop, 26 Sep: the sample config.db seeds a native
- * engine already named "Stockfish" (17.1) as Installed (samples/
- * build_samples.py), unrelated to the WASM catalogue's own "Stockfish"
- * entry. The Available-list filter used to match by display name alone, so
- * the seeded row hid the unrelated catalogue entry too -- this file's own
- * ENGINES fixture (top of file) reproduces the exact shape (a 'Stockfish'
- * row with no catalogId). It now matches on catalog_id instead.
+ * Found by hand, on desktop, 26 Sep: an installed engine sharing the WASM
+ * catalogue's display name ("Stockfish") used to hide that catalogue entry
+ * from Available — this file's own ENGINES fixture (top of file) reproduces
+ * the exact shape (a 'Stockfish' row with no catalogId). The dedup now
+ * matches on catalog_id instead, so an unrelated same-named row can never
+ * collide with it again.
  */
 describe('Available-list dedup matches catalog_id, not display name (26 Sep bug)', () => {
   const wasmEntry = WASM_ENGINES[0];
@@ -157,30 +128,6 @@ describe('Available-list dedup matches catalog_id, not display name (26 Sep bug)
       }]
     }));
     expect(get(availableEngines).some((e) => e.id === wasmEntry.id)).toBe(false);
-  });
-});
-
-/* ===================== id collision regression ===================== */
-
-describe('generated engine ids never collide with the seeded ones', () => {
-  it('stays unique across installs', () => {
-    installEngine('avail-berserk', { tick: now });
-    installEngine('avail-ethereal', { tick: now });
-    const ids = get(objects).engines.map((e) => e.id);
-    expect(new Set(ids).size).toBe(ids.length);
-  });
-
-  it('re-renders after navigating away and back', async () => {
-    const { container } = await renderEngines();
-    installEngine('avail-berserk', { tick: now });
-    await tick();
-    selectSection('general');
-    await tick();
-    selectSection('engines');
-    await tick();
-    const names = [...container.querySelectorAll('#settings-content .box .r .nm')]
-      .map((e) => e.textContent.trim());
-    expect(names).toContain('Berserk');
   });
 });
 
@@ -279,7 +226,7 @@ describe('§3.4.8.2 the section', () => {
 
   it('the Install button becomes the progress indicator', async () => {
     const { container } = await renderEngines();
-    downloads.set({ 'avail-berserk': { pct: 40, done: false } });
+    downloads.set({ [WASM_ENGINES[0].id]: { pct: 40, done: false } });
     await tick();
     const btn = container.querySelector('#settings-content .box:last-of-type .inst');
     expect(btn.textContent.trim()).toBe('40%');

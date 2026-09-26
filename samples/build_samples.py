@@ -37,8 +37,9 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 
-SCHEMA_USER_VERSION = 11         # schema.js v011 (database-schema.md doc lags the
-                                  # real schema -- tracked gap, working/ACTIONS.md)
+SCHEMA_USER_VERSION = 12         # schema.js v012 -- catalog_engines dropped, 26 Sep
+                                  # 2026 (database-schema.md doc lags the real schema
+                                  # -- tracked gap, working/ACTIONS.md)
 
 BUILD_TIME = "2026-09-12T12:00:00Z"
 
@@ -203,20 +204,16 @@ CREATE TABLE engines (
     CHECK (kind != 'native' OR binary_path IS NOT NULL)
 );
 
--- The curated lists offered for download (settings section 3.4.8.1, 3.4.8.2).
+-- The curated list offered for download (settings section 3.4.8.1). Engines
+-- had the same shape (catalog_engines) until it was dropped, unused, 26 Sep
+-- 2026 (schema v012) -- the app's real engine catalogue is a static file
+-- (settings/engines.js), never this table; see schema.js's own comment.
 CREATE TABLE catalog_databases (
     id      INTEGER PRIMARY KEY,
     name    TEXT NOT NULL,
     version TEXT,
     games   INTEGER,
     players INTEGER,
-    bytes   INTEGER
-);
-
-CREATE TABLE catalog_engines (
-    id      INTEGER PRIMARY KEY,
-    name    TEXT NOT NULL,
-    version TEXT,
     bytes   INTEGER
 );
 
@@ -286,12 +283,12 @@ SUBSCRIPTIONS = [
      None, "not_checked", None, None, None),
 ]
 
-ENGINES = [
-    (1, "Stockfish", "17.1", "https://stockfishchess.org",
-     "/usr/local/bin/stockfish", "2026-09-01T09:20:00Z", 1, 4, 512),
-    (2, "Torch", "3", "https://chess.com/torch",
-     "/usr/local/bin/torch", "2026-09-03T14:05:00Z", 0, 2, 256),
-]
+# No pre-installed engines -- matches production (Settings -> Engines'
+# empty state, engine-stage2-plan.md's "No new first-launch UI"). The two
+# placeholder rows here (a fake "Stockfish"/"Torch" pair) simulated engines
+# that were never real; removed 26 Sep 2026 along with the rest of the
+# native-engine mock (working/CLOSED.md).
+ENGINES = []
 
 CATALOG_DATABASES = [
     (1, "Lumbra's Gigabase", "1.4", 9_570_000, 526_000, 4_100_000_000),
@@ -301,13 +298,6 @@ CATALOG_DATABASES = [
     (5, "Ajedrez Data - Correspondence", "1.0", 1_520_000, 40_000, 600_000_000),
 ]
 
-CATALOG_ENGINES = [
-    (1, "Berserk", "13", 42_000_000),
-    (2, "Ethereal", "14.25", 38_000_000),
-    (3, "Koivisto", "9", 35_000_000),
-    (4, "Leela Chess Zero", "0.31", 71_000_000),
-    (5, "Rubichess", "2.4", 29_000_000),
-]
 
 PREFERENCES = [
     ("language", '"en"'),
@@ -564,11 +554,6 @@ def build_config_db(out_dir):
         "INSERT INTO catalog_databases (id, name, version, games, players, bytes) "
         "VALUES (?, ?, ?, ?, ?, ?)",
         CATALOG_DATABASES,
-    )
-
-    db.executemany(
-        "INSERT INTO catalog_engines (id, name, version, bytes) VALUES (?, ?, ?, ?)",
-        CATALOG_ENGINES,
     )
 
     db.executemany(

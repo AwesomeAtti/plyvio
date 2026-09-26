@@ -1,7 +1,7 @@
 import { writable, derived, get } from 'svelte/store';
 import { SECTIONS, DEFAULT_SECTION, isSection, OBJECT_TYPES } from '$lib/settings/schema.js';
 import { AVAILABLE_DATABASES, validateDraftDatabase, basename } from '$lib/settings/databases.js';
-import { AVAILABLE_ENGINES, WASM_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
+import { WASM_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
 import { writeEngineFiles, primeEngineUrls, deleteEngineFiles } from '$lib/engine/storage.js';
 import { unzipSync } from 'fflate';
 import {
@@ -69,17 +69,12 @@ const nextId = (p) => `${p}-n${++seq}`;
  * own comment for why.
  */
 export const objects = writable({
-  engines: [
-    /* Mock rows only, standing in until `loadEngines()` (below) replaces this
-       array with `config.db`'s real rows on mount — a real WASM engine
-       (Stage 2) or a real native one (Stage 3) only ever gets here that way,
-       never seeded. With none installed, Settings -> Engines' empty state
-       covers it (see `engine-stage2-plan.md`, "No new first-launch UI"). */
-    { id: 'engine-1', name: 'Stockfish', version: '17.1', status: 'ready', protocol: 'UCI',
-      binaryPath: '/usr/local/bin/stockfish', hashMb: 512, threads: 4, enabled: true },
-    { id: 'engine-2', name: 'Torch', version: '3', status: 'ready', protocol: 'UCI',
-      binaryPath: '/usr/local/bin/torch', hashMb: 256, threads: 2, enabled: false }
-  ],
+  /* Empty until `loadEngines()` (below) replaces this with `config.db`'s
+     real rows on mount — a real WASM engine (Stage 2) or a real native one
+     (Stage 3) only ever gets here that way, never seeded. With none
+     installed, Settings -> Engines' empty state covers it (see
+     `engine-stage2-plan.md`, "No new first-launch UI"). */
+  engines: [],
   subscriptions: [
     { id: 'sub-1', name: 'Hikaru', source: 'chesscom', state: 'idle',
       interval: 'Hourly', lastSynced: '12 min ago', newGames: 0, enabled: true },
@@ -821,22 +816,21 @@ export const availableEngines = derived([objects, downloads], ([$o, $d]) => {
   // no catalogId at all -- .filter(Boolean) keeps those from ever
   // colliding with a catalogue entry just because they share a display name.
   const installedCatalogIds = new Set(($o.engines ?? []).map((e) => e.catalogId).filter(Boolean));
-  return [...AVAILABLE_ENGINES, ...WASM_ENGINES]
+  return [...WASM_ENGINES]
     .filter((e) => !installedCatalogIds.has(e.id) || $d[e.id]?.done)
     .map((e) => ({ ...e, progress: $d[e.id] ?? null }));
 });
 
 /**
  * Install an engine from the catalogue — a real WASM download (Approach step
- * 4, `engine-stage2-plan.md`) for a `WASM_ENGINES` entry, the existing
- * simulated flow for a native `AVAILABLE_ENGINES` one (Stage 3's, untouched).
- * `tick` only ever applied to the mock path; the real path has nothing to
- * inject a fake clock into.
+ * 4, `engine-stage2-plan.md`) for a `WASM_ENGINES` entry. Stage 3 adds a
+ * real native install path here for a native catalogue entry; there is none
+ * today, so any other id is refused.
  */
-export function installEngine(id, { tick = (fn) => setTimeout(fn, 260) } = {}) {
+export function installEngine(id) {
   const wasmEntry = WASM_ENGINES.find((e) => e.id === id);
   if (wasmEntry) return installWasmEngine(wasmEntry);
-  return installMockEngine(id, { tick });
+  return false;
 }
 
 /**
@@ -936,54 +930,12 @@ function installWasmEngine(entry) {
   return true;
 }
 
-/** The pre-Stage-2 simulated flow — still what a native `AVAILABLE_ENGINES` row uses. */
-function installMockEngine(id, { tick = (fn) => setTimeout(fn, 260) } = {}) {
-  const entry = AVAILABLE_ENGINES.find((e) => e.id === id);
-  if (!entry) return false;
-  if (get(downloads)[id]) return false;
-
-  downloads.update((d) => ({ ...d, [id]: { pct: 0, done: false } }));
-
-  const step = () => {
-    const cur = get(downloads)[id];
-    if (!cur || cur.done) return;
-    const pct = Math.min(100, cur.pct + 20);
-    if (pct < 100) {
-      downloads.update((d) => ({ ...d, [id]: { pct, done: false } }));
-      tick(step);
-      return;
-    }
-    objects.update((all) => ({
-      ...all,
-      engines: [...all.engines, {
-        id: nextId('engine'),
-        name: entry.name,
-        version: entry.version,
-        protocol: entry.protocol,
-        bytes: entry.bytes,
-        catalogId: entry.id,
-        threads: DEFAULT_THREADS,
-        hashMb: DEFAULT_HASH,
-        status: 'ready',
-        enabled: true
-      }]
-    }));
-    downloads.update((d) => ({ ...d, [id]: { pct: 100, done: true } }));
-    lastApplied.set(Date.now());
-    tick(() => downloads.update((d) => {
-      const { [id]: _gone, ...rest } = d;
-      return rest;
-    }));
-  };
-  tick(step);
-  return true;
-}
-
 /**
  * Rename an engine. Empty names are refused rather than committed (§3.4.1).
- * Persisted for a real engine (integer id, from `config.db`); a mock
- * catalogue-install row (string id, from `installEngine()`) stays
- * store-only, the same split `renameDatabase` uses for Libraries.
+ * Persisted for a real engine (integer id, from `config.db`); a freshly
+ * installed row that hasn't resolved a `config.db` connection yet (string
+ * id, from `nextId('engine')`) stays store-only, the same split
+ * `renameDatabase` uses for Libraries.
  */
 export function renameEngine(id, name) {
   const clean = String(name ?? '').trim();
@@ -1032,7 +984,7 @@ export function setEngineOption(id, key, value) {
 
 /**
  * Enable or disable an engine. Persisted for a real engine (integer id);
- * a mock catalogue-install row (string id) stays store-only.
+ * a row with no `config.db` connection yet (string id) stays store-only.
  */
 export function setEngineEnabled(id, enabled) {
   objects.update((all) => ({
@@ -1056,10 +1008,10 @@ export function setEngineEnabled(id, enabled) {
  * Remove an engine (Q3, `engine-stage2-plan.md`: the built-in engine becomes
  * an ordinary removable row, same as any other). Destructive and NOT
  * undoable — same contract `removeObject()` documents, and the same
- * real/mock split `removeDatabase()` uses: a real engine (integer id) has its
- * stored files deleted (OPFS or the desktop directory, via
- * `deleteEngineFiles()`) and its `config.db` row removed; a mock
- * catalogue-install row (string id) is store-only, same as
+ * integer-vs-string-id split `removeDatabase()` uses: a real engine (integer
+ * id) has its stored files deleted (OPFS or the desktop directory, via
+ * `deleteEngineFiles()`) and its `config.db` row removed; a row with no
+ * `config.db` connection yet (string id) is store-only, same as
  * `renameEngine`/`setEngineEnabled`.
  */
 export function removeEngine(id) {

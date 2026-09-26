@@ -5,18 +5,13 @@
  * Databases. An engine is a binary: it downloads and it is ready, so
  * acquisition is one phase here too.
  *
- * SAMPLE DATA. The engine names are real; the versions and download sizes are
- * representative figures for the prototype, not a published catalogue. They
- * are stated in one place so replacing them is one edit.
+ * The only entries here are real, installable engines (`WASM_ENGINES` below)
+ * — Stage 2's WASM manifest. The earlier native-engine placeholder rows
+ * (Berserk, Ethereal, Koivisto, Leela Chess Zero, Rubichess) simulated a
+ * download that never happened; removed once they were no longer needed for
+ * that simulation (26 Sep). Stage 3 adds real native entries here when native
+ * installs exist.
  */
-
-export const AVAILABLE_ENGINES = [
-  { id: 'avail-berserk',  name: 'Berserk',           version: '13',    bytes: 42_000_000, protocol: 'UCI' },
-  { id: 'avail-ethereal', name: 'Ethereal',          version: '14.25', bytes: 38_000_000, protocol: 'UCI' },
-  { id: 'avail-koivisto', name: 'Koivisto',          version: '9',     bytes: 35_000_000, protocol: 'UCI' },
-  { id: 'avail-lc0',      name: 'Leela Chess Zero',  version: '0.31',  bytes: 71_000_000, protocol: 'UCI' },
-  { id: 'avail-rubi',     name: 'Rubichess',         version: '2.4',   bytes: 29_000_000, protocol: 'UCI' }
-];
 
 /**
  * The real, downloadable WASM catalogue — engine Stage 2

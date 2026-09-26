@@ -26,14 +26,17 @@
  * `engines.binary_path`/UCI-binary row don't map onto this interim architecture's
  * single in-browser database; both need their own PWA-shaped design before either
  * table gets real content, not a mechanical copy of the desktop shape. It leaves out
- * `catalog_databases`/`catalog_engines` — nothing in `data/config.js` reads them; the
- * download catalogues are a static file today (`settings/databases.js`,
- * `settings/engines.js`), unrelated to this seam.
+ * `catalog_databases` — nothing in `data/config.js` reads it; the download
+ * catalogue is a static file today (`settings/databases.js`), unrelated to
+ * this seam. `catalog_engines` (the same shape, for engines) was dropped
+ * from the desktop schema entirely, unused, 26 Sep 2026 (schema v012) — the
+ * app's real engine catalogue is `settings/engines.js`'s `WASM_ENGINES`, not
+ * a database table.
  */
 
 /** The schema revision a fresh database is created at. Matches `identify.js`'s
  *  `SCHEMA_USER_VERSION` and `samples/build_samples.py`'s `SCHEMA_USER_VERSION`. */
-export const SCHEMA_USER_VERSION = 11;
+export const SCHEMA_USER_VERSION = 12;
 
 export const GAME_DB_DDL = `
 CREATE TABLE games (
@@ -178,10 +181,10 @@ CREATE TABLE engines (
     -- row was being matched back to its catalogue entry by display name,
     -- which is user-editable and collided with an unrelated same-named row).
     -- The catalogue entry's own permanent id (settings/engines.js's
-    -- AVAILABLE_ENGINES/WASM_ENGINES), stamped at install time. NULL for
-    -- anything not installed via the in-app catalogue (a manually configured
-    -- engine, or seed/sample data) -- such a row never hides a catalogue
-    -- entry, which is correct.
+    -- WASM_ENGINES, or a future native catalogue in Stage 3), stamped at
+    -- install time. NULL for anything not installed via the in-app
+    -- catalogue (a manually configured engine, or seed/sample data) -- such
+    -- a row never hides a catalogue entry, which is correct.
     catalog_id  TEXT,
     created_at  TEXT NOT NULL,
     enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),

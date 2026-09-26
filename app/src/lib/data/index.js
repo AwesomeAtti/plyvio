@@ -30,6 +30,7 @@ export {
   readLibraries,
   writeLibraryName,
   writeLibraryEnabled,
+  createEngine,
   readEngines,
   writeEngineName,
   writeEngineOption,

@@ -37,6 +37,7 @@ import {
   countNewGamesForSubscription,
   latestGameDateForSource,
   gamePgnsForSourceOnDate,
+  createEngine,
   readEngines,
   readLibraries,
   readMovetextFor,
@@ -86,7 +87,7 @@ suite('config.db through the seam', () => {
     expect(identity.userVersion).toBe(SCHEMA_USER_VERSION);
     expect(identity.matchesSchema).toBe(true);
     for (const table of CONFIG_TABLES) expect(identity.tables).toContain(table);
-    expect(describeIdentity(identity)).toBe('a config database at schema v010');
+    expect(describeIdentity(identity)).toBe('a config database at schema v012');
   });
 
   it('carries no application_id, so the file is not self-identifying', async () => {
@@ -166,15 +167,30 @@ suite('config.db through the seam', () => {
   });
 
   it('reads the engines, translated to camelCase', async () => {
-    const engines = await readEngines(config);
-    expect(engines.map((e) => e.name)).toEqual(['Stockfish', 'Torch']);
-    expect(engines[0]).toMatchObject({
-      binaryPath: '/usr/local/bin/stockfish', hashMb: 512, threads: 4, enabled: true
+    // samples/config.db no longer seeds any (26 Sep 2026 -- the app's real
+    // engine catalogue is a static file, settings/engines.js, never this
+    // table's seed data); createEngine() on a copy exercises the same read.
+    const copy = await openMemoryDatabase(bytesOf('config.db'));
+    const id = await createEngine(copy, {
+      name: 'Stockfish', version: '17.1', kind: 'native',
+      binaryPath: '/usr/local/bin/stockfish', threads: 4, hashMb: 512,
+      createdAt: '2026-09-01T09:20:00Z', enabled: true
     });
+    const engines = await readEngines(copy);
+    expect(engines.map((e) => e.name)).toEqual(['Stockfish']);
+    expect(engines[0]).toMatchObject({
+      id, binaryPath: '/usr/local/bin/stockfish', hashMb: 512, threads: 4, enabled: true
+    });
+    await copy.close();
   });
 
   it('renames an engine, sets its threads/hash, and toggles it, on a copy', async () => {
     const copy = await openMemoryDatabase(bytesOf('config.db'));
+    await createEngine(copy, {
+      name: 'Stockfish', version: '17.1', kind: 'native',
+      binaryPath: '/usr/local/bin/stockfish', threads: 4, hashMb: 512,
+      createdAt: '2026-09-01T09:20:00Z', enabled: true
+    });
     const [first] = await readEngines(copy);
     await writeEngineName(copy, first.id, 'Renamed Engine');
     await writeEngineOption(copy, first.id, 'threads', 8);
@@ -187,9 +203,15 @@ suite('config.db through the seam', () => {
     await copy.close();
   });
 
-  it('leaves the original untouched when a copy\'s engine is changed', async () => {
-    const engines = await readEngines(config);
-    expect(engines[0]).toMatchObject({ name: 'Stockfish', enabled: true });
+  it('leaves other connections untouched when a copy\'s engine is added', async () => {
+    const copy = await openMemoryDatabase(bytesOf('config.db'));
+    await createEngine(copy, {
+      name: 'Stockfish', version: '17.1', kind: 'native',
+      binaryPath: '/usr/local/bin/stockfish', threads: 4, hashMb: 512,
+      createdAt: '2026-09-01T09:20:00Z', enabled: true
+    });
+    expect(await readEngines(config)).toEqual([]);
+    await copy.close();
   });
 
   it('reads the subscriptions, translated to camelCase', async () => {

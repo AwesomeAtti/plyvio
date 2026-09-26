@@ -7,10 +7,11 @@
  * tabs or stores; `session.js` does the talking, and the transport underneath
  * it does the carrying.
  *
- * THE ROW SHAPE IS THE MOCK'S, on purpose: `{ rank, e, x, depth, pv }`, the
- * shape `game/engineMock.js`'s `analyse()` has always returned, so
- * `EngineLines.svelte`, `GameSection.svelte` and the Evaluation Bar read a
- * real line exactly as they read an invented one.
+ * THE ROW SHAPE IS THE ONE THE SECTION HAS ALWAYS DRAWN, on purpose:
+ * `{ rank, e, x, depth, pv }` — the shape a fabricated line used to arrive
+ * in, before Stage 2 gave the Section a real engine to read from — so
+ * `EngineLines.svelte`, `GameSection.svelte` and the Evaluation Bar don't
+ * need to know which kind of line they're reading.
  *
  *   rank   the engine's `multipv` index, 1 = best
  *   e      centipawns, WHITE-RELATIVE (like `[%eval]`), or null for a mate

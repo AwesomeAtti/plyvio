@@ -28,9 +28,8 @@ import {
 import {
   engineHeight, engineSources, engineLabel, formatPv, formatDepth,
   clampLines, clampDepth, ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH,
-  engineHoverAutoShapes
+  engineHoverAutoShapes, hasLegalMoves
 } from '$lib/game/engine.js';
-import { analyse, hasLegalMoves } from '$lib/game/engineMock.js';
 import { SECTIONS } from '../src/lib/game/sections.js';
 import {
   gameStates, activeGame, gameById, ensureGameState, resetGameState, composition,
@@ -958,27 +957,45 @@ describe('Engine Section', () => {
   /* `activeGame` reports the ACTIVE tab, so a store-level test has to be in
      one rather than merely have state for one.
 
-     These tests are about the Section's own behaviour, so they pick a MOCK
-     engine (`engine-1`): its lines come back at once and are deterministic.
-     The built-in engine, which really searches, is the next describe block.
+     These tests are about the Section's own behaviour, not the UCI protocol
+     itself (`engine-stage2-plan.md`'s own describe below covers that in
+     depth), so they drive one scripted, real (`kind: 'wasm'`) engine through
+     a handful of canned info lines built here rather than the full fixture.
      No test here should ever reach a real Worker, so the app's engine talks
      to a scripted one throughout. */
-  const openEngineTab = (ply = 6) => {
+  const ENGINE_ID = 'engine-section-test-real';
+  const REAL_ENGINE = Object.freeze({
+    id: ENGINE_ID, name: 'Stockfish', version: '19 lite', status: 'ready',
+    protocol: 'UCI', kind: 'wasm', threads: 1, hashMb: 32, enabled: true
+  });
+
+  const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
+  const MATED = '7k/5QK1/8/8/8/8/8/8 b - - 0 1';          // black is mated
+
+  /** Three canned lines, White to move, at whatever depth was asked for. */
+  const linesFor = (depth) => [
+    `info depth ${depth} multipv 1 score cp 20 pv e2e4 e7e5`,
+    `info depth ${depth} multipv 2 score cp 10 pv d2d4 d7d5`,
+    `info depth ${depth} multipv 3 score cp 5 pv g1f3 g8f6`
+  ];
+
+  const openEngineTab = (ply = 0) => {
     resetGameState();
     ensureGameState('e1', 'g1');
     activeId.set('e1');
     goToPly('e1', ply);
-    setEngineSource('e1', 'engine-1');
+    setEngineSource('e1', ENGINE_ID);
   };
-  beforeEach(() => { setEngineTransport(createFakeEngine().createTransport); });
+  let fake;
+  beforeEach(() => {
+    fake = createFakeEngine();
+    setEngineTransport(fake.createTransport);
+    objects.update((o) => ({ ...o, engines: [{ ...REAL_ENGINE }] }));
+  });
   afterEach(() => { resetGameState(); setEngineTransport(); });
 
-  const START = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1';
-  const MATED = '7k/5QK1/8/8/8/8/8/8 b - - 0 1';          // black is mated
-  const inputs = { engineId: 'engine-1', lines: 3, depth: 24 };
-
   it('is sized to content between a floor of 60 and a ceiling of 108', () => {
-    // The same two numbers as the Explorer, reached from the same header,
+    // The same two numbers as the Explover, reached from the same header,
     // padding and row height rather than copied from it.
     expect(engineHeight(0)).toBe(60);      // a state message sits at the floor
     expect(engineHeight(1)).toBe(60);
@@ -1005,7 +1022,7 @@ describe('Engine Section', () => {
       .toBe('19. Nd2 Bd8 20. Nb3 Bb6 21. Rc1');
     // A line that starts on Black's move leads with the ellipsis, as the Move
     // Explorer's rows do.
-    expect(formatPv(['h6', 'a4'], 19, true)).toBe('19\u2026 h6 20. a4');
+    expect(formatPv(['h6', 'a4'], 19, true)).toBe('19… h6 20. a4');
     expect(formatDepth(28)).toBe('d28');
   });
 
@@ -1018,53 +1035,14 @@ describe('Engine Section', () => {
     expect(clampDepth(ENGINE_DEFAULT_DEPTH)).toBe(24);
   });
 
-  it('reports legal moves, ranked, from the position on the board', () => {
-    const lines = analyse(START, inputs);
-    expect(lines).toHaveLength(3);
-    expect(lines.map((l) => l.rank)).toEqual([1, 2, 3]);
-    // Every first move is legal from the starting position, and distinct: two
-    // MultiPV lines that opened with the same move would be one line twice.
-    const firsts = lines.map((l) => l.pv[0]);
-    expect(new Set(firsts).size).toBe(3);
-    expect(lines.every((l) => l.pv.length > 1)).toBe(true);
-    expect(lines.every((l) => l.depth === 24)).toBe(true);
-  });
-
-  it('never ranks a line above the one before it, from the mover\u2019s side', () => {
-    // White to move: White-relative scores descend. A second line that outscored
-    // the first would read as a bug on sight.
-    const white = analyse(START, inputs);
-    expect(white[0].e).toBeGreaterThanOrEqual(white[1].e);
-    expect(white[1].e).toBeGreaterThanOrEqual(white[2].e);
-
-    // Black to move: the same rule, the other way up, because the score stays
-    // White-relative — the bar and `[%eval]` are not turned over per ply.
-    const black = analyse('rnbqkbnr/pppppppp/8/8/4P3/8/PPPP1PPP/RNBQKBNR b KQkq - 0 1', inputs);
-    expect(black[0].e).toBeLessThanOrEqual(black[1].e);
-  });
-
-  it('never fabricates a mate score', () => {
-    // A plausible centipawn number is mock data; `M3` is a claim about the
-    // position, stated in the strongest terms the row has.
-    for (const ply of [START, 'r1bqkb1r/pppp1ppp/2n2n2/4p3/2B1P3/5N2/PPPP1PPP/RNBQK2R w KQkq - 4 4']) {
-      expect(analyse(ply, inputs).every((l) => l.x === null)).toBe(true);
-    }
-  });
-
   it('has nothing to say without an engine, or in a finished game', () => {
-    expect(analyse(START, { ...inputs, engineId: '' })).toEqual([]);
-    expect(analyse(MATED, inputs)).toEqual([]);
     // The two empties are different states and the Section draws them
     // differently, so they are answered by different questions.
     expect(hasLegalMoves(START)).toBe(true);
     expect(hasLegalMoves(MATED)).toBe(false);
   });
 
-  it('is deterministic: the same position and settings agree every time', () => {
-    expect(analyse(START, inputs)).toEqual(analyse(START, inputs));
-  });
-
-  it('Q2 \u2014 cannot run without an engine selected', () => {
+  it('Q2 — cannot run without an engine selected', () => {
     openEngineTab(0);
     setEngineSource('e1', null);                             // follow Settings
     setEngineOn('e1', true);
@@ -1076,9 +1054,11 @@ describe('Engine Section', () => {
     expect(get(activeGame).engineView.source).not.toBeNull();
   });
 
-  it('Q8 \u2014 switching off retains the lines; leaving the position clears them', () => {
+  it('Q8 — switching off retains the lines; leaving the position clears them', async () => {
     openEngineTab();
     setEngineOn('e1', true);
+    await settle();
+    fake.emit(linesFor(24), 'bestmove e2e4');
 
     const live = get(activeGame).engineView;
     expect(live.running).toBe(true);
@@ -1099,17 +1079,19 @@ describe('Engine Section', () => {
     expect(get(activeGame).engineView.lines).toEqual([]);
   });
 
-  it('Q8 \u2014 the Section reports; it never writes an evaluation into the game', () => {
+  it('Q8 — the Section reports; it never writes an evaluation into the game', async () => {
     openEngineTab();
     const before = structuredClone(get(activeGame).plies);
     setEngineOn('e1', true);
+    await settle();
+    fake.emit(linesFor(24), 'bestmove e2e4');
     expect(get(activeGame).engineView.lines.length).toBeGreaterThan(0);
     // The plies are the game's own movetext, `[%eval]` included. Running a live
     // search changes none of it.
     expect(get(activeGame).plies).toEqual(before);
   });
 
-  it('asks the shell for the height its line count needs', () => {
+  it('asks the shell for the height its line count needs', async () => {
     openEngineTab();
 
     // Off, showing a state message: the floor.
@@ -1117,16 +1099,20 @@ describe('Engine Section', () => {
 
     setEngineLines('e1', 3);
     setEngineOn('e1', true);
+    await settle();
+    fake.emit(linesFor(24), 'bestmove e2e4');
     expect(engineContentHeight(get(activeGame).engineView.lines)).toBe(108);
 
     setEngineLines('e1', 1);
     expect(engineContentHeight(get(activeGame).engineView.lines)).toBe(60);
   });
 
-  it('keeps the depth limit and the depth reached apart (Q5)', () => {
+  it('keeps the depth limit and the depth reached apart (Q5)', async () => {
     openEngineTab();
     setEngineDepth('e1', 30);
     setEngineOn('e1', true);
+    await settle();
+    fake.emit(linesFor(30), 'bestmove e2e4');
     const v = get(activeGame).engineView;
     expect(v.depth).toBe(30);                            // the limit, in the menu
     expect(v.lines.every((l) => l.depth === 30)).toBe(true);   // reached, per row
@@ -1156,6 +1142,13 @@ describe('Engine Section — a real, installed WASM engine (Stage 2)', () => {
     id: REAL_ENGINE_ID, name: 'Stockfish', version: '19 lite', status: 'ready',
     protocol: 'UCI', kind: 'wasm', threads: 1, threadsMax: 1, hashMb: 32, enabled: true
   });
+  // An ordinary, non-real (no `kind`) row alongside it -- Settings can hold
+  // one even though only a real, wasm-kind row ever gets a search.
+  const OTHER_ENGINE_ID = 'engine-stage2-test-other';
+  const OTHER_ENGINE = Object.freeze({
+    id: OTHER_ENGINE_ID, name: 'Torch', version: '3', status: 'ready',
+    protocol: 'UCI', enabled: true
+  });
   const FIXTURE = JSON.parse(readSrc('./fixtures/stockfish-uci.json'));
   const CASE = Object.fromEntries(FIXTURE.cases.map((c) => [c.name, c]));
   const BLACK = CASE['black-to-move-multipv2'];     // 1. e4 e5 2. Nf3, Black to move
@@ -1167,14 +1160,11 @@ describe('Engine Section — a real, installed WASM engine (Stage 2)', () => {
   beforeEach(() => {
     fake = createFakeEngine();
     setEngineTransport(fake.createTransport);
-    objects.update((o) => ({
-      ...o,
-      engines: [{ ...REAL_ENGINE }, ...o.engines.filter((e) => e.id !== REAL_ENGINE_ID)]
-    }));
+    objects.update((o) => ({ ...o, engines: [{ ...REAL_ENGINE }, { ...OTHER_ENGINE }] }));
   });
   afterEach(() => {
     resetGameState();                  // no tab asking for a search…
-    objects.update((o) => ({ ...o, engines: o.engines.filter((e) => e.id !== REAL_ENGINE_ID) }));
+    objects.update((o) => ({ ...o, engines: [] }));
     setEngineTransport();              // …before the real transport is back
   });
 
@@ -1192,8 +1182,8 @@ describe('Engine Section — a real, installed WASM engine (Stage 2)', () => {
     expect(view().source.id).toBe(REAL_ENGINE_ID);
     expect(view().source.name).toBe('Stockfish 19 lite');
     expect(view().sources[0].id).toBe(REAL_ENGINE_ID);
-    // The mock rows are still offered after it, unchanged.
-    expect(view().sources.map((s) => s.id)).toContain('engine-1');
+    // Any other installed, enabled engine is still offered after it, unchanged.
+    expect(view().sources.map((s) => s.id)).toContain(OTHER_ENGINE_ID);
   });
 
   it('searches the position on the board, with the tab’s settings, only once switched on', async () => {
@@ -1367,16 +1357,16 @@ describe('Engine Section — a real, installed WASM engine (Stage 2)', () => {
     setEngineEnabled(REAL_ENGINE_ID, false);
     expect(fake.take()).toEqual(['stop']);
     expect(view().sources.map((s) => s.id)).not.toContain(REAL_ENGINE_ID);
-    expect(view().source.id).toBe('engine-1');
+    expect(view().source.id).toBe(OTHER_ENGINE_ID);
   });
 
-  it('a mock engine still gives mock lines, and never wakes the real one', async () => {
+  it('a non-real engine gives no lines, and never wakes the real one', async () => {
     openAt(BLACK);
-    setEngineSource('w1', 'engine-1');
+    setEngineSource('w1', OTHER_ENGINE_ID);
     setEngineOn('w1', true);
     await settle();
     expect(fake.starts).toBe(0);
-    expect(view().lines).toEqual(analyse(BLACK.fen, { engineId: 'engine-1', lines: 2, depth: 12 }));
+    expect(view().lines).toEqual([]);
   });
 
   it('asks nothing of the engine where the game has ended', async () => {
@@ -1442,13 +1432,45 @@ describe('Engine Section — hover preview, click to play (ACTIONS.md, 25 Sep)',
     expect(engineHoverAutoShapes(null, line)).toEqual([]);
   });
 
+  /* The rows below need a real (`kind: 'wasm'`) engine to have any lines at
+     all -- a scripted transport (`helpers/fakeEngine.js`) stands in, same
+     as the describe blocks above. */
+  const HOVER_ENGINE_ID = 'engine-hover-test-real';
+  const HOVER_ENGINE = Object.freeze({
+    id: HOVER_ENGINE_ID, name: 'Stockfish', version: '19 lite', status: 'ready',
+    protocol: 'UCI', kind: 'wasm', threads: 1, hashMb: 32, enabled: true
+  });
+  const HOVER_LINES = [
+    'info depth 12 multipv 1 score cp 20 pv e2e4 e7e5 g1f3',
+    'info depth 12 multipv 2 score cp 10 pv d2d4 d7d5'
+  ];
+  let fake;
+  beforeEach(() => {
+    fake = createFakeEngine();
+    setEngineTransport(fake.createTransport);
+    objects.update((o) => ({ ...o, engines: [{ ...HOVER_ENGINE }] }));
+  });
+  afterEach(() => {
+    resetGameState();
+    objects.update((o) => ({ ...o, engines: [] }));
+    setEngineTransport();
+  });
+
+  /** Turn the Section on for `id` and let its canned lines arrive. */
+  const runEngine = async (id) => {
+    setEngineSource(id, HOVER_ENGINE_ID);
+    setEngineOn(id, true);
+    await tick();
+    await settle();
+    fake.emit(HOVER_LINES, 'bestmove e2e4');
+    await tick();
+  };
+
   it('a row reports hover, and clears it on pointer leave, in the real Section', async () => {
     const { container } = render(AppShell);
     const id = openDraftTab();
     await tick();
-    setEngineSource(id, 'engine-1');
-    setEngineOn(id, true);
-    await tick();
+    await runEngine(id);
 
     const row = container.querySelector('#sec-engine-body .row');
     expect(row).toBeTruthy();
@@ -1464,9 +1486,7 @@ describe('Engine Section — hover preview, click to play (ACTIONS.md, 25 Sep)',
     const { container } = render(AppShell);
     const id = openDraftTab();
     await tick();
-    setEngineSource(id, 'engine-1');
-    setEngineOn(id, true);
-    await tick();
+    await runEngine(id);
 
     const before = get(activeGame);
     const line = before.engineView.lines[0];
@@ -1486,9 +1506,7 @@ describe('Engine Section — hover preview, click to play (ACTIONS.md, 25 Sep)',
     const { container } = render(AppShell);
     const id = openDraftTab();
     await tick();
-    setEngineSource(id, 'engine-1');
-    setEngineOn(id, true);
-    await tick();
+    await runEngine(id);
     const line = get(activeGame).engineView.lines[0];
 
     setEngineOn(id, false);          // Q8 -- stopped, not cleared

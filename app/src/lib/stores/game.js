@@ -10,9 +10,8 @@ import { explorerRows, positionGames, explorerHeight, positionKey } from '$lib/g
 import { explorerLibraries, positionStats } from '$lib/game/explorerMock.js';
 import {
   engineSources, engineHeight, clampLines, clampDepth, isRealEngine,
-  ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH
+  ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH, hasLegalMoves, legalMoveCount
 } from '$lib/game/engine.js';
-import { analyse, hasLegalMoves, legalMoveCount } from '$lib/game/engineMock.js';
 import { createEngineSession } from '$lib/engine/session.js';
 import { createWorkerTransport } from '$lib/engine/workerTransport.js';
 import { getEngineUrls } from '$lib/engine/storage.js';
@@ -650,8 +649,8 @@ const engineKeyFor = (st, sourceId, fen) =>
 /**
  * The live engine's results, per TAB — the same keyed-per-tab shape as
  * `explorerStats`: `{ key, status, rows }`, with `status` one of
- * `searching`, `done` or `error`. Only the built-in engine writes here; a
- * mock engine's lines are still computed on the spot by `engineMock.js`.
+ * `searching`, `done` or `error`. Only a real (`kind: 'wasm'`) engine writes
+ * here — `isRealEngine` below gates every reader of this store.
  */
 export const engineAnalysis = writable({});
 
@@ -837,16 +836,12 @@ export const activeGame = derived(
   /*
     The Engine Section's live view of the position on the board.
 
-    TWO KINDS OF ENGINE, one row shape (Stage 1 of `engine-stage1-plan.md`,
-    generalized in Stage 2 of `engine-stage2-plan.md`). A real, installed
-    engine (`kind: 'wasm'` today; native ones join it in Stage 3) really
-    searches: `engineRequest` above starts it for the active tab, and its
-    rows arrive in `engineAnalysis`, read here only when they are about the
-    position on the board now. Every other engine in the list is still mock —
-    Settings' native Installed rows are simulated until Stage 3 gives them a
-    transport — so its rows are computed on the spot by `engineMock.js`'s
-    `analyse`, as before. Nothing below this block knows which kind it is
-    looking at.
+    A real, installed engine (`kind: 'wasm'` today; native ones join it in
+    Stage 3, `engine-stage2-plan.md`) really searches: `engineRequest` above
+    starts it for the active tab, and its rows arrive in `engineAnalysis`,
+    read here only when they are about the position on the board now.
+    `isRealEngine` is the guard — any other `kind` gets no rows rather than
+    an invented line.
 
     What is stored besides: whether the switch is on and, once it has been
     turned off, the ROWS that were on screen (`engineHold`, Q8). A real search
@@ -868,7 +863,7 @@ export const activeGame = derived(
     ? (engineSource && hold ? hold.rows ?? [] : [])
     : isRealEngine(engineSource)
       ? liveEngineRows($engineAnalysis[$id], st, engineSource.id, node.ply?.f)
-      : analyse(node.ply?.f, { engineId: engineSource.id, lines: st.engineLines, depth: st.engineDepth });
+      : [];
 
   /*
     GAME INFO's view — the record, plus this user's marks on it.
@@ -1209,11 +1204,11 @@ export function setEngineOn(tabId, on) {
     if (on) return { engineOn: true, engineHold: null };
     if (!cur.engineOn) return {};
     /* Freeze exactly what the Section is showing: a real engine's latest
-       rows for this position, or the mock's. */
+       rows for this position, or nothing (isRealEngine gates every source). */
     const fen = currentNode(cur, mergedTreeForState(cur)).ply?.f;
     const rows = isRealEngine(source)
       ? liveEngineRows(analysis, cur, source.id, fen)
-      : analyse(fen, { engineId: source.id, lines: cur.engineLines, depth: cur.engineDepth });
+      : [];
     return {
       engineOn: false,
       engineHold: {

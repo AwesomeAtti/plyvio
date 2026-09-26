@@ -405,8 +405,8 @@
       </div>
     {:else if section.id === 'engine'}
       <!-- Drawn in wireframes/game-engine.html Rev A; G1 and G2 granted 21 Sep.
-           The built-in engine's lines are real (engine/, Stage 1); every
-           other engine in the list is still mock (engineMock.js). -->
+           Only a real, installed engine (kind: 'wasm' today, native joins it
+           in Stage 3) produces lines here -- isRealEngine gates the rest. -->
       <div class="content" id="sec-{section.id}-body">
         <EngineLines
           lines={engineView?.lines ?? []}
