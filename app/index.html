@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="icon" href="./favicon.ico" sizes="16x16 32x32 48x48" />
+  <link rel="icon" type="image/png" sizes="192x192" href="./icon-192.png" />
+  <link rel="apple-touch-icon" sizes="180x180" href="./apple-touch-icon.png" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="./fonts/ibm-plex-sans-latin-400-normal.woff2" />
+  <link rel="preload" as="font" type="font/woff2" crossorigin
+        href="./fonts/ibm-plex-mono-latin-400-normal.woff2" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#f7f7f5" />
+  <meta name="description" content="Plyvio — offline-first chess library and analysis." />
+  <title>Plyvio</title>
+  <script>
+    // Apply persisted theme before first paint to avoid a flash.
+    try {
+      var t = localStorage.getItem('plyvio.theme');
+      if (t !== 'light' && t !== 'dark') {
+        t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+      }
+      document.documentElement.setAttribute('data-theme', t);
+      var l = localStorage.getItem('plyvio.locale');
+      if (l) document.documentElement.lang = l;
+    } catch (e) {}
+  </script>
+  <link href="./_app/immutable/entry/start.B34Hrg-K.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/BkwClOUk.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/urIJyU-c.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/S2XMljCj.js" rel="modulepreload">
+		<link href="./_app/immutable/entry/app.DBBtQDv6.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/HclGiUj8.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/xihTtKlq.js" rel="modulepreload">
+		<link href="./_app/immutable/nodes/0.DEaxLCMo.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/BIIi6aSw.js" rel="modulepreload">
+		<link href="./_app/immutable/nodes/2.CBYv46dU.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/CL4UcYEr.js" rel="modulepreload">
+		<link href="./_app/immutable/chunks/C3MjrvMG.js" rel="modulepreload">
+		
+		<link href="./_app/immutable/assets/0.CwpyBcIF.css" rel="stylesheet">
+		<link href="./_app/immutable/assets/2.DrD09MLd.css" rel="stylesheet">
+</head>
+<body data-sveltekit-preload-data="hover">
+  <div style="display:contents">
+			<script>
+				{
+					__sveltekit_m5tie2 = {
+						base: new URL(".", location).pathname.slice(0, -1)
+					};
+
+					const element = document.currentScript.parentElement;
+
+					Promise.all([
+						import("./_app/immutable/entry/start.B34Hrg-K.js"),
+						import("./_app/immutable/entry/app.DBBtQDv6.js")
+					]).then(([kit, app]) => {
+						kit.start(app, element);
+					});
+
+					if ('serviceWorker' in navigator) {
+						const script_url = './service-worker.js';
+						const policy = globalThis?.window?.trustedTypes?.createPolicy(
+							'sveltekit-trusted-url',
+							{ createScriptURL(url) { return url; } }
+						);
+						const sanitised = policy?.createScriptURL(script_url) ?? script_url;
+						addEventListener('load', function () {
+							navigator.serviceWorker.register(sanitised);
+						});
+					}
+				}
+			</script>
+		</div>
+</body>
+</html>

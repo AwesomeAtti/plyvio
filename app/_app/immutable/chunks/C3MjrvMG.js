@@ -1,0 +1,1 @@
+var e=class extends Error{},t=[`all`,`get`,`value`,`run`,`close`],n=e=>!!e&&t.every(t=>typeof e[t]==`function`),r=(r,i=`connection`)=>{if(!n(r))throw new e(`${i} is not a connection: missing ${t.filter(e=>typeof r?.[e]!=`function`).join(`, `)}`);return r};export{r as n,e as t};
