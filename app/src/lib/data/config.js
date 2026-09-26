@@ -140,7 +140,7 @@ export const createLibrary = async (connection, { name, path, createdAt, enabled
 export const readEngines = async (connection) => {
   const rows = await connection.all(
     'select id, name, version, url, kind, binary_path, asset_url, sha256, ' +
-      'threads_max, created_at, enabled, threads, hash_mb from engines order by id'
+      'threads_max, catalog_id, created_at, enabled, threads, hash_mb from engines order by id'
   );
   return rows.map((row) => ({
     id: row.id,
@@ -152,6 +152,7 @@ export const readEngines = async (connection) => {
     assetUrl: row.asset_url,
     sha256: row.sha256,
     threadsMax: row.threads_max,
+    catalogId: row.catalog_id,
     createdAt: row.created_at,
     enabled: row.enabled === 1,
     threads: row.threads,
@@ -173,14 +174,14 @@ export const readEngines = async (connection) => {
  */
 export const createEngine = async (connection, {
   name, version = null, kind, binaryPath = null, assetUrl = null, sha256 = null,
-  threadsMax = null, threads = 1, hashMb = 256, createdAt, enabled = true
+  threadsMax = null, catalogId = null, threads = 1, hashMb = 256, createdAt, enabled = true
 }) => {
   await connection.run(
     'insert into engines ' +
-      '(name, version, kind, binary_path, asset_url, sha256, threads_max, ' +
+      '(name, version, kind, binary_path, asset_url, sha256, threads_max, catalog_id, ' +
       ' created_at, enabled, threads, hash_mb) ' +
-      'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
-    [name, version, kind, binaryPath, assetUrl, sha256, threadsMax,
+      'values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+    [name, version, kind, binaryPath, assetUrl, sha256, threadsMax, catalogId,
       createdAt, enabled ? 1 : 0, threads, hashMb]
   );
   return connection.value('select last_insert_rowid()');

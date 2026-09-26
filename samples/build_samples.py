@@ -37,7 +37,8 @@ import sys
 from datetime import datetime, timedelta, timezone
 
 
-SCHEMA_USER_VERSION = 10         # database-schema.md v010
+SCHEMA_USER_VERSION = 11         # schema.js v011 (database-schema.md doc lags the
+                                  # real schema -- tracked gap, working/ACTIONS.md)
 
 BUILD_TIME = "2026-09-12T12:00:00Z"
 
@@ -194,6 +195,7 @@ CREATE TABLE engines (
     asset_url   TEXT,
     sha256      TEXT,
     threads_max INTEGER CHECK (threads_max IS NULL OR threads_max >= 1),
+    catalog_id  TEXT,  -- which catalogue entry produced this row, if any (schema v011)
     created_at  TEXT NOT NULL,
     enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
     threads     INTEGER NOT NULL DEFAULT 1 CHECK (threads >= 1),

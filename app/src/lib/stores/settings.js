@@ -304,6 +304,7 @@ export async function loadEngines() {
       assetUrl: e.assetUrl,
       sha256: e.sha256,
       threadsMax: e.threadsMax,
+      catalogId: e.catalogId,
       hashMb: e.hashMb,
       threads: e.threads,
       status: 'ready',
@@ -814,9 +815,14 @@ export function resetDatabases() {
  * than two that could drift.
  */
 export const availableEngines = derived([objects, downloads], ([$o, $d]) => {
-  const installed = new Set(($o.engines ?? []).map((e) => e.name));
+  // Matched on catalog_id, not name (engine Stage 2 by-hand bug, 26 Sep):
+  // name is user-editable (writeEngineName), and a row not installed from
+  // the catalogue (seed/sample data, or a manually configured engine) has
+  // no catalogId at all -- .filter(Boolean) keeps those from ever
+  // colliding with a catalogue entry just because they share a display name.
+  const installedCatalogIds = new Set(($o.engines ?? []).map((e) => e.catalogId).filter(Boolean));
   return [...AVAILABLE_ENGINES, ...WASM_ENGINES]
-    .filter((e) => !installed.has(e.name) || $d[e.id]?.done)
+    .filter((e) => !installedCatalogIds.has(e.id) || $d[e.id]?.done)
     .map((e) => ({ ...e, progress: $d[e.id] ?? null }));
 });
 
@@ -888,8 +894,8 @@ function installWasmEngine(entry) {
       const newId = config
         ? await createEngine(config, {
             name: entry.name, version: entry.version, kind: 'wasm', assetUrl: entry.assetUrl,
-            sha256: entry.sha256, threadsMax: entry.threadsMax, threads: DEFAULT_THREADS,
-            hashMb: DEFAULT_HASH, createdAt: now, enabled: true
+            sha256: entry.sha256, threadsMax: entry.threadsMax, catalogId: entry.id,
+            threads: DEFAULT_THREADS, hashMb: DEFAULT_HASH, createdAt: now, enabled: true
           })
         : nextId('engine');
 
@@ -905,6 +911,7 @@ function installWasmEngine(entry) {
           protocol: entry.protocol,
           kind: 'wasm',
           threadsMax: entry.threadsMax,
+          catalogId: entry.id,
           threads: DEFAULT_THREADS,
           hashMb: DEFAULT_HASH,
           status: 'ready',
@@ -954,6 +961,7 @@ function installMockEngine(id, { tick = (fn) => setTimeout(fn, 260) } = {}) {
         version: entry.version,
         protocol: entry.protocol,
         bytes: entry.bytes,
+        catalogId: entry.id,
         threads: DEFAULT_THREADS,
         hashMb: DEFAULT_HASH,
         status: 'ready',

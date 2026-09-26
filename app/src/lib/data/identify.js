@@ -23,7 +23,7 @@
  */
 
 /** The schema revision this build of Plyvio is written against. */
-export const SCHEMA_USER_VERSION = 10;
+export const SCHEMA_USER_VERSION = 11;
 
 /**
  * The value `application_id` would carry if it were adopted. Unused: every

@@ -10,7 +10,7 @@ import {
   availableEngines, installEngine, renameEngine, setEngineOption, setEngineEnabled
 } from '../src/lib/stores/settings.js';
 import {
-  AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH, THREAD_OPTIONS,
+  AVAILABLE_ENGINES, WASM_ENGINES, DEFAULT_THREADS, DEFAULT_HASH, THREAD_OPTIONS,
   installedDetail, availableDetail, downloadingDetail, formatBytes
 } from '../src/lib/settings/engines.js';
 
@@ -85,8 +85,13 @@ describe('§3.4.8.2 detail line', () => {
 
 describe('§3.4.8.2 Available', () => {
   it('offers the curated engines', () => {
+    // Includes the WASM catalogue too (engine Stage 2). The fixture's own
+    // already-installed 'Stockfish' 17.1 (no catalogId, same shape as the
+    // desktop sample's seed row) must not hide the unrelated WASM
+    // 'Stockfish' entry -- see the dedup regression tests below.
     expect(get(availableEngines).map((e) => e.name)).toEqual([
-      'Berserk', 'Ethereal', 'Koivisto', 'Leela Chess Zero', 'Rubichess'
+      'Berserk', 'Ethereal', 'Koivisto', 'Leela Chess Zero', 'Rubichess',
+      ...WASM_ENGINES.map((e) => e.name)
     ]);
   });
 
@@ -123,6 +128,35 @@ describe('§3.4.8.2 Available', () => {
     const { AVAILABLE_DATABASES } = await import('../src/lib/settings/databases.js');
     const a = new Set(AVAILABLE_ENGINES.map((e) => e.id));
     expect(AVAILABLE_DATABASES.some((d) => a.has(d.id))).toBe(false);
+  });
+});
+
+/*
+ * Found by hand, on desktop, 26 Sep: the sample config.db seeds a native
+ * engine already named "Stockfish" (17.1) as Installed (samples/
+ * build_samples.py), unrelated to the WASM catalogue's own "Stockfish"
+ * entry. The Available-list filter used to match by display name alone, so
+ * the seeded row hid the unrelated catalogue entry too -- this file's own
+ * ENGINES fixture (top of file) reproduces the exact shape (a 'Stockfish'
+ * row with no catalogId). It now matches on catalog_id instead.
+ */
+describe('Available-list dedup matches catalog_id, not display name (26 Sep bug)', () => {
+  const wasmEntry = WASM_ENGINES[0];
+
+  it('an unrelated installed engine sharing a display name does not hide the catalogue entry', () => {
+    expect(get(objects).engines.some((e) => e.name === wasmEntry.name)).toBe(true);
+    expect(get(availableEngines).some((e) => e.id === wasmEntry.id)).toBe(true);
+  });
+
+  it('installing the catalogue entry hides it, by its own id -- not by name', () => {
+    objects.update((o) => ({
+      ...o,
+      engines: [...o.engines, {
+        id: 'engine-3', name: wasmEntry.name, version: wasmEntry.version,
+        catalogId: wasmEntry.id, status: 'ready', enabled: true
+      }]
+    }));
+    expect(get(availableEngines).some((e) => e.id === wasmEntry.id)).toBe(false);
   });
 });
 

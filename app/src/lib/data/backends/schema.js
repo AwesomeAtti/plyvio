@@ -33,7 +33,7 @@
 
 /** The schema revision a fresh database is created at. Matches `identify.js`'s
  *  `SCHEMA_USER_VERSION` and `samples/build_samples.py`'s `SCHEMA_USER_VERSION`. */
-export const SCHEMA_USER_VERSION = 10;
+export const SCHEMA_USER_VERSION = 11;
 
 export const GAME_DB_DDL = `
 CREATE TABLE games (
@@ -174,6 +174,15 @@ CREATE TABLE engines (
     asset_url   TEXT,
     sha256      TEXT,
     threads_max INTEGER CHECK (threads_max IS NULL OR threads_max >= 1),
+    -- catalog_id added 26 Sep 2026 (engine Stage 2 by-hand bug: an installed
+    -- row was being matched back to its catalogue entry by display name,
+    -- which is user-editable and collided with an unrelated same-named row).
+    -- The catalogue entry's own permanent id (settings/engines.js's
+    -- AVAILABLE_ENGINES/WASM_ENGINES), stamped at install time. NULL for
+    -- anything not installed via the in-app catalogue (a manually configured
+    -- engine, or seed/sample data) -- such a row never hides a catalogue
+    -- entry, which is correct.
+    catalog_id  TEXT,
     created_at  TEXT NOT NULL,
     enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
     threads     INTEGER NOT NULL DEFAULT 1 CHECK (threads >= 1),

@@ -170,7 +170,8 @@ describe('installWasmEngine — the real download/checksum/unzip/storage path', 
 
     const row = get(objects).engines.find((e) => e.name === 'Test Engine');
     expect(row).toMatchObject({
-      id: writtenId, kind: 'wasm', threadsMax: 1, status: 'ready', enabled: true
+      id: writtenId, kind: 'wasm', threadsMax: 1, status: 'ready', enabled: true,
+      catalogId: 'test-wasm-engine'
     });
     // No config.db connection under jsdom — falls back to a generated id,
     // never config.db's createEngine.
@@ -235,10 +236,14 @@ describe('installWasmEngine — the real download/checksum/unzip/storage path', 
 
     expect(configMocks.createEngine).toHaveBeenCalledWith(
       { fake: 'config-connection' },
-      expect.objectContaining({ kind: 'wasm', assetUrl: TEST_ENTRY.assetUrl, sha256: TEST_ENTRY.sha256 })
+      expect.objectContaining({
+        kind: 'wasm', assetUrl: TEST_ENTRY.assetUrl, sha256: TEST_ENTRY.sha256,
+        catalogId: 'test-wasm-engine'
+      })
     );
     expect(storageMocks.writeEngineFiles).toHaveBeenCalledWith(777, expect.any(Array));
     expect(storageMocks.primeEngineUrls).toHaveBeenCalledWith(777);
+    expect(get(objects).engines.find((e) => e.id === 777).catalogId).toBe('test-wasm-engine');
   });
 });
 
