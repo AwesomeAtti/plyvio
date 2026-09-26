@@ -197,12 +197,16 @@ export const removeDirectoryAll = async (path) => {
 };
 
 /**
- * The `asset://` URL a Web Worker can load a desktop-stored engine file
- * from — Tauri's asset protocol, scoped to `$APPDATA/engines/**` in
- * `tauri.conf.json` (`security.assetProtocol`). Synchronous: a pure string
- * rewrite (`convertFileSrc`, `@tauri-apps/api/core`) with no IPC round
- * trip, unlike the PWA's own OPFS-backed equivalent (`engine/storage.js`'s
- * blob-URL cache), which is why that cache exists only on that side.
+ * The `asset://` URL for a desktop-stored file — Tauri's asset protocol,
+ * scoped to `$APPDATA/engines/**` in `tauri.conf.json`
+ * (`security.assetProtocol`). Synchronous: a pure string rewrite
+ * (`convertFileSrc`, `@tauri-apps/api/core`) with no IPC round trip.
+ *
+ * NOT something a Web Worker can be started from directly (found by hand,
+ * 26 Sep — see `engine/storage.js`'s header): `engine/storage.js`'s
+ * `assetBlobUrl()` fetches this URL and hands the worker a `blob:` URL
+ * instead, the same shape the PWA's own OPFS-backed equivalent already
+ * produces.
  *
  * @param {string} path absolute file path
  */

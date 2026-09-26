@@ -12,13 +12,24 @@
  *          Rust commands `backends/tauri.js` wraps.
  *
  * A Web Worker needs a URL, not a path or a Blob, even on desktop
- * (`new Worker()`'s own contract). Tauri's asset protocol
- * (`assetUrlFor()`) is a synchronous string rewrite, but OPFS's `getFile()`
- * is not — so a PWA-side URL has to be resolved once, ahead of time, and
- * cached (`primeEngineUrls`) rather than computed the moment a search wants
- * one: `engine/session.js`'s `createTransport` factory is called
- * synchronously (`stores/game.js`), and nothing above this module changes
- * for that to keep working.
+ * (`new Worker()`'s own contract). Both sides end up handing the worker a
+ * `blob:` URL, not the platform's own storage URL directly: OPFS's
+ * `getFile()` was always async and always produced one, and Tauri's own
+ * `asset://` URL (`assetUrlFor()`) turned out NOT to be something a Worker
+ * can be started from at all — found by hand, 26 Sep, on the real desktop
+ * app: the worker starts and dies immediately with a generic, contentless
+ * "engine worker failed" (WKWebView's own security behavior for a worker
+ * script load it refuses, not a real error from the engine). `resolveUrlsTauri`
+ * now `fetch()`es the asset URL (a supported, ordinary use of the asset
+ * protocol) and hands the worker a `blob:` URL made from the bytes, the same
+ * shape `resolveUrlsOpfs` already produces — `deleteEngineFiles`'s existing
+ * blob-URL revocation already covers both without any change, since it only
+ * checks the URL's own scheme, not which platform produced it. Either way
+ * the URL has to be resolved once, ahead of time, and cached
+ * (`primeEngineUrls`) rather than computed the moment a search wants one:
+ * `engine/session.js`'s `createTransport` factory is called synchronously
+ * (`stores/game.js`), and nothing above this module changes for that to
+ * keep working.
  *
  * Every file the package contained is kept — engine script, `.wasm`,
  * licence, README — not just the two the Worker loads, so an installed
@@ -100,16 +111,30 @@ async function writeFilesTauri(id, files) {
   }
 }
 
+/**
+ * Fetch a desktop-stored file through Tauri's asset protocol and hand back a
+ * `blob:` URL a Worker can actually be started from (see this file's own
+ * header: a Worker refuses to load directly from `asset://`, found by hand
+ * 26 Sep). `fetch()` against the asset URL is the protocol's own supported
+ * use, unlike `new Worker(assetUrl)`.
+ */
+async function assetBlobUrl(path) {
+  const { assetUrlFor } = await import('../data/backends/tauri.js');
+  const response = await fetch(assetUrlFor(path));
+  if (!response.ok) throw new Error(`could not read ${path}: HTTP ${response.status}`);
+  return URL.createObjectURL(await response.blob());
+}
+
 async function resolveUrlsTauri(id) {
   const { engineDir } = await import('../data/session.js');
-  const { listDirectoryNames, assetUrlFor } = await import('../data/backends/tauri.js');
+  const { listDirectoryNames } = await import('../data/backends/tauri.js');
   const dir = await engineDir(id);
   const names = await listDirectoryNames(dir);
   let script = null;
   let wasm = null;
   for (const name of names) {
-    if (name.endsWith(SCRIPT_EXT)) script = assetUrlFor(`${dir}/${name}`);
-    else if (name.endsWith(WASM_EXT)) wasm = assetUrlFor(`${dir}/${name}`);
+    if (name.endsWith(SCRIPT_EXT)) script = await assetBlobUrl(`${dir}/${name}`);
+    else if (name.endsWith(WASM_EXT)) wasm = await assetBlobUrl(`${dir}/${name}`);
   }
   return { script, wasm };
 }
