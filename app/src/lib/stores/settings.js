@@ -1,8 +1,9 @@
 import { writable, derived, get } from 'svelte/store';
 import { SECTIONS, DEFAULT_SECTION, isSection, OBJECT_TYPES } from '$lib/settings/schema.js';
 import { AVAILABLE_DATABASES, validateDraftDatabase, basename } from '$lib/settings/databases.js';
-import { AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
-import { BUILTIN_ENGINE } from '$lib/engine/builtin.js';
+import { AVAILABLE_ENGINES, WASM_ENGINES, DEFAULT_THREADS, DEFAULT_HASH } from '$lib/settings/engines.js';
+import { writeEngineFiles, primeEngineUrls, deleteEngineFiles } from '$lib/engine/storage.js';
+import { unzipSync } from 'fflate';
 import {
   configConnection, explorerConnection, getBackend, librariesDirectoryEntries,
   openNewLibraryConnection, PWA_LIBRARY_PATH, requestPersistentStorage
@@ -11,7 +12,8 @@ import {
   readPreferences, writePreference, PREFERENCE_KEYS,
   readLibraries, writeLibraryName, writeLibraryEnabled, createLibrary, deleteLibrary,
   readEngines, writeEngineName, writeEngineOption, writeEngineEnabled,
-  readSubscriptions, readUiState, writeUiState
+  readSubscriptions, readUiState, writeUiState,
+  createEngine, deleteEngine
 } from '$lib/data/config.js';
 import { countNewGamesForSubscription } from '$lib/data/games.js';
 import { locale } from '$lib/stores/i18n.js';
@@ -68,9 +70,11 @@ const nextId = (p) => `${p}-n${++seq}`;
  */
 export const objects = writable({
   engines: [
-    /* The engine bundled with the app — real, on both platforms. Interim
-       (Stage 1): see `engine/builtin.js`. The two rows after it are mock. */
-    { ...BUILTIN_ENGINE },
+    /* Mock rows only, standing in until `loadEngines()` (below) replaces this
+       array with `config.db`'s real rows on mount — a real WASM engine
+       (Stage 2) or a real native one (Stage 3) only ever gets here that way,
+       never seeded. With none installed, Settings -> Engines' empty state
+       covers it (see `engine-stage2-plan.md`, "No new first-launch UI"). */
     { id: 'engine-1', name: 'Stockfish', version: '17.1', status: 'ready', protocol: 'UCI',
       binaryPath: '/usr/local/bin/stockfish', hashMb: 512, threads: 4, enabled: true },
     { id: 'engine-2', name: 'Torch', version: '3', status: 'ready', protocol: 'UCI',
@@ -266,51 +270,49 @@ export async function loadLibraries() {
 /**
  * Replace `objects.engines` with the real rows from `config.db`'s `engines`
  * table, once, on mount. Same shape as `loadLibraries()`: only replaces what
- * was there before startup, so a row `installEngine()` adds afterward (still
- * simulated, per the catalogue being a static file rather than a `config.db`
- * table) lands the way it always has.
+ * was there before startup, so a row `installEngine()` adds afterward lands
+ * the way it always has.
+ *
+ * BOTH BACKENDS now (engine Stage 2, 26 Sep 2026) — unlike before, this is no
+ * longer Tauri-only. A `kind: 'wasm'` row is a real, storable engine on the
+ * PWA too (OPFS, via `engine/storage.js`); a `kind: 'native'` row still needs
+ * a real subprocess the PWA can't run, but that's Stage 3's concern to filter
+ * for, not this function's — `loadLibraries()`'s own comment on why that
+ * split lives where it's actually meaningful applies here the same way now.
  *
  * `protocol` has no column — §5.3 says every engine here speaks UCI, so it
  * is set rather than read.
  *
- * DESKTOP ONLY, DELIBERATELY — same reasoning as `loadLibraries()`. An
- * `engines` row is a UCI binary on disk, which the PWA can't run; the PWA's
- * one real engine is the bundled WASM build, which isn't a stored row on
- * either platform (Stage 1, `engine/builtin.js`), so persisting
- * installed-engine rows there would be real storage for a capability the
- * PWA doesn't functionally have. The other rows are still mock on both
- * platforms until Stage 3 gives native engines a transport.
+ * Every real `kind: 'wasm'` row gets `primeEngineUrls()` fired immediately
+ * (fire-and-forget) so its `{script, wasm}` URLs are already cached by the
+ * time a search wants a transport — `engine/storage.js`'s own comment on why
+ * that can't happen lazily.
  */
 export async function loadEngines() {
-  if (getBackend() !== 'tauri') return;
   const connection = await configConnection();
   if (!connection) return;
   const real = await readEngines(connection);
   objects.update((all) => ({
     ...all,
-    engines: [
-      ...real.map((e) => ({
-        id: e.id,
-        name: e.name,
-        version: e.version,
-        protocol: 'UCI',
-        binaryPath: e.binaryPath,
-        hashMb: e.hashMb,
-        threads: e.threads,
-        enabled: e.enabled
-      })),
-      /* The built-in engine isn't a `config.db` row, so it is added back
-         after the real ones, keeping whatever its switch was set to. The
-         picker still offers it first (`engineSources`). Interim, Stage 1. */
-      withBuiltinEngine(all.engines)
-    ]
+    engines: real.map((e) => ({
+      id: e.id,
+      name: e.name,
+      version: e.version,
+      protocol: 'UCI',
+      kind: e.kind,
+      binaryPath: e.binaryPath,
+      assetUrl: e.assetUrl,
+      sha256: e.sha256,
+      threadsMax: e.threadsMax,
+      hashMb: e.hashMb,
+      threads: e.threads,
+      status: 'ready',
+      enabled: e.enabled
+    }))
   }));
-}
-
-/** The built-in engine's row as it stands now — its switch included. */
-function withBuiltinEngine(engines = []) {
-  const cur = engines.find((e) => e.id === BUILTIN_ENGINE.id);
-  return { ...BUILTIN_ENGINE, enabled: cur ? cur.enabled !== false : BUILTIN_ENGINE.enabled };
+  for (const e of real) {
+    if (e.kind === 'wasm') primeEngineUrls(e.id);
+  }
 }
 
 /** `subscriptions.source_type` → the mark/label key `SOURCES` (settings/subscriptions.js) uses. */
@@ -813,19 +815,122 @@ export function resetDatabases() {
  */
 export const availableEngines = derived([objects, downloads], ([$o, $d]) => {
   const installed = new Set(($o.engines ?? []).map((e) => e.name));
-  return AVAILABLE_ENGINES
+  return [...AVAILABLE_ENGINES, ...WASM_ENGINES]
     .filter((e) => !installed.has(e.name) || $d[e.id]?.done)
     .map((e) => ({ ...e, progress: $d[e.id] ?? null }));
 });
 
 /**
- * Install an engine from the catalogue. One phase, as for Databases: a binary
- * downloads and is ready.
- *
- * Unlike a downloaded database, a downloaded engine arrives **enabled** too —
- * it needs no path supplying, which is the reason §3.4.8 disables new objects.
+ * Install an engine from the catalogue — a real WASM download (Approach step
+ * 4, `engine-stage2-plan.md`) for a `WASM_ENGINES` entry, the existing
+ * simulated flow for a native `AVAILABLE_ENGINES` one (Stage 3's, untouched).
+ * `tick` only ever applied to the mock path; the real path has nothing to
+ * inject a fake clock into.
  */
 export function installEngine(id, { tick = (fn) => setTimeout(fn, 260) } = {}) {
+  const wasmEntry = WASM_ENGINES.find((e) => e.id === id);
+  if (wasmEntry) return installWasmEngine(wasmEntry);
+  return installMockEngine(id, { tick });
+}
+
+/**
+ * The real install path. A genuine `fetch` of the manifest's `assetUrl`,
+ * progress read from the response stream, a SHA-256 check of the whole zip
+ * against the manifest's pinned hash **before anything is unzipped**,
+ * `fflate`'s `unzipSync` to recover the package's files (engine `.js`/
+ * `.wasm`, licence, `README.md` — every file, not just the two the Worker
+ * loads, per `engine/storage.js`'s own comment), storage via
+ * `writeEngineFiles()` (OPFS on the PWA, a real directory on desktop), and
+ * finally a real `engines` row (`kind: 'wasm'`, no `binaryPath`).
+ *
+ * A checksum mismatch — or any other failure along the way — clears the
+ * in-flight download and leaves nothing installed: nothing partially-written
+ * from a corrupted download ever reaches storage or `config.db`.
+ */
+function installWasmEngine(entry) {
+  if (get(downloads)[entry.id]) return false;
+  downloads.update((d) => ({ ...d, [entry.id]: { pct: 0, done: false } }));
+
+  (async () => {
+    try {
+      const response = await fetch(entry.assetUrl);
+      if (!response.ok) throw new Error(`download failed: HTTP ${response.status}`);
+      const total = Number(response.headers.get('content-length')) || entry.bytes || 0;
+      const reader = response.body.getReader();
+      const chunks = [];
+      let received = 0;
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        chunks.push(value);
+        received += value.length;
+        if (total > 0) {
+          const pct = Math.min(99, Math.floor((received / total) * 100));
+          downloads.update((d) => (d[entry.id] ? { ...d, [entry.id]: { pct, done: false } } : d));
+        }
+      }
+      const bytes = new Uint8Array(received);
+      let offset = 0;
+      for (const chunk of chunks) {
+        bytes.set(chunk, offset);
+        offset += chunk.length;
+      }
+
+      const digest = await crypto.subtle.digest('SHA-256', bytes);
+      const hex = Array.from(new Uint8Array(digest)).map((b) => b.toString(16).padStart(2, '0')).join('');
+      if (hex !== entry.sha256) throw new Error('checksum mismatch');
+
+      const unzipped = unzipSync(bytes);
+      const files = Object.entries(unzipped).map(([name, data]) => ({ name, bytes: data }));
+
+      const now = new Date().toISOString();
+      const config = await configConnection();
+      const newId = config
+        ? await createEngine(config, {
+            name: entry.name, version: entry.version, kind: 'wasm', assetUrl: entry.assetUrl,
+            sha256: entry.sha256, threadsMax: entry.threadsMax, threads: DEFAULT_THREADS,
+            hashMb: DEFAULT_HASH, createdAt: now, enabled: true
+          })
+        : nextId('engine');
+
+      await writeEngineFiles(newId, files);
+      await primeEngineUrls(newId);
+
+      objects.update((all) => ({
+        ...all,
+        engines: [...all.engines, {
+          id: newId,
+          name: entry.name,
+          version: entry.version,
+          protocol: entry.protocol,
+          kind: 'wasm',
+          threadsMax: entry.threadsMax,
+          threads: DEFAULT_THREADS,
+          hashMb: DEFAULT_HASH,
+          status: 'ready',
+          enabled: true
+        }]
+      }));
+      downloads.update((d) => ({ ...d, [entry.id]: { pct: 100, done: true } }));
+      lastApplied.set(Date.now());
+      setTimeout(() => downloads.update((d) => {
+        const { [entry.id]: _gone, ...rest } = d;
+        return rest;
+      }), 260);
+    } catch (err) {
+      console.error(`Plyvio: failed to install engine ${entry.id}`, err);
+      downloads.update((d) => {
+        const { [entry.id]: _gone, ...rest } = d;
+        return rest;
+      });
+    }
+  })();
+
+  return true;
+}
+
+/** The pre-Stage-2 simulated flow — still what a native `AVAILABLE_ENGINES` row uses. */
+function installMockEngine(id, { tick = (fn) => setTimeout(fn, 260) } = {}) {
   const entry = AVAILABLE_ENGINES.find((e) => e.id === id);
   if (!entry) return false;
   if (get(downloads)[id]) return false;
@@ -934,6 +1039,35 @@ export function setEngineEnabled(id, enabled) {
         if (connection) await writeEngineEnabled(connection, id, enabled);
       } catch (err) {
         console.error(`Plyvio: failed to update engine ${id}`, err);
+      }
+    })();
+  }
+}
+
+/**
+ * Remove an engine (Q3, `engine-stage2-plan.md`: the built-in engine becomes
+ * an ordinary removable row, same as any other). Destructive and NOT
+ * undoable — same contract `removeObject()` documents, and the same
+ * real/mock split `removeDatabase()` uses: a real engine (integer id) has its
+ * stored files deleted (OPFS or the desktop directory, via
+ * `deleteEngineFiles()`) and its `config.db` row removed; a mock
+ * catalogue-install row (string id) is store-only, same as
+ * `renameEngine`/`setEngineEnabled`.
+ */
+export function removeEngine(id) {
+  objects.update((all) => ({
+    ...all,
+    engines: all.engines.filter((e) => e.id !== id)
+  }));
+  lastApplied.set(Date.now());
+  if (typeof id === 'number') {
+    (async () => {
+      try {
+        await deleteEngineFiles(id);
+        const connection = await configConnection();
+        if (connection) await deleteEngine(connection, id);
+      } catch (err) {
+        console.error(`Plyvio: failed to remove engine ${id}`, err);
       }
     })();
   }

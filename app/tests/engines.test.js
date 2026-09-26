@@ -10,7 +10,7 @@ import {
   availableEngines, installEngine, renameEngine, setEngineOption, setEngineEnabled
 } from '../src/lib/stores/settings.js';
 import {
-  AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH,
+  AVAILABLE_ENGINES, DEFAULT_THREADS, DEFAULT_HASH, THREAD_OPTIONS,
   installedDetail, availableDetail, downloadingDetail, formatBytes
 } from '../src/lib/settings/engines.js';
 
@@ -256,6 +256,40 @@ describe('§3.4.8.2 the section', () => {
     const { container } = await renderEngines();
     expect(container.querySelector('#settings-content .chead .add').textContent.trim())
       .toBe('Add engine');
+  });
+});
+
+/* ===================== threads bounded by threadsMax ===================== */
+
+describe('§4 the Threads control is bounded by threadsMax (Q4, engine-stage2-plan.md)', () => {
+  it('offers exactly one option for an engine whose threadsMax is 1', async () => {
+    objects.update((o) => ({
+      ...o,
+      engines: [
+        { id: 501, name: 'AAA Real Engine', version: '19 lite', protocol: 'UCI', kind: 'wasm',
+          threads: 1, threadsMax: 1, hashMb: 32, status: 'ready', enabled: true },
+        ...o.engines
+      ]
+    }));
+    const { container } = await renderEngines();
+    // Sorted alphabetically — "AAA Real Engine" is the first row.
+    await fireEvent.click(container.querySelectorAll('#settings-content .box .r .cv')[0]);
+    const select = container.querySelector('#engthreads-501');
+    expect(select).toBeTruthy();
+    expect(select.querySelectorAll('option').length).toBe(1);
+    expect(select.querySelector('option').value).toBe('1');
+  });
+
+  it('offers the full THREAD_OPTIONS list for an engine with no threadsMax', async () => {
+    const { container } = await renderEngines();
+    // No wasm row seeded here — Stockfish (engine-1) sorts first.
+    await fireEvent.click(container.querySelectorAll('#settings-content .box .r .cv')[0]);
+    const select = container.querySelector('#engthreads-engine-1');
+    expect(select).toBeTruthy();
+    expect(select.querySelectorAll('option').length).toBe(THREAD_OPTIONS.length);
+    expect([...select.querySelectorAll('option')].map((o) => o.value)).toEqual(
+      THREAD_OPTIONS.map(String)
+    );
   });
 });
 

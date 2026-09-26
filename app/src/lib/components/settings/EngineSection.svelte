@@ -19,7 +19,7 @@
   import { EngineIcon, SectionExpand, SubmenuArrow, AddGames } from '$lib/icons.js';
   import {
     objects, availableEngines, installEngine, renameEngine,
-    setEngineOption, setEngineEnabled, removeObject, addObject
+    setEngineOption, setEngineEnabled, removeEngine, addObject
   } from '$lib/stores/settings.js';
   import {
     installedDetail, availableDetail, downloadingDetail,
@@ -67,22 +67,10 @@
         ><Icon icon={expanded === e.id ? SectionExpand : SubmenuArrow} size={15} /></button>
       </div>
 
-      {#if expanded === e.id && e.builtin}
-        <!-- The engine bundled with the app (Stage 1, engine/builtin.js): its
-             settings are fixed, so they are shown the way Version always is,
-             as values rather than controls, and it can't be removed (Q7).
-             Its switch above still works. Interim, until Stage 2. -->
-        <div class="exp">
-          <div class="er"><span class="k">{$t('field.name')}</span>
-            <span class="v">{e.name}</span></div>
-          <div class="er"><span class="k">{$t('field.version')}</span>
-            <span class="v">{e.version ?? '—'}</span></div>
-          <div class="er"><span class="k">{$t('field.threads')}</span>
-            <span class="v">{e.threads}</span></div>
-          <div class="er"><span class="k">{$t('field.hash')}</span>
-            <span class="v">{formatHash(e.hashMb)}</span></div>
-        </div>
-      {:else if expanded === e.id}
+      {#if expanded === e.id}
+        {@const threadOptions = e.threadsMax
+          ? Array.from({ length: e.threadsMax }, (_, i) => i + 1)
+          : THREAD_OPTIONS}
         <div class="exp">
           <div class="er">
             <span class="k"><label for="engname-{e.id}">{$t('field.name')}</label></span>
@@ -96,11 +84,15 @@
             <span class="v">{e.version ?? '—'}</span></div>
           <div class="er">
             <span class="k"><label for="engthreads-{e.id}">{$t('field.threads')}</label></span>
+            <!-- §4 (Q4, engine-stage2-plan.md) — one control markup for every
+                 engine, bounded 1..threads_max when the row declares one
+                 (every WASM row today), THREAD_OPTIONS otherwise (every
+                 native mock row, which hasn't declared one). -->
             <select
               id="engthreads-{e.id}" class="sel" value={e.threads}
               onchange={(ev) => setEngineOption(e.id, 'threads', Number(ev.currentTarget.value))}
             >
-              {#each THREAD_OPTIONS as o}<option value={o}>{o}</option>{/each}
+              {#each threadOptions as o}<option value={o}>{o}</option>{/each}
             </select>
           </div>
           <div class="er">
@@ -112,16 +104,15 @@
               {#each HASH_OPTIONS as o}<option value={o}>{formatHash(o)}</option>{/each}
             </select>
           </div>
-          {#if typeof e.id !== 'number'}
-            <!-- Removing a real engine isn't wired yet (config.db write) — offering
-                 the button would look like it worked and then revert on reload. -->
-            <div class="er">
-              <span class="k"></span>
-              <button class="dan" type="button" onclick={() => removeObject('engines', e.id)}>
-                {$t('settings.removeEngine')}
-              </button>
-            </div>
-          {/if}
+          <!-- Q3 (engine-stage2-plan.md) — every engine is an ordinary
+               removable row now; `removeEngine()` itself splits real vs
+               mock (config.db + stored files vs store-only). -->
+          <div class="er">
+            <span class="k"></span>
+            <button class="dan" type="button" onclick={() => removeEngine(e.id)}>
+              {$t('settings.removeEngine')}
+            </button>
+          </div>
         </div>
       {/if}
     {/each}

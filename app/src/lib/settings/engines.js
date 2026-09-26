@@ -18,6 +18,33 @@ export const AVAILABLE_ENGINES = [
   { id: 'avail-rubi',     name: 'Rubichess',         version: '2.4',   bytes: 29_000_000, protocol: 'UCI' }
 ];
 
+/**
+ * The real, downloadable WASM catalogue — engine Stage 2
+ * (`engine-stage2-plan.md`, "The manifest's one engine"). One entry today;
+ * a future entry is another row in this same array (kind/platform decide
+ * which platforms offer it), never a restructuring — see the plan's
+ * "Naming and organizing multiple engines and platforms."
+ *
+ * `bytes` is the zip's own size (what the Available row's download line
+ * shows); `threadsMax` is copied onto the `engines` row at install time and
+ * bounds the Threads control in place of `THREAD_OPTIONS` (Q4).
+ * `assetUrl`/`sha256` are the confirmed, live values recorded in the plan.
+ */
+export const WASM_ENGINES = [
+  {
+    id: 'stockfish-19-lite',
+    name: 'Stockfish',
+    version: '19 lite',
+    kind: 'wasm',
+    platform: 'wasm',
+    protocol: 'UCI',
+    assetUrl: 'https://github.com/AwesomeAtti/plyvio/releases/download/engines-v1/stockfish-19-lite-wasm-single.zip',
+    sha256: 'c2d2c1068116c9b75fb61a5f481a6cb1c3a49bb3c60b05bbc041d489d8afa7be',
+    bytes: 1_209_947,
+    threadsMax: 1
+  }
+];
+
 /** Defaults a downloaded engine arrives with. Both are tunable afterwards. */
 export const DEFAULT_THREADS = 1;
 export const DEFAULT_HASH = 256;

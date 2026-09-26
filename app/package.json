@@ -33,6 +33,7 @@
     "@sqlite.org/sqlite-wasm": "3.53.4-build1",
     "@tauri-apps/api": "^2.11.1",
     "@tauri-apps/plugin-sql": "^2.4.1",
-    "chessops": "0.15.1"
+    "chessops": "0.15.1",
+    "fflate": "^0.8.3"
   }
 }
