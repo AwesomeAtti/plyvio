@@ -4,7 +4,8 @@ import { games, collections, tags, connectionForLibrary, loadGames } from '$lib/
 import { activeLibraryId } from '$lib/stores/libraries.js';
 import { requestPersistentStorage } from '$lib/data/session.js';
 import { makeImportedGames } from '$lib/library/mock.js';
-import { planImport, planRealOnlineImport, applyImportRules, notAddedCount, outcomeMessage, sourceLabel } from '$lib/library/importJob.js';
+import { planImport, planRealOnlineImport, planRealFileImport, applyImportRules, notAddedCount, outcomeMessage, sourceLabel } from '$lib/library/importJob.js';
+import { gameRowsFromPgnText } from '$lib/pgn/importPgn.js';
 import { insertGames, latestGameDateForSource, gamePgnsForSourceOnDate } from '$lib/data/games.js';
 import {
   SOURCE_TYPE, fetchAllGames, chessComRowsSinceCursor, latestEndTimeFromPgns,
@@ -24,10 +25,13 @@ import {
  * schedules its own next step and pushes state when it has some. A cancelled
  * or finished job clears its timer rather than being left to be noticed.
  *
- * PRESENTATIONAL. No PGN is read. The games appended are generated (see
- * `makeImportedGames`), so the Content Table fills and the counts climb —
- * which is the point, because r5 §4 makes the Library itself the receipt and
- * drops the result banner entirely.
+ * Paste, File and Chess.com Online now read for real (`library/importJob.js`'s
+ * `planRealPasteImport`/`planRealFileImport`/`planRealOnlineImport`) and write
+ * through `runRealWrite()` below. Only Online via a source with no adapter
+ * (Lichess, so far) still falls back to the simulated lane: `makeImportedGames`
+ * generates rows so the Content Table fills and the counts climb, which is the
+ * point either way, real or simulated — r5 §4 makes the Library itself the
+ * receipt and drops the result banner entirely.
  */
 
 /** 'idle' | 'downloading' | 'writing' | 'done' */
@@ -80,6 +84,11 @@ let lastRequest = null;
    cancelled state with a write. */
 let onlineFetchToken = 0;
 
+/* Same reasoning, for File's own pre-read step (`runRealFileImport`):
+   invalidates an in-flight batch of `file.text()` reads when the user
+   cancels or the lane resets before they've all settled. */
+let fileReadToken = 0;
+
 function clearTimers() {
   if (timer) { clearTimeout(timer); timer = null; }
 }
@@ -113,6 +122,22 @@ export function startImport(request) {
     onlineFetchToken++;
     phase.set('downloading');
     runRealOnlineDownload(p);
+    return true;
+  }
+
+  /* File's own pre-read marker (`planImport`) -- unlike Online, this goes
+     straight to 'writing': §4.4.5 describes File as a determinate Adding
+     phase with no download step, and reading a local file is not a network
+     fetch worth its own indeterminate counter. */
+  if (p.needsFileRead) {
+    lastRequest = request;
+    clearNotice();
+    plan.set(null);
+    written.set(0);
+    downloaded.set(0);
+    fileReadToken++;
+    phase.set('writing');
+    runRealFileImport(p);
     return true;
   }
 
@@ -246,6 +271,52 @@ async function runRealOnlineDownload(p) {
 
   plan.set(finalPlan);
   phase.set('writing');
+  runWrite(finalPlan, 0);
+}
+
+/**
+ * File's real read-then-write path. `p` is `planImport`'s marker for
+ * `{ tab: 'file', draft: { files } }` -- not a plan yet, because nothing is
+ * knowable about the import (row count included) until every file has been
+ * read.
+ *
+ * Reads run in parallel (`Promise.all`) -- independent local I/O, and row
+ * order is preserved by `draft.files`' own order (array index), not by which
+ * read settles first. A file that rejects (rare for a local `File` the user
+ * just picked or dropped -- permission revoked, the file deleted between
+ * pick and read) is caught per-file and marked `failed`, rather than
+ * failing the whole batch; `planRealFileImport` decides from there whether
+ * that adds up to a whole-import 'file' outcome (every file failed) or is
+ * quietly absorbed among the files that did read (§4.4.5: "an import fails
+ * as a whole only when every source failed" -- see importJob.js's own
+ * comment for the reasoning).
+ */
+async function runRealFileImport(p) {
+  const { draft, destination, duplicates, tags, collections } = p;
+  const token = fileReadToken;
+  const createdAt = new Date().toISOString();
+
+  const results = await Promise.all(draft.files.map(async (file) => {
+    try {
+      const text = await file.text();
+      const rows = gameRowsFromPgnText(text, createdAt).map((row) => applyImportRules(row)).filter(Boolean);
+      return { file, rows, failed: false };
+    } catch (err) {
+      console.error('Plyvio: failed to read', file.name, err);
+      return { file, rows: [], failed: true };
+    }
+  }));
+
+  /* The user cancelled while these reads were in flight -- `cancelImport()`
+     already set phase to 'done' and posted its own notice; don't clobber it
+     now that the reads have finally settled. */
+  if (token !== fileReadToken) return;
+
+  const finalPlan = planRealFileImport({ results, destination, duplicates, tags, collections });
+  plan.set(finalPlan);
+  /* `phase` is already 'writing', set by `startImport()` before this ran --
+     unlike Online's own download-to-write transition, there is no phase
+     change to make here. */
   runWrite(finalPlan, 0);
 }
 
@@ -399,6 +470,7 @@ export function cancelImport() {
   if (!get(running)) return false;
   clearTimers();
   onlineFetchToken++;   // invalidate any in-flight Chess.com fetch
+  fileReadToken++;      // invalidate any in-flight file reads
   const kept = get(written);
   const p = get(plan);
   phase.set('done');
@@ -432,6 +504,7 @@ export function closeReport() { clearNotice(); }
 export function resetImporter() {
   clearTimers();
   onlineFetchToken++;   // invalidate any in-flight Chess.com fetch
+  fileReadToken++;      // invalidate any in-flight file reads
   lastRequest = null;
   if (noticeTimer) { clearTimeout(noticeTimer); noticeTimer = null; }
   phase.set('idle');

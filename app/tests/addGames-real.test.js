@@ -1,17 +1,18 @@
 /**
- * Add Games, for real — the Paste tab. §3.2.4.5, §4.3.
+ * Add Games, for real — the Paste and File tabs. §3.2.4.5, §4.3.
  *
  * `addGames.test.js` covers the whole simulated lane (timing, cancel, retry,
  * the Status Bar, the report) with the `simulatedImport` preference pinned
  * to an explicit outcome, which is untouched by any of this — see
- * `library/importJob.js`'s `OUTCOME_APPLIES`. This file covers only the new
+ * `library/importJob.js`'s `OUTCOME_APPLIES`. This file covers the real
  * thing: `outcome: 'real'` (the default now — `stores/settings.js`) actually
- * reading pasted PGN and writing it to the database.
+ * reading pasted PGN or a picked/dropped file and writing it to the database.
  */
 
 import { describe, expect, it, vi, beforeEach, afterEach } from 'vitest';
 import { get } from 'svelte/store';
-import { planImport, resolveOutcome } from '../src/lib/library/importJob.js';
+import { planImport, planRealFileImport, resolveOutcome } from '../src/lib/library/importJob.js';
+import { gameRowsFromPgnText } from '../src/lib/pgn/importPgn.js';
 
 vi.mock('$lib/data/session.js', () => ({
   libraryConnection: vi.fn(), isTauri: () => false,
@@ -49,8 +50,8 @@ describe('resolveOutcome — real now applies past Paste too', () => {
   it('resolves on Paste', () => {
     expect(resolveOutcome('paste', 'real')).toBe('real');
   });
-  it('falls back to no-games-found on File, which has no real path yet', () => {
-    expect(resolveOutcome('file', 'real')).toBe('none');
+  it('resolves on File', () => {
+    expect(resolveOutcome('file', 'real')).toBe('real');
   });
   // Online's own "real" behavior -- a fetch marker for Chess.com, a fallback
   // to 'none' for any other source -- is covered in `addGames-chesscom.test.js`,
@@ -95,8 +96,87 @@ describe('planImport — real Paste', () => {
   });
 });
 
+/* ---------------- File, for real ------------------------------------- */
+
+// A minimal stand-in for a browser `File`: just the three properties/methods
+// `importJob.js` and `importer.js` actually touch (`name`, `size`, `text()`).
+const fileStub = (name, text, { size } = {}) => ({
+  name, size: size ?? text.length, text: () => Promise.resolve(text)
+});
+const failingFileStub = (name, { size = 0 } = {}) => ({
+  name, size, text: () => Promise.reject(new Error('could not read'))
+});
+const fileDraft = (files) => ({ files, text: '', source: 'chesscom', username: '', range: 'all' });
+
+describe('planImport — File returns a pre-read marker, not a plan', () => {
+  it('needs a file read: File objects can only be read asynchronously', () => {
+    const p = planImport({
+      tab: 'file', draft: fileDraft([fileStub('one.pgn', ONE_GAME)]), outcome: 'real',
+      destination: 'db-1', duplicates: 'skip', tags: [], collections: []
+    });
+    expect(p.needsFileRead).toBe(true);
+    expect(p.draft.files).toHaveLength(1);
+  });
+});
+
+describe('planRealFileImport', () => {
+  const oneRow = gameRowsFromPgnText(ONE_GAME);
+  const plan = (results) => planRealFileImport({
+    results, destination: 'db-1', duplicates: 'skip', tags: [], collections: []
+  });
+
+  it('one file, one game: clean, with a real per-file count', () => {
+    const p = plan([{ file: fileStub('one.pgn', ONE_GAME), rows: oneRow, failed: false }]);
+    expect(p.outcome).toBe('clean');
+    expect(p.total).toBe(1);
+    expect(p.added).toBe(1);
+    expect(p.rows).toEqual(oneRow);
+    expect(p.sources[0]).toMatchObject({ label: 'one.pgn', games: 1 });
+  });
+
+  it('several files, several games each: rows concatenated in file order', () => {
+    const second = gameRowsFromPgnText('[Event "E2"]\n[White "Ding, Liren"]\n\n1. d4 *');
+    const p = plan([
+      { file: fileStub('a.pgn', ONE_GAME), rows: oneRow, failed: false },
+      { file: fileStub('b.pgn', 'x'), rows: second, failed: false }
+    ]);
+    expect(p.outcome).toBe('clean');
+    expect(p.total).toBe(2);
+    expect(p.rows.map((r) => r.white)).toEqual(['Carlsen, Magnus', 'Ding, Liren']);
+    expect(p.sources.map((s) => s.games)).toEqual([1, 1]);
+  });
+
+  it('every file opened but none held a game: no games found', () => {
+    const p = plan([{ file: fileStub('notes.pgn', ''), rows: [], failed: false }]);
+    expect(p.outcome).toBe('none');
+    expect(p.total).toBe(0);
+    expect(p.rows).toEqual([]);
+  });
+
+  it('every file failed to open: the whole-import File error outcome', () => {
+    const p = plan([{ file: failingFileStub('gone.pgn'), rows: [], failed: true }]);
+    expect(p.outcome).toBe('file');
+    expect(p.sources[0].label).toBe('gone.pgn');
+    expect(p.failedSources).toEqual([expect.objectContaining({ label: 'gone.pgn', errorKind: 'file' })]);
+    expect(p.rows).toEqual([]);
+  });
+
+  it('one file fails among others that succeed: absorbed quietly, not a whole-import failure (D1)', () => {
+    const p = plan([
+      { file: failingFileStub('gone.pgn'), rows: [], failed: true },
+      { file: fileStub('ok.pgn', ONE_GAME), rows: oneRow, failed: false }
+    ]);
+    expect(p.outcome).toBe('clean');
+    expect(p.total).toBe(1);
+    expect(p.rows).toEqual(oneRow);
+    // The failed file still gets a source row (games: 0) so it isn't silently
+    // erased from the commit's own accounting, just not surfaced as a report.
+    expect(p.sources.map((s) => s.games)).toEqual([0, 1]);
+  });
+});
+
 const { games, tags, collections } = await import('../src/lib/stores/library.js');
-const { startImport, resetImporter, phase, notice } = await import('../src/lib/stores/importer.js');
+const { startImport, cancelImport, resetImporter, phase, notice } = await import('../src/lib/stores/importer.js');
 const { libraryConnection } = await import('$lib/data/session.js');
 const { objects } = await import('../src/lib/stores/settings.js');
 const { activeLibraryId } = await import('../src/lib/stores/libraries.js');
@@ -221,5 +301,107 @@ describe('the lane writes a real Paste import to the database', () => {
     expect(insertGames).not.toHaveBeenCalled();
     expect(get(phase)).toBe('done');
     expect(get(games)).toEqual([]);
+  });
+});
+
+describe('the lane reads a real File import and writes it to the database', () => {
+  beforeEach(() => {
+    games.set([]);
+    tags.set([]);
+    collections.set([]);
+    resetImporter();
+    libraryConnection.mockReset();
+    insertGames.mockReset();
+    for (const fn of [readGames, readFavoriteIds, readTrashedIds, readTags, readCollections, readTagIdsByGame, readCollectionIdsByGame]) {
+      fn.mockReset();
+      fn.mockImplementation(async () => (fn === readTagIdsByGame || fn === readCollectionIdsByGame ? {} : []));
+    }
+    objects.update((o) => ({
+      ...o,
+      databases: [
+        { id: 'db-1', name: 'Destination Library', location: '/tmp/db-1.db', enabled: true, status: 'indexed' },
+        { id: 7, name: 'Active Library', location: '/tmp/test.db', enabled: true, status: 'indexed' }
+      ]
+    }));
+    activeLibraryId.set(7);
+  });
+  afterEach(() => resetImporter());
+
+  const flush = () => new Promise((resolve) => {
+    const unsub = phase.subscribe((p) => { if (p === 'done') { unsub(); resolve(); } });
+  });
+
+  const fileRequest = (files, over = {}) => ({
+    tab: 'file', draft: fileDraft(files), outcome: 'real',
+    destination: 'db-1', duplicates: 'skip', tags: [], collections: [],
+    ...over
+  });
+
+  it('reads the picked file for real and inserts its parsed rows into the destination', async () => {
+    const connection = {};
+    libraryConnection.mockResolvedValue(connection);
+    insertGames.mockResolvedValue([
+      { id: 601, date: null, white: 'Carlsen, Magnus', whiteElo: 2830, black: 'Nepomniachtchi, Ian',
+        blackElo: null, event: 'Test Open', result: '1-0', plyCount: null, createdAt: 'now' }
+    ]);
+
+    expect(startImport(fileRequest([fileStub('one.pgn', ONE_GAME)]))).toBe(true);
+    // Disabled the moment commit happens, before the file's own text() ever settles.
+    expect(get(phase)).toBe('writing');
+    await flush();
+
+    expect(insertGames).toHaveBeenCalledWith(connection, expect.arrayContaining([
+      expect.objectContaining({ pgn: ONE_GAME, white: 'Carlsen, Magnus' })
+    ]));
+    expect(libraryConnection).toHaveBeenCalledWith('db-1');
+    expect(get(phase)).toBe('done');
+    expect(get(notice).kind).toBe('clean');
+  });
+
+  it('reads several files in one import and inserts every game from all of them', async () => {
+    const connection = {};
+    libraryConnection.mockResolvedValue(connection);
+    insertGames.mockImplementation(async (_c, rows) => rows.map((r, i) => ({ id: 700 + i, ...r })));
+
+    const second = '[Event "E2"]\n[White "Ding, Liren"]\n\n1. d4 *';
+    expect(startImport(fileRequest([fileStub('a.pgn', ONE_GAME), fileStub('b.pgn', second)]))).toBe(true);
+    await flush();
+
+    expect(insertGames).toHaveBeenCalledWith(connection, expect.arrayContaining([
+      expect.objectContaining({ white: 'Carlsen, Magnus' }),
+      expect.objectContaining({ white: 'Ding, Liren' })
+    ]));
+    expect(get(notice).plan.added).toBe(2);
+  });
+
+  it('reports the File error outcome when the only file chosen fails to open, and writes nothing', async () => {
+    expect(startImport(fileRequest([failingFileStub('gone.pgn')]))).toBe(true);
+    await flush();
+
+    expect(insertGames).not.toHaveBeenCalled();
+    expect(get(notice).kind).toBe('attention');
+    expect(get(notice).plan.outcome).toBe('file');
+  });
+
+  it('cancelling mid-read: the read still settles, but its result is dropped rather than written', async () => {
+    let resolveText;
+    const slowFile = {
+      name: 'slow.pgn', size: 10,
+      text: () => new Promise((resolve) => { resolveText = resolve; })
+    };
+    libraryConnection.mockResolvedValue({});
+
+    expect(startImport(fileRequest([slowFile]))).toBe(true);
+    expect(get(phase)).toBe('writing');
+
+    expect(cancelImport()).toBe(true);
+    expect(get(phase)).toBe('done');
+    expect(get(notice).kind).toBe('cancelled');
+
+    resolveText(ONE_GAME);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(insertGames).not.toHaveBeenCalled();
+    expect(get(notice).kind).toBe('cancelled');   // the late read did not overwrite the cancel notice
   });
 });

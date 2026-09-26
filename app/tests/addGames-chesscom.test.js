@@ -57,8 +57,8 @@ describe('resolveOutcome — real now applies to Online too', () => {
   it('resolves on Online, same as Paste', () => {
     expect(resolveOutcome('online', 'real')).toBe('real');
   });
-  it('still falls back to no-games-found on File, which has no real path yet', () => {
-    expect(resolveOutcome('file', 'real')).toBe('none');
+  it('also resolves on File, which now has its own real path too', () => {
+    expect(resolveOutcome('file', 'real')).toBe('real');
   });
 });
 

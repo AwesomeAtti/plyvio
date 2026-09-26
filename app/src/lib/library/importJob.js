@@ -21,11 +21,11 @@ import { gameRowsFromPgnText } from '$lib/pgn/importPgn.js';
  *
  * `real` means what it says: actually read what was given, no simulation.
  * It is first because it is the ordinary state now that a real path exists
- * for Paste (`planRealPasteImport`, below) and for Online-via-Chess.com
- * (`planRealOnlineImport`, plus the fetch in `import/sources/chesscom.js`)
- * -- File, and Online via any other source, still have none, so
- * `OUTCOME_APPLIES` keeps `real` off File, and `planImport` falls back to
- * `none` for a "real" Online import that isn't Chess.com.
+ * for Paste (`planRealPasteImport`, below), File (`planRealFileImport`,
+ * below) and Online-via-Chess.com (`planRealOnlineImport`, plus the fetch in
+ * `import/sources/chesscom.js`) -- Online via any other source still has
+ * none, so `planImport` falls back to `none` for a "real" Online import
+ * that isn't Chess.com.
  *
  * The other five remain what they always were: a real importer derives its
  * result from the PGN, and until every tab (and, for Online, every source)
@@ -41,7 +41,7 @@ export const DEFAULT_OUTCOME = 'clean';
 
 /** Which tabs each outcome can actually occur on. */
 const OUTCOME_APPLIES = {
-  real:     ['paste', 'online'],           // File: no real path yet
+  real:     ['file', 'paste', 'online'],
   clean:    ['file', 'online', 'paste'],
   problems: ['file', 'online', 'paste'],
   none:     ['file', 'online', 'paste'],
@@ -247,11 +247,74 @@ export function planRealOnlineImport({ sourceDescription, rows, destination, dup
   };
 }
 
+/**
+ * File, for real -- same shape as `planRealOnlineImport`, for the same
+ * reason: reading a `File` is async (`file.text()`), so by the time this
+ * runs the read has already happened in `stores/importer.js`'s
+ * `runRealFileImport`, which is also where `applyImportRules` runs, per
+ * source, before the rows ever reach here.
+ *
+ * `results` is `[{ file, rows, failed }]`, one entry per `draft.files`, in
+ * the order they were chosen. `sources` is built from every entry --
+ * including a failed one, with `games: 0` -- so a whole-import failure
+ * (every file failed) still has a name to show (`outcomeMessage` reads
+ * `sources[0]`), the same as Online's own empty-account case.
+ *
+ * A file that fails to open among others that succeed contributes nothing
+ * and is not separately reported -- the same leniency `gameRowsFromPgnText`
+ * already gives one unreadable game inside a file that DID open. §4.4.5's
+ * own rule ("an import fails as a whole only when every source failed")
+ * only asks for a whole-import outcome when nothing could be read at all.
+ */
+export function planRealFileImport({ results, destination, duplicates, tags, collections }) {
+  const seed = 900000 + (++jobSeq) * 7919;
+  const sources = results.map(({ file, rows }) => ({
+    kind: 'file', label: file.name, detail: formatBytes(file.size), games: rows.length
+  }));
+
+  const allFailed = results.length > 0 && results.every((r) => r.failed);
+  if (allFailed) {
+    return {
+      tab: 'file', sources, destination, duplicates, tags, collections, seed,
+      outcome: 'file',
+      total: 0, added: 0, skipped: 0, failures: [],
+      failedSources: sources.map((s) => ({ ...s, errorKind: 'file' })),
+      download: false, rows: []
+    };
+  }
+
+  const rows = results.filter((r) => !r.failed).flatMap((r) => r.rows);
+
+  if (!rows.length) {
+    return {
+      tab: 'file', sources, destination, duplicates, tags, collections, seed,
+      outcome: 'none',
+      total: 0, added: 0, skipped: 0, failures: [], failedSources: [],
+      download: false, rows: []
+    };
+  }
+
+  return {
+    tab: 'file', sources, destination, duplicates, tags, collections, seed,
+    outcome: 'clean',
+    total: rows.length, added: rows.length, skipped: 0, failures: [], failedSources: [],
+    download: false, rows
+  };
+}
+
 export function planImport({ tab, draft, outcome, destination, duplicates, tags, collections }) {
   let resolved = resolveOutcome(tab, outcome);
 
   if (resolved === 'real' && tab === 'paste') {
     return planRealPasteImport({ draft, destination, duplicates, tags, collections });
+  }
+
+  /* File's real path needs its `File` objects read first (`file.text()` is
+     async), which can't happen in this synchronous function -- a marker,
+     resolved in `stores/importer.js`'s `runRealFileImport`, the same shape
+     as the Online marker just below. */
+  if (resolved === 'real' && tab === 'file') {
+    return { needsFileRead: true, draft, destination, duplicates, tags, collections };
   }
 
   /* Online's real path exists only for Chess.com so far (`import/sources/

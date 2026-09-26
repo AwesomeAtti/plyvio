@@ -44,7 +44,7 @@
   /* ---------------- draft state, one per tab (S-1) ------------------- */
 
   let tab = $state('file');
-  let files = $state([]);            // File objects; never read
+  let files = $state([]);            // File objects, read for real on commit (stores/importer.js)
   let text = $state('');
   let source = $state('chesscom');
   let username = $state('');
