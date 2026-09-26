@@ -31,6 +31,17 @@
  * (`stores/game.js`), and nothing above this module changes for that to
  * keep working.
  *
+ * A fourth platform quirk, found by hand on Safari, 26 Sep: Safari's OPFS
+ * `getFile()` hands back a `.wasm` file's Blob with an empty `type`, where
+ * Chrome infers `application/wasm` from the extension on its own. A blob:
+ * URL's fetched Content-Type is exactly the Blob's own `type`, and the
+ * downloaded engine's own glue code calls `WebAssembly.instantiateStreaming()`
+ * on that fetch, which WebKit rejects outright when the type isn't exactly
+ * `application/wasm` ("Unexpected response MIME type. Expected
+ * 'application/wasm'"). `resolveUrlsOpfs` now re-types the wasm Blob with
+ * `slice()` before making its URL -- a zero-copy view over the same bytes,
+ * so it costs nothing on Chrome, where this was already correct.
+ *
  * Every file the package contained is kept — engine script, `.wasm`,
  * licence, README — not just the two the Worker loads, so an installed
  * engine carries its own attribution locally too (see the plan's "Source
@@ -71,6 +82,8 @@ async function writeFilesOpfs(id, files) {
   }
 }
 
+const WASM_MIME = 'application/wasm';
+
 async function resolveUrlsOpfs(id) {
   const dir = await opfsEngineDir(id);
   let script = null;
@@ -79,9 +92,15 @@ async function resolveUrlsOpfs(id) {
     if (handle.kind !== 'file') continue;
     if (!name.endsWith(SCRIPT_EXT) && !name.endsWith(WASM_EXT)) continue;
     const file = await handle.getFile();
-    const url = URL.createObjectURL(file);
-    if (name.endsWith(SCRIPT_EXT)) script = url;
-    else wasm = url;
+    if (name.endsWith(SCRIPT_EXT)) {
+      script = URL.createObjectURL(file);
+    } else {
+      // Safari/WebKit's OPFS getFile() doesn't infer application/wasm from
+      // the extension the way Chrome does (see this file's header) --
+      // slice() with no byte range re-types the same underlying bytes with
+      // no copy.
+      wasm = URL.createObjectURL(file.slice(0, file.size, WASM_MIME));
+    }
   }
   return { script, wasm };
 }
