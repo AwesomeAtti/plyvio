@@ -9,13 +9,13 @@ import { SECTIONS, DEFAULT_VISIBILITY } from '$lib/game/sections.js';
 import { explorerRows, positionGames, explorerHeight, positionKey } from '$lib/game/explorer.js';
 import { explorerLibraries, positionStats } from '$lib/game/explorerMock.js';
 import {
-  engineSources, engineHeight, clampLines, clampDepth,
+  engineSources, engineHeight, clampLines, clampDepth, isRealEngine,
   ENGINE_DEFAULT_LINES, ENGINE_DEFAULT_DEPTH
 } from '$lib/game/engine.js';
 import { analyse, hasLegalMoves, legalMoveCount } from '$lib/game/engineMock.js';
 import { createEngineSession } from '$lib/engine/session.js';
 import { createWorkerTransport } from '$lib/engine/workerTransport.js';
-import { isBuiltinEngine, builtinEngineUrls } from '$lib/engine/builtin.js';
+import { getEngineUrls } from '$lib/engine/storage.js';
 import { objects } from './settings.js';
 import {
   games as libraryGames, tags as libraryTags, collections as libraryCollections,
@@ -656,22 +656,33 @@ const engineKeyFor = (st, sourceId, fen) =>
 export const engineAnalysis = writable({});
 
 /*
-  One engine for the app (`engine/session.js`), created the first time a
-  search is wanted. `setEngineTransport` swaps what it talks to — the tests'
-  scripted engine, or the real one under Node — and drops any session
-  already running.
+  One engine session at a time, bound to whichever REAL engine is currently
+  selected (`engineEntityId`) — engine Stage 2 replaces Stage 1's single fixed
+  built-in engine with zero or more installed ones (`kind: 'wasm'` rows), so
+  the session can no longer be created once and reused forever the way Stage
+  1's was: it is recreated (`engineSessionFor`) whenever the selected real
+  engine's id changes, the same way `setEngineTransport` (tests only) already
+  dropped it on an override.
 */
 const workerTransport = (handlers) => {
-  const { script, wasm } = builtinEngineUrls();
+  const { script, wasm } = getEngineUrls(engineEntityId) ?? {};
   return createWorkerTransport(script, wasm, handlers);
 };
 let engineTransport = workerTransport;
 let engine = null;
-const engineSession = () => (engine ??= createEngineSession({ createTransport: engineTransport }));
+let engineEntityId = null;
+const engineSessionFor = (id) => {
+  if (engine && engineEntityId === id) return engine;
+  engine?.dispose();
+  engineEntityId = id;
+  engine = createEngineSession({ createTransport: engineTransport });
+  return engine;
+};
 
 export function setEngineTransport(createTransport = workerTransport) {
   engine?.dispose();
   engine = null;
+  engineEntityId = null;
   lastEngineRequest = null;
   engineTransport = createTransport;
 }
@@ -689,11 +700,12 @@ const engineRequest = derived(
     const st = $s[$id];
     if (!st?.engineOn) return null;
     const source = engineSourceFor(st, $objects?.engines);
-    if (!source || !isBuiltinEngine(source.id)) return null;
+    if (!source || !isRealEngine(source)) return null;
     const fen = currentNode(st, mergedTreeForState(st)).ply?.f;
     if (!fen || !hasLegalMoves(fen)) return null;
     return {
       tabId: $id,
+      sourceId: source.id,
       key: engineKeyFor(st, source.id, fen),
       fen,
       lines: st.engineLines,
@@ -717,9 +729,9 @@ engineRequest.subscribe((req) => {
     engine?.stop();
     return;
   }
-  const { tabId, key } = req;
+  const { tabId, key, sourceId } = req;
   engineAnalysis.update((s) => ({ ...s, [tabId]: { key, status: 'searching', rows: [] } }));
-  engineSession().search(req, ({ status, rows }) => {
+  engineSessionFor(sourceId).search(req, ({ status, rows }) => {
     engineAnalysis.update((s) =>
       s[tabId]?.key === key ? { ...s, [tabId]: { key, status, rows } } : s
     );
@@ -825,14 +837,16 @@ export const activeGame = derived(
   /*
     The Engine Section's live view of the position on the board.
 
-    TWO KINDS OF ENGINE, one row shape (Stage 1 of `engine-stage1-plan.md`).
-    The built-in engine really searches: `engineRequest` above starts it for
-    the active tab, and its rows arrive in `engineAnalysis`, read here only
-    when they are about the position on the board now. Every other engine in
-    the list is still mock — Settings' Installed rows are simulated until
-    Stage 3 gives desktop engines a transport — so its rows are computed on
-    the spot by `engineMock.js`'s `analyse`, as before. Nothing below this
-    block knows which kind it is looking at.
+    TWO KINDS OF ENGINE, one row shape (Stage 1 of `engine-stage1-plan.md`,
+    generalized in Stage 2 of `engine-stage2-plan.md`). A real, installed
+    engine (`kind: 'wasm'` today; native ones join it in Stage 3) really
+    searches: `engineRequest` above starts it for the active tab, and its
+    rows arrive in `engineAnalysis`, read here only when they are about the
+    position on the board now. Every other engine in the list is still mock —
+    Settings' native Installed rows are simulated until Stage 3 gives them a
+    transport — so its rows are computed on the spot by `engineMock.js`'s
+    `analyse`, as before. Nothing below this block knows which kind it is
+    looking at.
 
     What is stored besides: whether the switch is on and, once it has been
     turned off, the ROWS that were on screen (`engineHold`, Q8). A real search
@@ -852,7 +866,7 @@ export const activeGame = derived(
   */
   const engineLines = !engineRunning
     ? (engineSource && hold ? hold.rows ?? [] : [])
-    : isBuiltinEngine(engineSource.id)
+    : isRealEngine(engineSource)
       ? liveEngineRows($engineAnalysis[$id], st, engineSource.id, node.ply?.f)
       : analyse(node.ply?.f, { engineId: engineSource.id, lines: st.engineLines, depth: st.engineDepth });
 
@@ -1194,10 +1208,10 @@ export function setEngineOn(tabId, on) {
     if (!source) return { engineOn: false, engineHold: null };
     if (on) return { engineOn: true, engineHold: null };
     if (!cur.engineOn) return {};
-    /* Freeze exactly what the Section is showing: the built-in engine's
-       latest rows for this position, or the mock's. */
+    /* Freeze exactly what the Section is showing: a real engine's latest
+       rows for this position, or the mock's. */
     const fen = currentNode(cur, mergedTreeForState(cur)).ply?.f;
-    const rows = isBuiltinEngine(source.id)
+    const rows = isRealEngine(source)
       ? liveEngineRows(analysis, cur, source.id, fen)
       : analyse(fen, { engineId: source.id, lines: cur.engineLines, depth: cur.engineDepth });
     return {

@@ -80,16 +80,23 @@ export const engineLabel = (e) => [e?.name, e?.version].filter(Boolean).join(' '
  * there, `ready && enabled` here — so one switch in Settings governs whether an
  * object is offered to the workspace at all.
  *
- * The built-in engine (`engine/builtin.js`) is offered FIRST wherever it sits
- * in the list, so a tab that has never picked an engine gets the one that
- * really runs. A rule rather than an accident of order: desktop appends it
- * after `config.db`'s rows. Everything else keeps Settings' order.
+ * `kind` rides along (`'wasm' | 'native'`) so callers can tell a real,
+ * searchable engine from a still-mocked one without re-deriving it —
+ * engine Stage 2, 26 Sep 2026, replacing the old `isBuiltinEngine(id)`
+ * special case (Stage 1 had exactly one hard-coded real engine; Stage 2 can
+ * have zero or more real `kind: 'wasm'` rows, so "is this real" moved from a
+ * fixed id to a fact about the row). No more built-in-first sort, either —
+ * that existed only because Stage 1's one real engine had to be findable as
+ * a sensible default; nothing is pinned to the front any more, and Settings'
+ * own order (`config.db`'s `order by id`) is left alone.
  */
 export const engineSources = (engines = []) =>
   (engines ?? [])
     .filter((e) => e.status === 'ready' && e.enabled)
-    .sort((a, b) => Number(!!b.builtin) - Number(!!a.builtin))
-    .map((e) => ({ id: e.id, name: engineLabel(e), protocol: e.protocol ?? 'UCI' }));
+    .map((e) => ({ id: e.id, name: engineLabel(e), protocol: e.protocol ?? 'UCI', kind: e.kind }));
+
+/** Whether a source from `engineSources()` is real and searchable (Stage 2: `kind: 'wasm'` only; Stage 3 adds native). */
+export const isRealEngine = (source) => source?.kind === 'wasm';
 
 /**
  * Q2 — the Section cannot be on without an engine selected. One place decides

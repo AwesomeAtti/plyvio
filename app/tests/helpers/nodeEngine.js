@@ -1,6 +1,16 @@
 /**
- * The REAL bundled engine, under Node — `static/engines/stockfish-19-lite/`,
- * run as a child process, in the transport shape `engine/session.js` uses.
+ * The REAL engine, under Node, run as a child process in the transport shape
+ * `engine/session.js` uses — the same `.js`/`.wasm` pair Settings → Engines
+ * installs (engine Stage 2), as a committed test fixture rather than a live
+ * download or Stage 1's app-bundled copy (`static/engines/`, retired).
+ *
+ * `fixtures/stockfish-19-lite-wasm-single/` was downloaded once from the live
+ * `engines-v1` release and its SHA-256 checked against the manifest's pinned
+ * hash (`settings/engines.js`'s `WASM_ENGINES[0].sha256`) before being
+ * unzipped and committed — not fetched on every test run, so this suite
+ * stays fast and offline. Refresh it the same way (download, verify, unzip,
+ * replace these two files) only if the manifest's `assetUrl`/`sha256` ever
+ * changes to a new build.
  *
  * Stockfish.js runs as a UCI program on stdin/stdout when Node runs it as
  * the main script. The two files are copied, byte for byte, into a temp
@@ -14,7 +24,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../static/engines/stockfish-19-lite');
+const DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../fixtures/stockfish-19-lite-wasm-single');
 const NAME = 'stockfish-19-lite-single';
 
 export function nodeEngineTransport() {

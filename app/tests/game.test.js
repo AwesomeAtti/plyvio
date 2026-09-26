@@ -41,8 +41,7 @@ import {
   seedDraftGame, engineAnalysis, setEngineTransport, playMove
 } from '../src/lib/stores/game.js';
 import { createFakeEngine, settle } from './helpers/fakeEngine.js';
-import { setEngineEnabled } from '../src/lib/stores/settings.js';
-import { BUILTIN_ENGINE_ID } from '$lib/engine/builtin.js';
+import { objects, setEngineEnabled } from '../src/lib/stores/settings.js';
 import { games as libraryGames } from '../src/lib/stores/library.js';
 import { activeLibraryId } from '../src/lib/stores/libraries.js';
 
@@ -1134,15 +1133,29 @@ describe('Engine Section', () => {
   });
 });
 
-/* ================= the Engine Section — the built-in engine ============== */
+/* ================= the Engine Section — a real (WASM) engine =========== */
 
-describe('Engine Section — the built-in engine (Stage 1)', () => {
+describe('Engine Section — a real, installed WASM engine (Stage 2)', () => {
   /*
-    The bundled Stockfish WASM engine, driven through the store exactly as the
-    Section drives it. The engine itself is scripted (`helpers/fakeEngine.js`)
-    and says only what the real one said for the same position
-    (`fixtures/stockfish-uci.json`); `engine-real.test.js` runs the real one.
+    A real, installed WASM engine, driven through the store exactly as the
+    Section drives it. Stage 2 (`engine-stage2-plan.md`) retires Stage 1's
+    always-seeded built-in row — nothing is pre-seeded any more — so this
+    describe block seeds its own `kind: 'wasm'` row (`REAL_ENGINE`) into
+    `objects.engines` instead of relying on one being there by default: the
+    same shape a real installed row has once `loadEngines()` reads it back
+    from `config.db`, minus the parts (`config.db`, OPFS/Tauri storage) these
+    tests have no reason to touch. A STRING id, deliberately — `setEngineEnabled`
+    and friends only persist for a numeric (real, `config.db`-backed) id, and
+    these tests want no such write attempted. The engine itself is scripted
+    (`helpers/fakeEngine.js`) and says only what the real one said for the
+    same position (`fixtures/stockfish-uci.json`); `engine-real.test.js` runs
+    the real one.
   */
+  const REAL_ENGINE_ID = 'engine-stage2-test-real';
+  const REAL_ENGINE = Object.freeze({
+    id: REAL_ENGINE_ID, name: 'Stockfish', version: '19 lite', status: 'ready',
+    protocol: 'UCI', kind: 'wasm', threads: 1, threadsMax: 1, hashMb: 32, enabled: true
+  });
   const FIXTURE = JSON.parse(readSrc('./fixtures/stockfish-uci.json'));
   const CASE = Object.fromEntries(FIXTURE.cases.map((c) => [c.name, c]));
   const BLACK = CASE['black-to-move-multipv2'];     // 1. e4 e5 2. Nf3, Black to move
@@ -1154,10 +1167,14 @@ describe('Engine Section — the built-in engine (Stage 1)', () => {
   beforeEach(() => {
     fake = createFakeEngine();
     setEngineTransport(fake.createTransport);
+    objects.update((o) => ({
+      ...o,
+      engines: [{ ...REAL_ENGINE }, ...o.engines.filter((e) => e.id !== REAL_ENGINE_ID)]
+    }));
   });
   afterEach(() => {
     resetGameState();                  // no tab asking for a search…
-    setEngineEnabled(BUILTIN_ENGINE_ID, true);
+    objects.update((o) => ({ ...o, engines: o.engines.filter((e) => e.id !== REAL_ENGINE_ID) }));
     setEngineTransport();              // …before the real transport is back
   });
 
@@ -1172,9 +1189,9 @@ describe('Engine Section — the built-in engine (Stage 1)', () => {
 
   it('is the default engine, and the first the picker offers', () => {
     openAt(BLACK);
-    expect(view().source.id).toBe(BUILTIN_ENGINE_ID);
+    expect(view().source.id).toBe(REAL_ENGINE_ID);
     expect(view().source.name).toBe('Stockfish 19 lite');
-    expect(view().sources[0].id).toBe(BUILTIN_ENGINE_ID);
+    expect(view().sources[0].id).toBe(REAL_ENGINE_ID);
     // The mock rows are still offered after it, unchanged.
     expect(view().sources.map((s) => s.id)).toContain('engine-1');
   });
@@ -1347,9 +1364,9 @@ describe('Engine Section — the built-in engine (Stage 1)', () => {
     setEngineOn('w1', true);
     await settle();
     fake.take();
-    setEngineEnabled(BUILTIN_ENGINE_ID, false);
+    setEngineEnabled(REAL_ENGINE_ID, false);
     expect(fake.take()).toEqual(['stop']);
-    expect(view().sources.map((s) => s.id)).not.toContain(BUILTIN_ENGINE_ID);
+    expect(view().sources.map((s) => s.id)).not.toContain(REAL_ENGINE_ID);
     expect(view().source.id).toBe('engine-1');
   });
 
