@@ -64,6 +64,7 @@ import {
   writePreference
 } from '../src/lib/data/index.js';
 import { plyCount, readMovetext, writeMovetext } from '../src/lib/pgn/movetext.js';
+import { readRecordFields } from '../src/lib/data/games.js';
 
 const samples = resolve(dirname(fileURLToPath(import.meta.url)), '../../samples');
 const bytesOf = (name) => new Uint8Array(readFileSync(resolve(samples, name)));
@@ -279,8 +280,8 @@ suite('a game database through the seam', () => {
     const page = await readGames(games, { limit: 5 });
     expect(page).toHaveLength(5);
     expect(Object.keys(page[0])).toEqual([
-      'id', 'date', 'white', 'whiteElo', 'black', 'blackElo', 'event', 'result', 'plyCount',
-      'createdAt'
+      'id', 'date', 'white', 'whiteElo', 'black', 'blackElo', 'event', 'timeControl', 'result',
+      'plyCount', 'createdAt'
     ]);
   });
 
@@ -302,6 +303,21 @@ suite('insertGame / insertGames — writing', () => {
   it('requires pgn, and nothing else', async () => {
     const db = await fresh();
     await expect(insertGame(db, { event: 'No PGN' })).rejects.toThrow(/pgn/);
+    await db.close();
+  });
+
+  it('carries time_control to the list row and time_class to the record fields', async () => {
+    const db = await fresh();
+    const [inserted] = await insertGames(db, [{
+      pgn: '[TimeControl "180+2"]\n\n*', time_control: '180+2', time_class: 'blitz',
+      site: 'Chess.com', created_at: 'now'
+    }]);
+    expect(inserted.timeControl).toBe('180+2');
+
+    const page = await readGames(db, { limit: 5000 });
+    expect(page.find((g) => g.id === inserted.id).timeControl).toBe('180+2');
+    expect(await readRecordFields(db, inserted.id))
+      .toEqual({ site: 'Chess.com', round: null, time_class: 'blitz' });
     await db.close();
   });
 

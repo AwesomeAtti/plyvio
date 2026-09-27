@@ -21,6 +21,7 @@ import {
   activeLibraryConnection, loadGames
 } from './library.js';
 import { known, ratingText, resultText, infoContentHeight } from '$lib/game/info.js';
+import { formatTimeControl, TIME_CLASSES } from '$lib/pgn/timeControl.js';
 import {
   readMovetextFor, writeMovetextFor, updateGameFields, readRecordFields, readPositionStats,
   findOrCreateTag, addTagToGame, removeTagFromGame,
@@ -117,7 +118,7 @@ const readsRealGame = (st) => st.realGame ?? isRealGameId(st.libraryGameId);
  * (`activeGame` below, `record = row ?? game`), because those columns are
  * already loaded by `loadGames()`. The board, move list and engine banner
  * need the full movetext, which is not: `games.movetext`/`games.pgn` are not
- * columns `readGames()` selects (§3.2.4.2's eight are list columns, not the
+ * columns `readGames()` selects (§3.2.4.2's nine are list columns, not the
  * document), so they need their own fetch, once per game, on demand rather
  * than up front for every row the Library lists.
  *
@@ -135,7 +136,10 @@ const readsRealGame = (st) => st.realGame ?? isRealGameId(st.libraryGameId);
  *  for a blank movetext, reused rather than hand-written a second time —
  *  plus `site`/`round` unset, the same "don't know yet" as everything else
  *  here until the fetch below lands. */
-const EMPTY_REAL_GAME = { ...readGame(''), site: null, round: null };
+/** A stored `time_class`, or null for one outside database-schema.md §2.3's five. */
+const timeClassOf = (value) => (TIME_CLASSES.includes(value) ? value : null);
+
+const EMPTY_REAL_GAME = { ...readGame(''), site: null, round: null, timeClass: null };
 
 export const realGames = writable(new Map());
 
@@ -175,14 +179,15 @@ function loadRealGame(libraryGameId) {
         shouldn't go to the empty/error state just because its Round didn't.
         They degrade to `null`, the same as a game that genuinely has none.
       */
-      let record = { site: null, round: null };
+      let record = { site: null, round: null, time_class: null };
       try {
         record = await readRecordFields(connection, libraryGameId);
       } catch (fieldErr) {
-        console.error(`Plyvio: failed to load site/round for game ${libraryGameId}`, fieldErr);
+        console.error(`Plyvio: failed to load site/round/time class for game ${libraryGameId}`, fieldErr);
       }
       realGames.update((m) => new Map(m).set(libraryGameId, {
-        status: 'ready', ...parsed, site: record.site ?? null, round: record.round ?? null
+        status: 'ready', ...parsed, site: record.site ?? null, round: record.round ?? null,
+        timeClass: record.time_class ?? null
       }));
     } catch (err) {
       console.error(`Plyvio: failed to load game ${libraryGameId}`, err);
@@ -896,12 +901,13 @@ export const activeGame = derived(
     : [];
 
   /*
-    Record fields the Info card draws. `site`/`round` are the two §1 fields
-    `row` (the library row, built from `readGames()`'s eight list columns)
-    never carries, real game or not — they come from `real` instead, the
-    same per-game fetch that loaded the movetext, for a real game; the mock
-    row for everything else. A null here is a game that genuinely has no
-    Round, not a fallback — see `readRecordFields`.
+    Record fields the Info card draws. `site`/`round`/`time_class` are the
+    §1 fields `row` (the library row, built from `readGames()`'s nine list
+    columns) never carries, real game or not — they come from `real`
+    instead, the same per-game fetch that loaded the movetext, for a real
+    game; the mock row for everything else. A null here is a game that
+    genuinely has no Round, not a fallback — see `readRecordFields`.
+    `time_control` is a list column, so it comes off `record` like Event.
   */
   /* `pendingInfo` (Stage 1 of `analysis-board-plan.md`) overlays the Edit
      dialog's own unsaved edits onto whichever base is real — the library
@@ -920,6 +926,8 @@ export const activeGame = derived(
     site: known(real ? real.site : game.site),
     event: known(record.event),
     round: known(real ? real.round : game.round),
+    timeControl: formatTimeControl(record.timeControl ?? record.time_control),
+    timeClass: timeClassOf(real ? real.timeClass : game.time_class),
     favorite: !!row?.favorite,
     chips,
     hasRow: !!row

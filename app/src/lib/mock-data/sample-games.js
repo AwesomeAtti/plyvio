@@ -1120,6 +1120,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.09.01", round: "?", result: "1-0",
     eco: "A45",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1154,6 +1155,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "1-0",
     eco: "B00",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1188,6 +1190,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "1-0",
     eco: "D24",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1222,6 +1225,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "0-1",
     eco: "C10",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1256,6 +1260,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "1-0",
     eco: "C45",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1290,6 +1295,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "1-0",
     eco: "D20",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1324,6 +1330,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "1-0",
     eco: "A45",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1358,6 +1365,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "1-0",
     eco: "D00",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1392,6 +1400,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "1-0",
     eco: "A45",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1426,6 +1435,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "0-1",
     eco: "A40",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1460,6 +1470,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "1-0",
     eco: "A18",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1494,6 +1505,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "0-1",
     eco: "B48",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1528,6 +1540,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "1-0",
     eco: "A45",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1562,6 +1575,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.31", round: "?", result: "0-1",
     eco: "C01",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1596,6 +1610,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.28", round: "?", result: "1/2-1/2",
     eco: "B54",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1630,6 +1645,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.28", round: "?", result: "1-0",
     eco: "E06",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1664,6 +1680,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.28", round: "?", result: "0-1",
     eco: "A81",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1698,6 +1715,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.28", round: "?", result: "0-1",
     eco: "A14",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1732,6 +1750,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.28", round: "?", result: "1/2-1/2",
     eco: "C03",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1766,6 +1785,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.28", round: "?", result: "1-0",
     eco: "A45",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1800,6 +1820,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "0-1",
     eco: "A40",
+    time_control: "60",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1835,6 +1856,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "1-0",
     eco: "B08",
+    time_control: "60",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1870,6 +1892,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "0-1",
     eco: "B06",
+    time_control: "60",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1905,6 +1928,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "1/2-1/2",
     eco: "B43",
+    time_control: "60",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1940,6 +1964,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "0-1",
     eco: "B52",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -1974,6 +1999,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "0-1",
     eco: "A46",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -2008,6 +2034,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "0-1",
     eco: "B06",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -2042,6 +2069,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "1-0",
     eco: "A43",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -2076,6 +2104,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "0-1",
     eco: "B06",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]
@@ -2110,6 +2139,7 @@ Now the attack wins.} 26. Ke1 Qf3 0-1`
     event: "Live Chess", site: "Chess.com",
     date: "2026.08.01", round: "?", result: "1-0",
     eco: "D02",
+    time_control: "180",
     ply_count: null,
     movetext: null,
     pgn: `[Event "Live Chess"]

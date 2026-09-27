@@ -97,6 +97,7 @@ export function realRows() {
       black_elo: g.black_elo,
       event: g.event,
       round: g.round,
+      time_control: g.time_control,
       result: g.result,
       ply_count: g.ply_count,
       favorite: false,

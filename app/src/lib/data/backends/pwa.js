@@ -34,7 +34,7 @@ import { computePositions } from '../../game/buildPositions.js';
  */
 const SEED_COLUMNS = [
   'id', 'pgn', 'event', 'site', 'date', 'round', 'white', 'black', 'result',
-  'white_elo', 'black_elo', 'eco', 'ply_count', 'movetext', 'created_at'
+  'white_elo', 'black_elo', 'eco', 'time_control', 'ply_count', 'movetext', 'created_at'
 ];
 
 /**
