@@ -143,6 +143,7 @@ export { default as EngineOn }  from '@lucide/svelte/icons/toggle-right';
  */
 export { default as GameDate }  from '@lucide/svelte/icons/calendar';
 export { default as GameSite }  from '@lucide/svelte/icons/map-pin';
+export { default as GameTimeControl } from '@lucide/svelte/icons/timer';
 export { default as EditIcon }  from '@lucide/svelte/icons/pencil';
 
 export { default as SectionToggle }   from '@lucide/svelte/icons/power';

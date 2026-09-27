@@ -4,10 +4,10 @@
    *
    * THE SCOREBOARD CARD (GI-C5), ON THE PANEL'S ROW GRID.
    *
-   *   names                      who played
-   *   rating · result · rating   what happened
-   *   favourite · date · site    when and where
-   *   chips                      the user's marks, when there are any
+   *   names                               who played
+   *   rating · result · rating            what happened
+   *   favourite · date · site · time      when, where and how fast
+   *   chips                               the user's marks, when there are any
    *
    * The order is the ranking, literally: player names outrank result, which
    * outranks date played, which outranks location played. Ratings are drawn
@@ -23,12 +23,20 @@
   import { SECTION_ROW_H } from '$lib/game/layout.js';
   import { formatGameDate } from '$lib/game/info.js';
   import Icon from '$lib/components/Icon.svelte';
-  import { Favorites, GameDate, GameSite, TagIcon, Collection } from '$lib/icons.js';
+  import { Favorites, GameDate, GameSite, GameTimeControl, TagIcon, Collection } from '$lib/icons.js';
 
   let { info = null, onfavourite, onedittags } = $props();
 
   const date = $derived(formatGameDate(info?.date, (k) => $t(k)));
   const chips = $derived(info?.chips ?? []);
+
+  /* `3+0 · Blitz` — the speed class only beside a time control, never alone. */
+  const timeControl = $derived(
+    info?.timeControl
+      ? [info.timeControl, info.timeClass && $t(`game.info.timeClass.${info.timeClass}`)]
+          .filter(Boolean).join(' · ')
+      : null
+  );
 </script>
 
 <div class="gi" style="--row:{SECTION_ROW_H}px">
@@ -92,6 +100,14 @@
     <span class="mi" class:unknown={!info?.site}>
       <Icon icon={GameSite} size={13} />{info?.site ?? $t('game.info.siteUnknown')}
     </span>
+    <!-- Time control is drawn only when the record has one: unlike date and
+         site, most classical records never carried it, and a dimmed absence
+         on every such game would be noise, not information. -->
+    {#if timeControl}
+      <span class="mi" title={`${$t('game.info.timeControl')}: ${timeControl}`}>
+        <Icon icon={GameTimeControl} size={13} />{timeControl}
+      </span>
+    {/if}
   </div>
 
   {#if chips.length}
@@ -194,7 +210,7 @@
     white-space: nowrap;
   }
 
-  /* ------------------------------------------------ row 3, date and site */
+  /* ------------------------------ row 3, date, site and time control */
 
   .meta {
     justify-content: center;

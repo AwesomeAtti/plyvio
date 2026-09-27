@@ -15,7 +15,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { get } from 'svelte/store';
 
 const REAL_MOVETEXT = '1. e4 e5 2. Nf3 Nc6 3. Bb5 *';
-const REAL_RECORD = { site: 'Vienna Chess Arena', round: '3' };
+const REAL_RECORD = { site: 'Vienna Chess Arena', round: '3', time_class: 'rapid' };
 
 /*
  * `explorerConnection` isn't exercised here — it's the Explorer's own seam
@@ -161,6 +161,17 @@ describe('a real game’s Info card `site`/`round`', () => {
     const info = get(activeGame).info;
     expect(info.site).toBe(REAL_RECORD.site);
     expect(info.round).toBe(REAL_RECORD.round);
+    expect(info.timeClass).toBe('rapid');
+  });
+
+  it('drops a time class outside the schema’s five rather than drawing it', async () => {
+    readRecordFields.mockResolvedValue({ ...REAL_RECORD, time_class: 'correspondence' });
+    libraryConnection.mockResolvedValue({});
+    ensureGameState('t1', 42);
+    activeId.set('t1');
+    await flush();
+
+    expect(get(activeGame).info.timeClass).toBeNull();
   });
 
   it('shows null for a game that genuinely has none, not a fallback value', async () => {

@@ -3,7 +3,7 @@
 `src/lib/library/columns.js` holds the Content Table column model as pure
 functions, for the same reason `layout.js` does: vitest applies no stylesheets,
 so a computed width cannot be asserted. The model is swept across every width
-from 516px to 4000px in `library.test.js`.
+from 572px to 4000px in `library.test.js`.
 
 | | Min | Max | Behaviour |
 |---|---|---|---|
@@ -13,19 +13,20 @@ from 516px to 4000px in `library.test.js`.
 | Black | 90 | 180 | always identical to White |
 | Elo | 41 | 41 | fixed |
 | Event | 90 | none | absorbs everything the names do not take |
+| Time | 56 | 56 | fixed |
 | Res | 34 | 34 | fixed |
 | Mvs | 40 | 40 | fixed |
 
 ```
-surplus = available − 516
+surplus = available − 572
 White = Black = 90 + min(⌊surplus ÷ 2⌋, 90)
 Event = 90 + (surplus − 2 × name growth)
 ```
 
 Because Event is uncapped the columns always sum exactly to the available
 width, so **trailing whitespace cannot occur** and the table never scrolls
-sideways. The 516px minimum fits an 800px window with the 220px sidebar
-expanded, with 64px to spare.
+sideways. The 572px minimum fits an 800px window with the 220px sidebar
+expanded, with 8px to spare.
 
 **Cell padding is 6px between columns and 12px at the table's outer edges.**
 The extra 6px is part of the first and last columns' widths (`EDGE_EXTRA`),

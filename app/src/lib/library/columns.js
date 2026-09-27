@@ -9,6 +9,8 @@
  * against that bundled face; see fonts.css.
  */
 
+import { formatTimeControl } from '$lib/pgn/timeControl.js';
+
 export const PAD = 12;                 // 6px each side
 export const ADVANCE = 7.2;            // 0.600em at 12px
 
@@ -63,6 +65,8 @@ export const COLUMNS = [
   { key: 'black_elo', labelKey: 'col.elo',    header: 'Elo',   mono: true,  type: 'fixed', width: 41,
     a11yKey: 'col.blackElo' },
   { key: 'event',     labelKey: 'col.event',  header: 'Event', mono: false, type: 'event' },
+  { key: 'time_control', labelKey: 'col.timeShort', header: 'Time', mono: true, type: 'fixed', width: 56,
+    a11yKey: 'col.timeControl', format: (v) => formatTimeControl(v) ?? '' },
   { key: 'result',    labelKey: 'col.resultShort', header: 'Res', mono: true, type: 'fixed', width: 34,
     a11yKey: 'col.result', format: formatResult },
   { key: 'moves',     labelKey: 'col.movesShort',  header: 'Mvs', mono: true, type: 'fixed', width: 34 + EDGE_EXTRA,
@@ -103,14 +107,14 @@ export const cellValue = (row, column) => {
 
 export const FIXED_TOTAL = COLUMNS
   .filter((c) => c.type === 'fixed')
-  .reduce((a, c) => a + c.width, 0);                       // 246
+  .reduce((a, c) => a + c.width, 0);                       // 302
 
-export const TABLE_MIN = FIXED_TOTAL + NAME_MIN * 2 + EVENT_MIN;   // 516
+export const TABLE_MIN = FIXED_TOTAL + NAME_MIN * 2 + EVENT_MIN;   // 572
 
 /**
  * Distribute the available width.
  *
- *   surplus = available − 516
+ *   surplus = available − 572
  *   White = Black = 90 + min(⌊surplus ÷ 2⌋, 90)      capped at 180
  *   Event         = 90 + (surplus − 2 × name growth) no maximum
  *

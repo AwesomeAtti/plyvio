@@ -90,15 +90,15 @@ describe('library rows for games that exist', () => {
 /* ============================ column model ============================ */
 
 describe('§3.2.4.2 column sizing', () => {
-  it('the eight columns are in the specified order', () => {
+  it('the nine columns are in the specified order', () => {
     expect(COLUMNS.map((c) => c.key)).toEqual([
-      'date', 'white', 'white_elo', 'black', 'black_elo', 'event', 'result', 'moves'
+      'date', 'white', 'white_elo', 'black', 'black_elo', 'event', 'time_control', 'result', 'moves'
     ]);
   });
 
-  it('fixed columns total 246px and the table minimum is 516px', () => {
-    expect(FIXED_TOTAL).toBe(246);
-    expect(TABLE_MIN).toBe(516);
+  it('fixed columns total 302px and the table minimum is 572px', () => {
+    expect(FIXED_TOTAL).toBe(302);
+    expect(TABLE_MIN).toBe(572);
   });
 
   it('a drawn result is drawn as ½-½, whatever spelling the data holds', () => {
@@ -107,6 +107,20 @@ describe('§3.2.4.2 column sizing', () => {
     expect(cellValue({ result: '\u00bd-\u00bd' }, col)).toBe('\u00bd-\u00bd');
     expect(cellValue({ result: '1-0' }, col)).toBe('1-0');
     expect(cellValue({ result: '*' }, col)).toBe('*');
+  });
+
+  it('a time control is drawn in its compact form, and an absent one as nothing', () => {
+    const col = COLUMNS.find((c) => c.key === 'time_control');
+    expect(cellValue({ time_control: '180' }, col)).toBe('3+0');
+    expect(cellValue({ timeControl: '60+1' }, col)).toBe('1+1');   // a real row, camelCase
+    expect(cellValue({ time_control: '1/86400' }, col)).toBe('1d');
+    expect(cellValue({ time_control: null }, col)).toBe('');
+    expect(cellValue({ time_control: '-' }, col)).toBe('');
+  });
+
+  it('the Time column holds six mono characters — `120+30`', () => {
+    const col = COLUMNS.find((c) => c.key === 'time_control');
+    expect(col.width).toBeGreaterThanOrEqual(Math.ceil(6 * 7.2 + 12));
   });
 
   it('condensed headers are Res and Mvs', () => {
@@ -143,12 +157,12 @@ describe('§3.2.4.2 column sizing', () => {
   });
 
   it('names absorb growth first, then Event', () => {
-    expect(widths(580).name).toBe(122);        // 800px window
+    expect(widths(580).name).toBe(94);         // 800px window
     expect(widths(580).event).toBe(90);
-    expect(widths(696).name).toBe(180);        // 916px — names hit maximum
-    expect(widths(696).event).toBe(90);
+    expect(widths(752).name).toBe(180);        // 972px — names hit maximum
+    expect(widths(752).event).toBe(90);
     expect(widths(780).name).toBe(180);        // 1000px — Event now growing
-    expect(widths(780).event).toBe(174);
+    expect(widths(780).event).toBe(118);
   });
 
   it('trailing whitespace cannot occur', () => {
@@ -606,15 +620,17 @@ describe('§3.2.4.1 content toolbar', () => {
 });
 
 describe('§3.2.4.2 content table', () => {
-  it('renders the eight headers, with Res and Mvs condensed', () => {
+  it('renders the nine headers, with Time, Res and Mvs condensed', () => {
     const { container } = render(AppShell);
     const heads = [...container.querySelectorAll('.thead .hd')].map((e) => e.textContent.trim());
-    expect(heads.length).toBe(8);
+    expect(heads.length).toBe(9);
     expect(heads[0]).toContain('Date');
-    expect(heads[6]).toContain('Res');      // condensed label, full name for assistive technology
-    expect(heads[6]).toContain('Result');
-    expect(heads[7]).toContain('Mvs');
-    expect(heads[7]).toContain('Moves');
+    expect(heads[6]).toContain('Time');     // condensed label, full name for assistive technology
+    expect(heads[6]).toContain('Time control');
+    expect(heads[7]).toContain('Res');
+    expect(heads[7]).toContain('Result');
+    expect(heads[8]).toContain('Mvs');
+    expect(heads[8]).toContain('Moves');
   });
 
   it('exposes the grid with the true total row count', async () => {

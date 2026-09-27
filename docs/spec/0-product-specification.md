@@ -1026,7 +1026,7 @@ A Flexible column has a minimum and, optionally, a maximum.
 Surplus width is distributed as follows:
 
 ```text
-surplus = available − 516                             516 = 246 fixed + 3 × 90 minimum
+surplus = available − 572                             572 = 302 fixed + 3 × 90 minimum
 
 White = Black = 90 + min( ⌊surplus ÷ 2⌋, 90 )         capped at 180
 Event         = 90 + ( surplus − 2 × name growth )    no maximum
@@ -1048,27 +1048,28 @@ There are no ratios, weights, or priority orderings beyond the two-stage rule ab
 | 4 | Black | `Black` | sans | Flexible | 90 | 180 | Always identical to White |
 | 5 | Elo | `Elo` | mono | Fixed | 41 | 41 | Never changes |
 | 6 | Event | `Event` | sans | Flexible | 90 | none | Absorbs all width the names do not take |
-| 7 | Result | `Res` | mono | Fixed | 34 | 34 | Never changes |
-| 8 | Moves | `Mvs` | mono | Fixed | 40 | 40 | Never changes |
+| 7 | Time | `Time` | mono | Fixed | 56 | 56 | Never changes |
+| 8 | Result | `Res` | mono | Fixed | 34 | 34 | Never changes |
+| 9 | Moves | `Mvs` | mono | Fixed | 40 | 40 | Never changes |
 
 | | Width |
 | --- | --- |
-| Fixed columns | 246px |
+| Fixed columns | 302px |
 | Flexible minimums | 270px |
-| **Content Table minimum** | **516px** |
+| **Content Table minimum** | **572px** |
 
-These eight columns constitute the complete default column set.
+These nine columns constitute the complete default column set.
 
-At the Application Window minimum of 800 × 600 with the Sidebar expanded, the Content Area is 580px, leaving 64px above the table minimum.
+At the Application Window minimum of 800 × 600 with the Sidebar expanded, the Content Area is 580px, leaving 8px above the table minimum.
 
 | Window | Available | White = Black | Event |
 | --- | --- | --- | --- |
-| 736 | 516 | 90 | 90 |
-| 800 | 580 | 122 | 90 |
-| 916 | 696 | 180 | 90 |
-| 1000 | 780 | 180 | 174 |
-| 1440 | 1220 | 180 | 614 |
-| 2560 | 2340 | 180 | 1734 |
+| 792 | 572 | 90 | 90 |
+| 800 | 580 | 94 | 90 |
+| 972 | 752 | 180 | 90 |
+| 1000 | 780 | 180 | 118 |
+| 1440 | 1220 | 180 | 558 |
+| 2560 | 2340 | 180 | 1678 |
 
 #### Date
 
@@ -1095,6 +1096,22 @@ The two rating columns are both headed `Elo`. Their position immediately followi
 Position does not convey this to assistive technology. Each header therefore carries a visually-hidden qualifier — "White Elo", "Black Elo" — so that the accessible table does not present two columns with the same name.
 
 Width derivation: 4 characters × 7.2px + 12px padding = **41px**.
+
+#### Time
+
+Time represents the game's time control, drawn in the compact minutes-and-increment form players use for a speed rather than the PGN tag's own seconds. For example:
+
+```text
+3+0     TimeControl "180"
+1+1     TimeControl "60+1"
+½+0     TimeControl "30"
+120+30  TimeControl "7200+30"
+1d      TimeControl "1/86400"
+```
+
+A base under a minute is drawn as `¼`, `½` or `¾` where it is one, and in seconds (`20s+1`) otherwise. A daily game — one move per whole number of days — is drawn as days per move. Every other form the PGN standard allows (multi-period, sandclock) is drawn verbatim and clipped by the column. A game with no time control, or with the tag's `?` or `-` placeholder, draws an empty cell. The substitution is made when the cell is drawn and never written back to the record.
+
+The header is condensed to `Time`. Width: **56px fixed** — six monospace characters, which holds every sudden-death and increment form up to `999+99`.
 
 #### Result
 
@@ -1129,9 +1146,9 @@ The header is condensed to `Mvs`. Width: **40px fixed** — the 34px basis of Re
 
 #### Condensed headers
 
-`Res` and `Mvs` are condensed labels, not names. Each header carries its full name — "Result", "Moves" — as a visually-hidden label, and the condensed label is hidden from assistive technology so the name is not read twice. The two Elo headers follow the same rule with their qualified names.
+`Time`, `Res` and `Mvs` are condensed labels, not names. Each header carries its full name — "Time control", "Result", "Moves" — as a visually-hidden label, and the condensed label is hidden from assistive technology so the name is not read twice. The two Elo headers follow the same rule with their qualified names.
 
-A translation supplies its own condensed label, and it is held to the same constraint as the English: it must fit the column's text width, **22px**, which in the monospace face is three characters. The current translations are German `Erg` · `Zg` and French `Rés` · `Cps`.
+A translation supplies its own condensed label, and it is held to the same constraint as the English: it must fit the column's text width — **22px**, three monospace characters, for `Res` and `Mvs`; **44px**, six, for `Time`. The current translations are German `Zeit` · `Erg` · `Zg` and French `Temps` · `Rés` · `Cps`.
 
 #### Fields not displayed
 
@@ -1140,7 +1157,6 @@ The default Content Table does not display:
 - Site
 - Round
 - ECO
-- Time Control
 - Termination
 - Opening
 - Variation
@@ -1411,7 +1427,7 @@ Collapsing the Sidebar changes the available horizontal space but does not chang
 
 The Content Table's columns respond to the available width according to the column sizing model defined in §4.4.2.
 
-Horizontal scrolling is never introduced in the Content Table. The Content Table minimum of 516px is reachable within the Application Window minimum of 800 × 600 in either Sidebar state, so no degraded behavior below that minimum requires specification.
+Horizontal scrolling is never introduced in the Content Table. The Content Table minimum of 572px is reachable within the Application Window minimum of 800 × 600 in either Sidebar state, so no degraded behavior below that minimum requires specification.
 
 ---
 
@@ -2279,6 +2295,7 @@ Every field is a column the database already stores (outside this document). Wha
 | 2 | Result | Row 2, centred |
 | 3 | Date played | Row 3 |
 | 4 | Location played | Row 3 |
+| 5 | Time control | Row 3, after the location, with its speed class — only when recorded |
 | — | Ratings | Row 2, flanking the result, quieter than any ranked field |
 | — | Event, Round | Editable, not displayed |
 
@@ -2300,6 +2317,9 @@ The row order **is** the ranking, read down the card. That is the whole layout a
 | `Date` is `????.??.??` | `Date unknown`, dimmed |
 | `Date` is `2026.??.??` | `2026` — whatever part is known |
 | `Site` or a player is `?` | The corresponding absence, dimmed |
+| No time control recorded | Nothing — the item is omitted |
+
+**Time control is omitted rather than drawn absent.** Most classical records never carried one, so a dimmed absence on every such game would be noise. It is drawn in the Content Table's compact form (§4.4.2), followed by the speed class when the record has one of the five (`3+0 · Blitz`); a class is never drawn without a time control.
 
 **A partial date degrades rather than collapsing.** A game whose year is recorded knows more than one whose date is absent, and the card says so.
 

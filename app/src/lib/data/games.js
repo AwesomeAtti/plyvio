@@ -9,14 +9,15 @@
 
 import { DataError } from './connection.js';
 
-/** The eight columns of §3.2.4.2, in the order the table draws them. */
+/** The nine columns of §3.2.4.2, in the order the table draws them. */
 export const LIST_COLUMNS = [
-  'id', 'date', 'white', 'white_elo', 'black', 'black_elo', 'event', 'result', 'ply_count'
+  'id', 'date', 'white', 'white_elo', 'black', 'black_elo', 'event', 'time_control', 'result',
+  'ply_count'
 ];
 
 /**
- * `created_at` is fetched alongside the eight list columns above rather than
- * added to them — it is not one of §3.2.4.2's eight and the Content Table
+ * `created_at` is fetched alongside the nine list columns above rather than
+ * added to them — it is not one of §3.2.4.2's nine and the Content Table
  * does not draw it — but `stores/library.js`'s `loadGames()` passes it
  * through as `createdAt`, which `recentlyAdded()` (§4.3.2) reads directly.
  */
@@ -126,6 +127,7 @@ export const readGames = async (connection, { limit = 200, offset = 0, order = '
     black: row.black,
     blackElo: row.black_elo,
     event: row.event,
+    timeControl: row.time_control,
     result: row.result,
     plyCount: row.ply_count,
     createdAt: row.created_at
@@ -291,6 +293,7 @@ export const insertGames = async (connection, rows) => {
         black: fields.black ?? null,
         blackElo: fields.black_elo ?? null,
         event: fields.event ?? null,
+        timeControl: fields.time_control ?? null,
         result: fields.result ?? null,
         plyCount: fields.ply_count ?? null,
         createdAt: fields.created_at ?? null
@@ -385,18 +388,18 @@ export const readPgn = async (connection, id) =>
   (await connection.get('select pgn from games where id = ?', [id]))?.pgn ?? null;
 
 /**
- * A game's `site` and `round` — §1's two record fields the Library's list
- * columns don't carry (§3.2.4.2 names eight, not these two), so a caller
- * that needs them for one game — the Info card — reads them on demand
- * rather than the Content Table paying for them on every row.
+ * A game's `site`, `round` and `time_class` — the record fields the Info
+ * card draws that the Library's list columns don't carry (§3.2.4.2 names
+ * nine, not these three), so a caller that needs them for one game reads
+ * them on demand rather than the Content Table paying for them on every row.
  *
- * Both are nullable in the schema and stay that way here: a game genuinely
+ * All are nullable in the schema and stay that way here: a game genuinely
  * without a Round is `{ round: null }`, not a reason to fall back to some
  * other row's value. Optional data reads as absent, never as someone else's.
  */
 export const readRecordFields = async (connection, id) =>
-  (await connection.get('select site, round from games where id = ?', [id])) ?? {
-    site: null, round: null
+  (await connection.get('select site, round, time_class from games where id = ?', [id])) ?? {
+    site: null, round: null, time_class: null
   };
 
 /** The nine §1 record columns the Edit dialog can change. */

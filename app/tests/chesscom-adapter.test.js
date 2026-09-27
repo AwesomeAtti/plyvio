@@ -28,7 +28,7 @@ import {
 describe('chessComRowFromApiGame', () => {
   const PGN = [
     '[Event "Live Chess"]', '[White "Carlsen, Magnus"]', '[Black "Nepomniachtchi, Ian"]',
-    '[Result "1-0"]', '[WhiteElo "2830"]', '', '1. e4 e5 1-0'
+    '[Result "1-0"]', '[WhiteElo "2830"]', '[TimeControl "180+2"]', '', '1. e4 e5 1-0'
   ].join('\n');
 
   it('maps the PGN tags the same way every other import path does', () => {
@@ -37,6 +37,7 @@ describe('chessComRowFromApiGame', () => {
     expect(row.black).toBe('Nepomniachtchi, Ian');
     expect(row.result).toBe('1-0');
     expect(row.white_elo).toBe(2830);
+    expect(row.time_control).toBe('180+2');
     expect(row.pgn).toBe(PGN);
     expect(row.created_at).toBe('2026-09-23T00:00:00.000Z');
   });
